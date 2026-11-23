@@ -179,6 +179,9 @@ KK._MiniMqttWss = class MiniMqttWss {
         const topic = this.dec.decode(body.subarray(2, 2 + tLen));
         const text = this.dec.decode(body.subarray(pStart));
         if (this.h.onMessage) this.h.onMessage(topic, text);
+      } else if (pktType === 9) {
+        // SUBACK — broker confirmed our topic subscription is live!
+        if (this.h.onSuback) this.h.onSuback();
       }
     }
   }
@@ -203,8 +206,8 @@ KK.LanNetwork = class LanNetwork {
 
     // WSS Relay Broker Pool (Auto-failover; prefix encodes broker so Host & Joiner ALWAYS meet on the same relay!)
     this._brokers = [
-      { prefix: "KK", name: "EMQX-TLS",    url: "wss://broker.emqx.io:8084/mqtt" },
-      { prefix: "K2", name: "HIVEMQ-TLS",  url: "wss://broker.hivemq.com:8884/mqtt" },
+      { prefix: "KK", name: "HIVEMQ-TLS",  url: "wss://broker.hivemq.com:8884/mqtt" },
+      { prefix: "K2", name: "EMQX-TLS",    url: "wss://broker.emqx.io:8084/mqtt" },
       { prefix: "K3", name: "ECLIPSE-443", url: "wss://mqtt.eclipseprojects.io/mqtt" }
     ];
     this.mqtt = null;
@@ -668,7 +671,7 @@ KK.LanNetwork = class LanNetwork {
         timeScale: ws.timeScale,
         weatherChanged
       };
-      this._publishFromHost(pkt);
+      if (this.hostPeers.size > 0) this._publishFromHost(pkt);
       if (weatherChanged && this.cb.onEnvSync) this.cb.onEnvSync(pkt);
     }, 2000);
   }
@@ -729,6 +732,9 @@ KK.LanNetwork = class LanNetwork {
         if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
         this._startHostWorldClock();
       },
+      onSuback: () => {
+        console.log(`[ONLINE] Host subscription confirmed (SUBACK) on ${this.topicToHost}`);
+      },
       onMessage: (_topic, text) => {
         let msg = null;
         try { msg = JSON.parse(text); } catch (e) { return; }
@@ -758,16 +764,20 @@ KK.LanNetwork = class LanNetwork {
         this.hostPeers.set(cid, entry);
 
         if (msg.type === "join_hello" || isNewPeer) {
+          console.log(`[ONLINE] Host received ${msg.type} from ${entry.callsign} (${cid}) — sending welcome & snapshot!`);
           this._publishFromHost({ type: "welcome", _to: cid, peerId: cid, isHost: false, roomCode: this.roomCode });
-          this._publishFromHost(this._buildHostSnapshot(cid));
-          const rPkt = this._buildHostRosterPacket();
-          this.roster = rPkt.peers;
-          if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
-          this._publishFromHost(rPkt);
+          setTimeout(() => {
+            if (this.mode !== "wss_host") return;
+            this._publishFromHost(this._buildHostSnapshot(cid));
+            const rPkt = this._buildHostRosterPacket();
+            this.roster = rPkt.peers;
+            if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
+            this._publishFromHost(rPkt);
+          }, 80);
           if (isNewPeer) {
             const joinChat = { type: "chat_msg", sender: "DISPATCH", text: `${entry.callsign} joined room ${this.roomCode}!`, system: true };
             this._handleMessage(joinChat);
-            this._publishFromHost(joinChat);
+            setTimeout(() => { if (this.mode === "wss_host") this._publishFromHost(joinChat); }, 140);
           }
           if (msg.type === "join_hello") return;
         }
@@ -816,6 +826,10 @@ KK.LanNetwork = class LanNetwork {
     if (!code) { this.disconnect(); return; }
     if (/^[A-Z0-9]{4}$/.test(code)) code = "KK-" + code;
 
+    if (this.isHost && this.mode === "wss_host" && this.roomCode === code) {
+      if (this.cb.onStatus) this.cb.onStatus("ALREADY HOSTING: " + code + " (COPY)", true);
+      return;
+    }
     this.disconnect();
     this.roomCode = code;
     this.hostAddr = code;
@@ -846,15 +860,24 @@ KK.LanNetwork = class LanNetwork {
       onConnect: () => {
         this.mqtt = mqtt;
         mqtt.subscribe(topicFromHost);
-        console.log(`[ONLINE] Relay connected! Sending join_hello for ${code}...`);
+        console.log(`[ONLINE] Relay connected (${br.name})! Waiting for SUBACK on ${topicFromHost}...`);
 
-        const sendHello = () => {
-          if (mqtt.connected && !handshakeOk) {
-            mqtt.publish(topicToHost, JSON.stringify({ type: "join_hello", peerId: myPeerId, callsign: this.callsign }));
-          }
+        let helloStarted = false;
+        const startHelloLoop = () => {
+          if (helloStarted || handshakeOk) return;
+          helloStarted = true;
+          const sendHello = () => {
+            if (mqtt.connected && !handshakeOk) {
+              mqtt.publish(topicToHost, JSON.stringify({ type: "join_hello", peerId: myPeerId, callsign: this.callsign }));
+            }
+          };
+          console.log(`[ONLINE] Subscribed! Sending join_hello for ${code}...`);
+          sendHello();
+          this._joinRetryTimer = setInterval(sendHello, 1600);
         };
-        setTimeout(sendHello, 180);
-        this._joinRetryTimer = setInterval(sendHello, 1500);
+        mqtt._startHelloLoop = startHelloLoop;
+        // Fallback start if broker doesn't send SUBACK promptly
+        setTimeout(startHelloLoop, 700);
 
         this._joinTimeout = setTimeout(() => {
           if (!handshakeOk) {
@@ -862,7 +885,10 @@ KK.LanNetwork = class LanNetwork {
             if (this.cb.onStatus) this.cb.onStatus(`HOST OF ${code} NOT RESPONDING`, false);
             console.log(`[ONLINE] Timed out waiting for Host of ${code} to reply.`);
           }
-        }, 8000);
+        }, 10000);
+      },
+      onSuback: () => {
+        if (mqtt._startHelloLoop) mqtt._startHelloLoop();
       },
       onMessage: (_topic, text) => {
         let msg = null;
@@ -1097,8 +1123,11 @@ KK.LanNetwork = class LanNetwork {
 
   broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0) {
     this.sendAccum += dt;
-    if (!force && this.sendAccum < 0.08) return; // Smooth 12.5 Hz over WSS (lerped client-side!)
+    if (!force && this.sendAccum < 0.10) return; // Broker-friendly 10 Hz over WSS (smoothly lerped!)
     this.sendAccum = 0;
+    if (this.mode === "offline") return;
+    // Save bandwidth & prevent public broker throttling while Host is alone waiting for friends!
+    if (this.mode === "wss_host" && this.hostPeers.size === 0) return;
     const engHp = KK.getEngineOverallHealth(vehicle.vState);
     const smoke = Math.max(0, (vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
     this.send({
