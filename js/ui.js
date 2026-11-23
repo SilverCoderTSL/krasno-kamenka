@@ -59,7 +59,7 @@ KK.UIManager = class UIManager {
       q("btn-lan-host").onclick = () => {
         const cs = q("lan-callsign-input") ? q("lan-callsign-input").value.trim() : "";
         this.game.network.hostRoom(cs || this.game.network.callsign);
-        this.toast("Creating PeerJS Online Room...");
+        this.toast("Connecting Online Relay & creating Room...");
       };
     }
     if (q("btn-lan-connect")) {

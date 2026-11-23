@@ -1,15 +1,196 @@
 // ============================================================================
-// js/network.js (v14.2 ONLINE) — Serverless PeerJS WebRTC Online Multiplayer
-// + Browser LocalStorage Driver Accounts (`kk_accounts_v14`) + SHA-256 Dev Auth
-// Works 100% natively on GitHub Pages (HTTPS) with zero backend server!
+// js/network.js (v14.2 ONLINE — WSS Relay Edition)
+// Zero-Dependency Pure-JS WebSocket-over-TLS Multiplayer (Works on GitHub Pages,
+// UAE ISPs, CGNAT, Mobile Data, Strict Firewalls & Same-PC Multi-Tab!)
+// + Browser LocalStorage Accounts (`kk_accounts_v14`) + SHA-256 Dev Auth
 // ============================================================================
 window.KK = window.KK || {};
 
+// ============================================================================
+// Minimal RFC/OASIS-Compliant MQTT 3.1.1 over WebSocket Binary Client (QoS 0)
+// ============================================================================
+KK._MiniMqttWss = class MiniMqttWss {
+  constructor(url, clientId, handlers) {
+    this.url = url;
+    this.clientId = clientId;
+    this.h = handlers || {};
+    this.ws = null;
+    this.connected = false;
+    this.closed = false;
+    this.pingTimer = null;
+    this.rxBuf = new Uint8Array(0);
+    this.enc = new TextEncoder();
+    this.dec = new TextDecoder();
+    this._pktId = 1;
+  }
+
+  connect() {
+    try {
+      const ws = new WebSocket(this.url, ["mqtt"]);
+      ws.binaryType = "arraybuffer";
+      this.ws = ws;
+
+      ws.onopen = () => {
+        if (this.closed) { try { ws.close(); } catch (e) {} return; }
+        this._sendConnect();
+      };
+
+      ws.onmessage = (ev) => {
+        if (this.closed || !(ev.data instanceof ArrayBuffer)) return;
+        const chunk = new Uint8Array(ev.data);
+        const merged = new Uint8Array(this.rxBuf.length + chunk.length);
+        merged.set(this.rxBuf, 0);
+        merged.set(chunk, this.rxBuf.length);
+        this.rxBuf = merged;
+        this._drainRx();
+      };
+
+      ws.onerror = () => {
+        if (this.h.onError) this.h.onError();
+      };
+
+      ws.onclose = () => {
+        this._stopPing();
+        const wasConn = this.connected;
+        this.connected = false;
+        if (!this.closed && this.h.onClose) this.h.onClose(wasConn);
+      };
+    } catch (e) {
+      if (this.h.onError) this.h.onError(e);
+    }
+  }
+
+  close() {
+    this.closed = true;
+    this.connected = false;
+    this._stopPing();
+    if (this.ws) {
+      try {
+        if (this.ws.readyState === WebSocket.OPEN) this.ws.send(new Uint8Array([0xe0, 0x00])); // DISCONNECT
+      } catch (e) {}
+      try { this.ws.close(); } catch (e) {}
+      this.ws = null;
+    }
+  }
+
+  _stopPing() {
+    if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
+  }
+
+  _encodeVarInt(n) {
+    const out = [];
+    let x = n;
+    do {
+      let b = x % 128;
+      x = Math.floor(x / 128);
+      if (x > 0) b |= 128;
+      out.push(b);
+    } while (x > 0);
+    return out;
+  }
+
+  _encodeStr(str) {
+    const b = this.enc.encode(str);
+    const out = new Uint8Array(2 + b.length);
+    out[0] = (b.length >> 8) & 0xff;
+    out[1] = b.length & 0xff;
+    out.set(b, 2);
+    return out;
+  }
+
+  _buildPacket(firstByte, parts) {
+    let bodyLen = 0;
+    for (const p of parts) bodyLen += p.length;
+    const varLen = this._encodeVarInt(bodyLen);
+    const out = new Uint8Array(1 + varLen.length + bodyLen);
+    out[0] = firstByte;
+    for (let i = 0; i < varLen.length; i++) out[1 + i] = varLen[i];
+    let off = 1 + varLen.length;
+    for (const p of parts) { out.set(p, off); off += p.length; }
+    return out;
+  }
+
+  _sendConnect() {
+    // MQTT 3.1.1 CONNECT: Protocol "MQTT", Level 4, Clean Session (0x02), KeepAlive 45s
+    const varHdr = new Uint8Array([0x00, 0x04, 0x4d, 0x51, 0x54, 0x54, 0x04, 0x02, 0x00, 0x2d]);
+    const cidBytes = this._encodeStr(this.clientId);
+    const pkt = this._buildPacket(0x10, [varHdr, cidBytes]);
+    try { this.ws.send(pkt); } catch (e) {}
+  }
+
+  subscribe(topic) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const pid = (this._pktId++ % 65000) + 1;
+    const idBytes = new Uint8Array([(pid >> 8) & 0xff, pid & 0xff]);
+    const tBytes = this._encodeStr(topic);
+    const qosByte = new Uint8Array([0x00]); // QoS 0
+    const pkt = this._buildPacket(0x82, [idBytes, tBytes, qosByte]);
+    try { this.ws.send(pkt); } catch (e) {}
+  }
+
+  publish(topic, textPayload) {
+    if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const tBytes = this._encodeStr(topic);
+    const pBytes = this.enc.encode(textPayload);
+    const pkt = this._buildPacket(0x30, [tBytes, pBytes]); // QoS 0, Retain 0
+    try { this.ws.send(pkt); } catch (e) {}
+  }
+
+  _drainRx() {
+    while (this.rxBuf.length >= 2) {
+      let mult = 1, remLen = 0, idx = 1, hasLen = false;
+      while (idx < this.rxBuf.length && idx <= 4) {
+        const b = this.rxBuf[idx++];
+        remLen += (b & 127) * mult;
+        if ((b & 128) === 0) { hasLen = true; break; }
+        mult *= 128;
+      }
+      if (!hasLen) return;
+      const totalLen = idx + remLen;
+      if (this.rxBuf.length < totalLen) return;
+
+      const firstByte = this.rxBuf[0];
+      const pktType = firstByte >> 4;
+      const flags = firstByte & 0x0f;
+      const body = this.rxBuf.subarray(idx, totalLen);
+      this.rxBuf = this.rxBuf.slice(totalLen);
+
+      if (pktType === 2) {
+        // CONNACK
+        if (body.length >= 2 && body[1] === 0) {
+          this.connected = true;
+          this._stopPing();
+          this.pingTimer = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+              try { this.ws.send(new Uint8Array([0xc0, 0x00])); } catch (e) {} // PINGREQ
+            }
+          }, 22000);
+          if (this.h.onConnect) this.h.onConnect();
+        } else {
+          if (this.h.onError) this.h.onError(new Error("CONNACK rejected: " + (body[1] || -1)));
+        }
+      } else if (pktType === 3) {
+        // PUBLISH
+        if (body.length < 2) continue;
+        const qos = (flags >> 1) & 3;
+        const tLen = (body[0] << 8) | body[1];
+        const pStart = 2 + tLen + (qos > 0 ? 2 : 0);
+        if (pStart > body.length) continue;
+        const topic = this.dec.decode(body.subarray(2, 2 + tLen));
+        const text = this.dec.decode(body.subarray(pStart));
+        if (this.h.onMessage) this.h.onMessage(topic, text);
+      }
+    }
+  }
+};
+
+// ============================================================================
+// MAIN ONLINE NETWORK CONTROLLER (Drop-in Replacement for KK.LanNetwork)
+// ============================================================================
 KK.LanNetwork = class LanNetwork {
   constructor(callbacks) {
     this.cb = callbacks || {};
-    this.peer = null;
-    this.mode = "offline"; // offline | peer_host | peer_client
+    this.mode = "offline"; // offline | wss_host | wss_client
     this.peerId = null;
     this.roomCode = "";
     this.isHost = false;
@@ -20,20 +201,36 @@ KK.LanNetwork = class LanNetwork {
     this.convoys = [];
     this.sendAccum = 0;
 
-    // PeerJS Host structures
-    this.hostConns = new Map(); // peerId -> { conn, peerId, callsign }
-    this.hostConn = null;       // Client -> Host DataConnection
+    // WSS Relay Broker Pool (Auto-failover; prefix encodes broker so Host & Joiner ALWAYS meet on the same relay!)
+    this._brokers = [
+      { prefix: "KK", name: "EMQX-TLS",    url: "wss://broker.emqx.io:8084/mqtt" },
+      { prefix: "K2", name: "HIVEMQ-TLS",  url: "wss://broker.hivemq.com:8884/mqtt" },
+      { prefix: "K3", name: "ECLIPSE-443", url: "wss://mqtt.eclipseprojects.io/mqtt" }
+    ];
+    this.mqtt = null;
+    this.topicToHost = "";
+    this.topicFromHost = "";
+    this.hostPeers = new Map(); // peerId -> { peerId, callsign, lastSeen }
     this.worldClockTimer = null;
     this.hostWorldState = null;
+    this._joinRetryTimer = null;
+    this._joinTimeout = null;
+    this._clientPingTimer = null;
 
-    // Salted SHA-256 hash of Silver's Dev Key (raw key is NEVER stored in public source!)
+    // Salted SHA-256 hash of Silver's Dev Key (raw key is NEVER stored in public JS!)
     this._devKeySalt = "kk-dev-v14:";
     this._devKeyHash = "40e3962198517b21a3a977f83d248e88325c116e877c8023caa12f5e9a2a26f1";
     this._accountsKey = "kk_accounts_v14";
+
+    window.addEventListener("beforeunload", () => {
+      if (this.mode === "wss_client" && this.mqtt && this.mqtt.connected && this.peerId) {
+        this.mqtt.publish(this.topicToHost, JSON.stringify({ type: "client_bye", peerId: this.peerId, callsign: this.callsign }));
+      }
+    });
   }
 
   // ==========================================================================
-  // SHA-256 HELPER (Web Crypto on HTTPS/localhost + Pure-JS Fallback for HTTP)
+  // SHA-256 HELPER (Web Crypto on HTTPS + Pure-JS Fallback for HTTP)
   // ==========================================================================
   async _sha256Hex(str) {
     try {
@@ -132,12 +329,8 @@ KK.LanNetwork = class LanNetwork {
     if (act === "register") {
       if (db[key]) return { ok: false, error: `Account '${clean}' already exists in this browser! Click LOGIN instead.` };
       db[key] = {
-        username: clean,
-        pinHash,
-        isDev: false,
-        createdAt: Date.now(),
-        lastLogin: Date.now(),
-        saveData: initialSave || null
+        username: clean, pinHash, isDev: false,
+        createdAt: Date.now(), lastLogin: Date.now(), saveData: initialSave || null
       };
       this._saveAccountsDb(db);
       return { ok: true, username: clean, isNew: true, isDev: false, saveData: db[key].saveData };
@@ -237,26 +430,13 @@ KK.LanNetwork = class LanNetwork {
   }
 
   // ==========================================================================
-  // PEERJS ONLINE MULTIPLAYER (HOST ROOM / JOIN ROOM / WORLD CLOCK)
+  // WSS RELAY MULTIPLAYER (HOST / JOIN / AUTHORITATIVE WORLD CLOCK)
   // ==========================================================================
   _randCode(len = 4) {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let out = "";
     for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
     return out;
-  }
-
-  _getPeerConfig() {
-    return {
-      debug: 1,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" },
-          { urls: "stun:stun2.l.google.com:19302" }
-        ]
-      }
-    };
   }
 
   getShareInviteUrl() {
@@ -267,11 +447,12 @@ KK.LanNetwork = class LanNetwork {
 
   disconnect() {
     if (this.worldClockTimer) { clearInterval(this.worldClockTimer); this.worldClockTimer = null; }
-    for (const c of this.hostConns.values()) { try { c.conn.close(); } catch (e) {} }
-    this.hostConns.clear();
-    if (this.hostConn) { try { this.hostConn.close(); } catch (e) {} this.hostConn = null; }
-    if (this.peer) { try { this.peer.destroy(); } catch (e) {} this.peer = null; }
+    if (this._joinRetryTimer) { clearInterval(this._joinRetryTimer); this._joinRetryTimer = null; }
+    if (this._joinTimeout) { clearTimeout(this._joinTimeout); this._joinTimeout = null; }
+    if (this._clientPingTimer) { clearInterval(this._clientPingTimer); this._clientPingTimer = null; }
+    if (this.mqtt) { this.mqtt.close(); this.mqtt = null; }
 
+    this.hostPeers.clear();
     for (const [pid, rp] of this.remotePlayers.entries()) {
       if (this.cb.onPeerLeft) this.cb.onPeerLeft(pid, rp.callsign);
     }
@@ -314,7 +495,7 @@ KK.LanNetwork = class LanNetwork {
     };
   }
 
-  _buildHostSnapshot() {
+  _buildHostSnapshot(targetPeerId = null) {
     const ws = this.hostWorldState;
     const now = Date.now();
     const gasOut = {};
@@ -323,18 +504,19 @@ KK.LanNetwork = class LanNetwork {
     }
     return {
       type: "server_snapshot",
+      _to: targetPeerId || undefined,
       seed: ws.seed,
       bridgeSeed: ws.bridgeSeed,
       timeOfDay: +ws.timeOfDay.toFixed(3),
       timeScale: ws.timeScale,
       weather: ws.weather,
       brokenPlanks: ws.brokenPlanks,
-      brokenTrees: ws.brokenTrees.slice(-1500),
-      brokenFences: ws.brokenFences.slice(-1500),
+      brokenTrees: ws.brokenTrees.slice(-800),
+      brokenFences: ws.brokenFences.slice(-800),
       milCamp: ws.milCamp,
       bm21Camp: ws.bm21Camp,
       shilkaCamp: ws.shilkaCamp,
-      craters: ws.craters.slice(-120),
+      craters: ws.craters.slice(-100),
       gasOutages: gasOut,
       cryptids: ws.cryptids,
       tornado: ws.tornado,
@@ -346,19 +528,15 @@ KK.LanNetwork = class LanNetwork {
 
   _buildHostRosterPacket() {
     const peers = [{ peerId: this.peerId, callsign: this.callsign, isHost: true }];
-    for (const entry of this.hostConns.values()) {
+    for (const entry of this.hostPeers.values()) {
       peers.push({ peerId: entry.peerId, callsign: entry.callsign || entry.peerId, isHost: false });
     }
     return { type: "roster", hostId: this.peerId, peers };
   }
 
-  _broadcastFromHost(msg, excludePeerId = null) {
-    for (const [pid, entry] of this.hostConns.entries()) {
-      if (excludePeerId && pid === excludePeerId) continue;
-      if (entry.conn && entry.conn.open) {
-        try { entry.conn.send(msg); } catch (e) {}
-      }
-    }
+  _publishFromHost(msg) {
+    if (!this.mqtt || !this.mqtt.connected || !this.topicFromHost) return;
+    try { this.mqtt.publish(this.topicFromHost, JSON.stringify(msg)); } catch (e) {}
   }
 
   _applyHostWorldState(msg) {
@@ -419,13 +597,13 @@ KK.LanNetwork = class LanNetwork {
       const tid = String(msg.treeId || "");
       if (tid && !ws.brokenTrees.includes(tid)) {
         ws.brokenTrees.push(tid);
-        if (ws.brokenTrees.length > 1500) ws.brokenTrees = ws.brokenTrees.slice(-1500);
+        if (ws.brokenTrees.length > 800) ws.brokenTrees = ws.brokenTrees.slice(-800);
       }
     } else if (mtype === "fence_break") {
       const fid = String(msg.fenceId || "");
       if (fid && !ws.brokenFences.includes(fid)) {
         ws.brokenFences.push(fid);
-        if (ws.brokenFences.length > 1500) ws.brokenFences = ws.brokenFences.slice(-1500);
+        if (ws.brokenFences.length > 800) ws.brokenFences = ws.brokenFences.slice(-800);
       }
     } else if (mtype === "gas_explode") {
       const tid = String(parseInt(msg.townId, 10));
@@ -437,7 +615,7 @@ KK.LanNetwork = class LanNetwork {
         r: Math.max(2, Math.min(14, +(Number(msg.r) || 5.5).toFixed(1))),
         d: Math.max(0.4, Math.min(3.8, +(Number(msg.d) || 1.6).toFixed(2)))
       });
-      if (ws.craters.length > 120) ws.craters = ws.craters.slice(-120);
+      if (ws.craters.length > 100) ws.craters = ws.craters.slice(-100);
     } else if (mtype === "cryptid_sync" && msg.cryptids) {
       ws.cryptids = msg.cryptids;
     } else if (mtype === "hazard_sync") {
@@ -456,10 +634,29 @@ KK.LanNetwork = class LanNetwork {
       ws.lastTick = now;
       ws.timeOfDay = (ws.timeOfDay + dt * 0.02 * ws.timeScale) % 24.0;
 
+      // Prune timed-out disconnected clients (> 14s silent)
+      let rosterDirty = false;
+      for (const [cid, entry] of this.hostPeers.entries()) {
+        if (now - entry.lastSeen > 14000) {
+          this.hostPeers.delete(cid);
+          delete ws.players[cid];
+          delete ws.winches[cid];
+          const leftPkt = { type: "peer_left", peerId: cid, callsign: entry.callsign || cid };
+          this._handleMessage(leftPkt);
+          this._publishFromHost(leftPkt);
+          rosterDirty = true;
+        }
+      }
+      if (rosterDirty) {
+        const rPkt = this._buildHostRosterPacket();
+        this.roster = rPkt.peers;
+        if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
+        this._publishFromHost(rPkt);
+      }
+
       let weatherChanged = false;
       if (now >= ws.weatherNextChange) {
-        const nextW = weathers[Math.floor(Math.random() * weathers.length)];
-        ws.weather = nextW;
+        ws.weather = weathers[Math.floor(Math.random() * weathers.length)];
         ws.weatherNextChange = now + (170 + Math.random() * 110) * 1000;
         weatherChanged = true;
       }
@@ -471,137 +668,157 @@ KK.LanNetwork = class LanNetwork {
         timeScale: ws.timeScale,
         weatherChanged
       };
-      this._broadcastFromHost(pkt);
+      this._publishFromHost(pkt);
       if (weatherChanged && this.cb.onEnvSync) this.cb.onEnvSync(pkt);
     }, 2000);
   }
 
   hostRoom(callsign = null) {
-    if (typeof Peer === "undefined") {
-      if (this.cb.onStatus) this.cb.onStatus("PeerJS CDN failed to load (offline)", false);
-      return;
-    }
     if (callsign) {
       this.callsign = callsign.slice(0, 20);
       localStorage.setItem("kk_callsign", this.callsign);
     }
     this.disconnect();
+    const suffix = this._randCode(4);
+    this._tryHostBroker(0, suffix);
+  }
 
-    const roomCode = "KK-" + this._randCode(4);
-    if (this.cb.onStatus) this.cb.onStatus("CREATING ONLINE ROOM...", false);
+  _tryHostBroker(brokerIdx, suffix) {
+    if (brokerIdx >= this._brokers.length) {
+      if (this.cb.onStatus) this.cb.onStatus("ALL ONLINE RELAYS BLOCKED — SOLO MODE", false);
+      return;
+    }
+    const br = this._brokers[brokerIdx];
+    const roomCode = `${br.prefix}-${suffix}`;
+    const myPeerId = `HOST-${this._randCode(5)}`;
+    const clientId = `kk_h_${this._randCode(8)}`;
 
-    try {
-      const peer = new Peer(roomCode, this._getPeerConfig());
-      this.peer = peer;
+    if (this.cb.onStatus) this.cb.onStatus(`CONNECTING RELAY (${br.name})...`, false);
+    console.log(`[ONLINE] Attempting Host via ${br.name} (${br.url}) for room ${roomCode}...`);
 
-      peer.on("open", (id) => {
-        this.mode = "peer_host";
+    let settled = false;
+    const mqtt = new KK._MiniMqttWss(br.url, clientId, {
+      onConnect: () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(failTimer);
+
+        this.mqtt = mqtt;
+        this.mode = "wss_host";
         this.isHost = true;
-        this.peerId = id;
-        this.roomCode = id;
-        this.hostAddr = id;
+        this.peerId = myPeerId;
+        this.roomCode = roomCode;
+        this.hostAddr = roomCode;
+        this.topicToHost = `kk_oblast_v14/${roomCode}/to_host`;
+        this.topicFromHost = `kk_oblast_v14/${roomCode}/from_host`;
         this.hostWorldState = this._initHostWorldState();
 
-        const hostIn = document.getElementById("lan-host-input");
-        if (hostIn) hostIn.value = id;
-        const smIn = document.getElementById("sm-host-input");
-        if (smIn) smIn.value = id;
+        mqtt.subscribe(this.topicToHost);
+        console.log(`[ONLINE] Hosting Room ${roomCode} on ${br.name}!`);
 
-        if (this.cb.onStatus) this.cb.onStatus("HOSTING: " + id + " (COPY)", true);
-        if (this.cb.onWelcome) this.cb.onWelcome({ type: "welcome", peerId: id, isHost: true, roomCode: id });
+        const hostIn = document.getElementById("lan-host-input");
+        if (hostIn) hostIn.value = roomCode;
+        const smIn = document.getElementById("sm-host-input");
+        if (smIn) smIn.value = roomCode;
+
+        if (this.cb.onStatus) this.cb.onStatus("HOSTING: " + roomCode + " (COPY)", true);
+        if (this.cb.onWelcome) this.cb.onWelcome({ type: "welcome", peerId: myPeerId, isHost: true, roomCode });
         if (this.cb.onSnapshot) this.cb.onSnapshot(this._buildHostSnapshot());
         const rPkt = this._buildHostRosterPacket();
         this.roster = rPkt.peers;
         if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
         this._startHostWorldClock();
-      });
+      },
+      onMessage: (_topic, text) => {
+        let msg = null;
+        try { msg = JSON.parse(text); } catch (e) { return; }
+        if (!msg || !msg.type || !msg.peerId || msg.peerId === this.peerId) return;
+        const cid = msg.peerId;
 
-      peer.on("connection", (conn) => {
-        const cid = conn.peer;
-        conn.on("open", () => {
-          this.hostConns.set(cid, { conn, peerId: cid, callsign: "DRIVER" });
-          try {
-            conn.send({ type: "welcome", peerId: cid, isHost: false, roomCode: this.roomCode });
-            conn.send(this._buildHostSnapshot());
-          } catch (e) {}
-          const rPkt = this._buildHostRosterPacket();
-          this.roster = rPkt.peers;
-          if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
-          this._broadcastFromHost(rPkt);
-        });
-
-        conn.on("data", (raw) => {
-          const msg = (typeof raw === "string") ? (() => { try { return JSON.parse(raw); } catch (e) { return null; } })() : raw;
-          if (!msg || !msg.type) return;
-          msg.peerId = cid;
-
-          if (msg.type === "join_hello") {
-            const entry = this.hostConns.get(cid);
-            if (entry && msg.callsign) entry.callsign = String(msg.callsign).slice(0, 20);
+        if (msg.type === "client_bye") {
+          const old = this.hostPeers.get(cid);
+          if (old) {
+            this.hostPeers.delete(cid);
+            if (this.hostWorldState) { delete this.hostWorldState.players[cid]; delete this.hostWorldState.winches[cid]; }
+            const leftPkt = { type: "peer_left", peerId: cid, callsign: old.callsign || cid };
+            this._handleMessage(leftPkt);
+            this._publishFromHost(leftPkt);
             const rPkt = this._buildHostRosterPacket();
             this.roster = rPkt.peers;
             if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
-            this._broadcastFromHost(rPkt);
-            const joinChat = { type: "chat_msg", sender: "DISPATCH", text: `${entry ? entry.callsign : cid} joined room ${this.roomCode}!`, system: true };
-            this._handleMessage(joinChat);
-            this._broadcastFromHost(joinChat);
-            return;
+            this._publishFromHost(rPkt);
           }
+          return;
+        }
 
-          this._applyHostWorldState(msg);
-          this._handleMessage(msg);
-          this._broadcastFromHost(msg, cid);
-        });
+        const isNewPeer = !this.hostPeers.has(cid);
+        const entry = this.hostPeers.get(cid) || { peerId: cid, callsign: msg.callsign || "DRIVER", lastSeen: Date.now() };
+        entry.lastSeen = Date.now();
+        if (msg.callsign) entry.callsign = String(msg.callsign).slice(0, 20);
+        this.hostPeers.set(cid, entry);
 
-        const cleanupPeer = () => {
-          const entry = this.hostConns.get(cid);
-          if (!entry) return;
-          const oldName = entry.callsign || cid;
-          this.hostConns.delete(cid);
-          if (this.hostWorldState) {
-            delete this.hostWorldState.players[cid];
-            delete this.hostWorldState.winches[cid];
-          }
-          const leftPkt = { type: "peer_left", peerId: cid, callsign: oldName };
-          this._handleMessage(leftPkt);
-          this._broadcastFromHost(leftPkt);
+        if (msg.type === "join_hello" || isNewPeer) {
+          this._publishFromHost({ type: "welcome", _to: cid, peerId: cid, isHost: false, roomCode: this.roomCode });
+          this._publishFromHost(this._buildHostSnapshot(cid));
           const rPkt = this._buildHostRosterPacket();
           this.roster = rPkt.peers;
           if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
-          this._broadcastFromHost(rPkt);
-        };
-        conn.on("close", cleanupPeer);
-        conn.on("error", cleanupPeer);
-      });
+          this._publishFromHost(rPkt);
+          if (isNewPeer) {
+            const joinChat = { type: "chat_msg", sender: "DISPATCH", text: `${entry.callsign} joined room ${this.roomCode}!`, system: true };
+            this._handleMessage(joinChat);
+            this._publishFromHost(joinChat);
+          }
+          if (msg.type === "join_hello") return;
+        }
 
-      peer.on("error", (err) => {
-        if (this.cb.onStatus) this.cb.onStatus("PEER ERROR (" + (err.type || "retry") + ")", false);
-      });
-    } catch (e) {
-      if (this.cb.onStatus) this.cb.onStatus("HOST FAILED — SOLO MODE", false);
-    }
+        if (msg.type === "client_ping") return;
+
+        this._applyHostWorldState(msg);
+        this._handleMessage(msg);
+        this._publishFromHost(msg);
+      },
+      onError: () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(failTimer);
+        mqtt.close();
+        this._tryHostBroker(brokerIdx + 1, suffix);
+      },
+      onClose: (wasConn) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(failTimer);
+          this._tryHostBroker(brokerIdx + 1, suffix);
+        } else if (wasConn && this.mode === "wss_host") {
+          if (this.cb.onStatus) this.cb.onStatus("RELAY DROPPED — CLICK HOST TO RE-OPEN", false);
+        }
+      }
+    });
+
+    const failTimer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        mqtt.close();
+        this._tryHostBroker(brokerIdx + 1, suffix);
+      }
+    }, 4000);
+
+    mqtt.connect();
   }
 
   joinRoom(rawCode, callsign = null) {
-    if (typeof Peer === "undefined") {
-      if (this.cb.onStatus) this.cb.onStatus("PeerJS CDN failed to load (offline)", false);
-      return;
-    }
     if (callsign) {
       this.callsign = callsign.slice(0, 20);
       localStorage.setItem("kk_callsign", this.callsign);
     }
     let code = String(rawCode || "").trim().toUpperCase();
-    if (!code) {
-      this.disconnect();
-      return;
-    }
-    // Convenience: if a friend types just the 4-char code like "A1B2", auto-prefix "KK-"!
+    if (!code) { this.disconnect(); return; }
     if (/^[A-Z0-9]{4}$/.test(code)) code = "KK-" + code;
 
     this.disconnect();
-    this.hostAddr = code;
     this.roomCode = code;
+    this.hostAddr = code;
     localStorage.setItem("kk_room_code", code);
 
     const hostIn = document.getElementById("lan-host-input");
@@ -609,66 +826,98 @@ KK.LanNetwork = class LanNetwork {
     const smIn = document.getElementById("sm-host-input");
     if (smIn) smIn.value = code;
 
-    if (this.cb.onStatus) this.cb.onStatus("JOINING " + code + "...", false);
+    // Pick exact broker encoded by room prefix (`KK-` -> EMQX, `K2-` -> HiveMQ, `K3-` -> Eclipse 443)
+    const prefix = code.split("-")[0];
+    const br = this._brokers.find((b) => b.prefix === prefix) || this._brokers[0];
+    const myPeerId = `P-${this._randCode(6)}`;
+    const clientId = `kk_c_${this._randCode(8)}`;
 
-    try {
-      const clientId = "KK-P-" + this._randCode(6);
-      const peer = new Peer(clientId, this._getPeerConfig());
-      this.peer = peer;
+    if (this.cb.onStatus) this.cb.onStatus(`JOINING ${code} (${br.name})...`, false);
+    console.log(`[ONLINE] Joining Room ${code} via ${br.name} (${br.url})...`);
 
-      peer.on("open", (myId) => {
-        this.peerId = myId;
-        const conn = peer.connect(code, { reliable: true });
-        this.hostConn = conn;
+    const topicToHost = `kk_oblast_v14/${code}/to_host`;
+    const topicFromHost = `kk_oblast_v14/${code}/from_host`;
+    this.topicToHost = topicToHost;
+    this.topicFromHost = topicFromHost;
+    this.peerId = myPeerId;
 
-        const connTimeout = setTimeout(() => {
-          if (this.mode !== "peer_client") {
-            if (this.cb.onStatus) this.cb.onStatus("ROOM " + code + " NOT FOUND", false);
+    let handshakeOk = false;
+    const mqtt = new KK._MiniMqttWss(br.url, clientId, {
+      onConnect: () => {
+        this.mqtt = mqtt;
+        mqtt.subscribe(topicFromHost);
+        console.log(`[ONLINE] Relay connected! Sending join_hello for ${code}...`);
+
+        const sendHello = () => {
+          if (mqtt.connected && !handshakeOk) {
+            mqtt.publish(topicToHost, JSON.stringify({ type: "join_hello", peerId: myPeerId, callsign: this.callsign }));
           }
-        }, 8500);
+        };
+        setTimeout(sendHello, 180);
+        this._joinRetryTimer = setInterval(sendHello, 1500);
 
-        conn.on("open", () => {
-          clearTimeout(connTimeout);
-          this.mode = "peer_client";
+        this._joinTimeout = setTimeout(() => {
+          if (!handshakeOk) {
+            if (this._joinRetryTimer) { clearInterval(this._joinRetryTimer); this._joinRetryTimer = null; }
+            if (this.cb.onStatus) this.cb.onStatus(`HOST OF ${code} NOT RESPONDING`, false);
+            console.log(`[ONLINE] Timed out waiting for Host of ${code} to reply.`);
+          }
+        }, 8000);
+      },
+      onMessage: (_topic, text) => {
+        let msg = null;
+        try { msg = JSON.parse(text); } catch (e) { return; }
+        if (!msg || !msg.type) return;
+        // Filter directed packets (`welcome`, `server_snapshot`) meant for another client
+        if (msg._to && msg._to !== this.peerId) return;
+        // Ignore our own echoed packets relayed back by Host
+        if (msg.peerId && msg.peerId === this.peerId && msg.type !== "welcome" && msg.type !== "convoy_create" && msg.type !== "convoy_join" && msg.type !== "convoy_complete") {
+          return;
+        }
+
+        if (msg.type === "welcome" && !handshakeOk) {
+          handshakeOk = true;
+          if (this._joinRetryTimer) { clearInterval(this._joinRetryTimer); this._joinRetryTimer = null; }
+          if (this._joinTimeout) { clearTimeout(this._joinTimeout); this._joinTimeout = null; }
+          this.mode = "wss_client";
           this.isHost = false;
           if (this.cb.onStatus) this.cb.onStatus("ONLINE: " + code, true);
-          try { conn.send({ type: "join_hello", callsign: this.callsign }); } catch (e) {}
-        });
+          console.log(`[ONLINE] Joined Room ${code} successfully!`);
+          this._clientPingTimer = setInterval(() => {
+            if (this.mqtt && this.mqtt.connected && this.mode === "wss_client") {
+              this.mqtt.publish(this.topicToHost, JSON.stringify({ type: "client_ping", peerId: this.peerId, callsign: this.callsign }));
+            }
+          }, 5000);
+        }
 
-        conn.on("data", (raw) => {
-          const msg = (typeof raw === "string") ? (() => { try { return JSON.parse(raw); } catch (e) { return null; } })() : raw;
-          if (msg) this._handleMessage(msg);
-        });
-
-        conn.on("close", () => {
-          clearTimeout(connTimeout);
+        this._handleMessage(msg);
+      },
+      onError: () => {
+        if (!handshakeOk && this.cb.onStatus) {
+          this.cb.onStatus(`RELAY ${br.name} BLOCKED / OFFLINE`, false);
+        }
+      },
+      onClose: () => {
+        if (this._joinRetryTimer) { clearInterval(this._joinRetryTimer); this._joinRetryTimer = null; }
+        if (this._joinTimeout) { clearTimeout(this._joinTimeout); this._joinTimeout = null; }
+        if (this._clientPingTimer) { clearInterval(this._clientPingTimer); this._clientPingTimer = null; }
+        if (this.mode === "wss_client") {
           this.mode = "offline";
-          this.isHost = false;
           for (const [pid, rp] of this.remotePlayers.entries()) {
             if (this.cb.onPeerLeft) this.cb.onPeerLeft(pid, rp.callsign);
           }
           this.remotePlayers.clear();
           this.roster = [];
           if (this.cb.onRoster) this.cb.onRoster([], false);
-          if (this.cb.onStatus) this.cb.onStatus("HOST DISCONNECTED (SOLO)", false);
-        });
+          if (this.cb.onStatus) this.cb.onStatus("DISCONNECTED FROM RELAY (SOLO)", false);
+        }
+      }
+    });
 
-        conn.on("error", () => {
-          clearTimeout(connTimeout);
-          if (this.cb.onStatus) this.cb.onStatus("CONNECTION FAILED — SOLO", false);
-        });
-      });
-
-      peer.on("error", (err) => {
-        const msg = err && err.type === "peer-unavailable" ? ("ROOM " + code + " NOT FOUND") : ("PEER ERROR (" + (err.type || "offline") + ")");
-        if (this.cb.onStatus) this.cb.onStatus(msg, false);
-      });
-    } catch (e) {
-      if (this.cb.onStatus) this.cb.onStatus("JOIN FAILED — SOLO MODE", false);
-    }
+    this.mqtt = mqtt;
+    mqtt.connect();
   }
 
-  // Compatibility wrapper so any existing calls to `network.connect(code, cs)` work seamlessly
   connect(roomCode, callsign) {
     if (callsign) {
       this.callsign = callsign.slice(0, 20);
@@ -676,7 +925,6 @@ KK.LanNetwork = class LanNetwork {
     }
     const clean = String(roomCode || "").trim();
     if (!clean || clean.includes(":") || clean.includes(".")) {
-      // Ignore legacy IP:port strings cleanly on boot -> stay in Solo mode ready to HOST/JOIN!
       if (this.cb.onStatus) this.cb.onStatus("SOLO MODE — CLICK HOST OR JOIN", false);
       return;
     }
@@ -684,24 +932,25 @@ KK.LanNetwork = class LanNetwork {
   }
 
   send(msg) {
-    if (!msg || !msg.type) return;
-    if (this.mode === "peer_host") {
-      const out = Object.assign({}, msg, { peerId: this.peerId });
+    if (!msg || !msg.type || !this.mqtt || !this.mqtt.connected) return;
+    const out = Object.assign({}, msg, { peerId: this.peerId });
+
+    if (this.mode === "wss_host") {
       if (out.type === "join_hello" && out.callsign) {
         this.callsign = String(out.callsign).slice(0, 20);
         const rPkt = this._buildHostRosterPacket();
         this.roster = rPkt.peers;
         if (this.cb.onRoster) this.cb.onRoster(this.roster, true);
-        this._broadcastFromHost(rPkt);
+        this._publishFromHost(rPkt);
         return;
       }
       this._applyHostWorldState(out);
-      this._broadcastFromHost(out);
+      this._publishFromHost(out);
       if (out.type === "convoy_create" || out.type === "convoy_join" || out.type === "convoy_complete") {
         this._handleMessage(out);
       }
-    } else if (this.mode === "peer_client" && this.hostConn && this.hostConn.open) {
-      try { this.hostConn.send(msg); } catch (e) {}
+    } else if (this.mode === "wss_client") {
+      try { this.mqtt.publish(this.topicToHost, JSON.stringify(out)); } catch (e) {}
     }
   }
 
@@ -848,7 +1097,7 @@ KK.LanNetwork = class LanNetwork {
 
   broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0) {
     this.sendAccum += dt;
-    if (!force && this.sendAccum < 0.05) return;
+    if (!force && this.sendAccum < 0.08) return; // Smooth 12.5 Hz over WSS (lerped client-side!)
     this.sendAccum = 0;
     const engHp = KK.getEngineOverallHealth(vehicle.vState);
     const smoke = Math.max(0, (vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
