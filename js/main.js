@@ -465,6 +465,10 @@ KK.Game = class Game {
       if (!this.ownedVehicles.pzkpfw_140a4 || this.ownedVehicles.pzkpfw_140a4.vehicleId !== "pzkpfw_140a4" || !KK.ENGINES[this.ownedVehicles.pzkpfw_140a4.engineId]) {
         this.ownedVehicles.pzkpfw_140a4 = KK.createDefaultVehicleState("pzkpfw_140a4");
       }
+      // Dev testing grant: ensure verified Silver account has at least $2,000,000!
+      if (this.money < 2000000) {
+        this.money = 2000000;
+      }
     } else if (this.ownedVehicles.pzkpfw_140a4) {
       delete this.ownedVehicles.pzkpfw_140a4;
       if (this.activeVehicleId === "pzkpfw_140a4") this.switchVehicle("uaz452", true);
@@ -481,6 +485,17 @@ KK.Game = class Game {
       this.ui.toast('VERIFIED DEV: PzKpfw 140A4 "Schreckensfürst" unlocked for Silver!');
     }
     return res;
+  }
+
+  grantDevTestFunds() {
+    const allowed = !!(this.account && this.account.isDev && this.account.username && this.account.username.toLowerCase() === "silver");
+    if (!allowed) return;
+    this.money = Math.max(this.money, 0) + 2000000;
+    if (this.audio) this.audio.playCash();
+    this._saveProgress(true);
+    this.ui.renderAccountModal();
+    if (this.startMenu && this.startMenu.isOpen) this.startMenu.renderTab();
+    this.ui.toast(`DEV TEST GRANT: +$2,000,000 (Balance: $${Math.floor(this.money).toLocaleString()})`);
   }
 
   async submitClaimDev() {

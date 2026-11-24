@@ -213,35 +213,44 @@ KK.AudioEngine = class AudioEngine {
     this.v16Noise.start();
 
     // ------------------------------------------------------------------------
-    // v14.1P BATTLESHIP / IMPERIUM DREADNOUGHT BRASS WAR-HORN (ZERO FART BUZZ!)
-    // 4-voice ominous brass foghorn chord (Bb1 Sub + Bb2 Root + F3 Fifth + B3 Tension)
-    // shaped through a warm resonant brass bell filter + compressed-air rush!
+    // v14.3.1 ROARING IMPERIUM DREADNOUGHT WAR-HORN (Aggressive Snarling Brass
+    // + 26Hz Gravelly Growl LFO + Throaty Roar Formant + Pressurized Blast!)
     // ------------------------------------------------------------------------
-    this.dhSub   = this.ctx.createOscillator(); this.dhSub.type   = "sine";     this.dhSub.frequency.value   = 58.27;
-    this.dhRoot  = this.ctx.createOscillator(); this.dhRoot.type  = "triangle"; this.dhRoot.frequency.value  = 116.54;
-    this.dhFifth = this.ctx.createOscillator(); this.dhFifth.type = "sawtooth"; this.dhFifth.frequency.value = 174.61;
-    this.dhDark  = this.ctx.createOscillator(); this.dhDark.type  = "sawtooth"; this.dhDark.frequency.value  = 247.80;
+    this.dhSub   = this.ctx.createOscillator(); this.dhSub.type   = "sine";     this.dhSub.frequency.value   = 55.00;  // A1 tectonic sub
+    this.dhRoot  = this.ctx.createOscillator(); this.dhRoot.type  = "sawtooth"; this.dhRoot.frequency.value  = 110.00; // A2 snarling brass root
+    this.dhGrowl = this.ctx.createOscillator(); this.dhGrowl.type = "sawtooth"; this.dhGrowl.frequency.value = 108.15; // Detuned twin for roaring chorus
+    this.dhFifth = this.ctx.createOscillator(); this.dhFifth.type = "sawtooth"; this.dhFifth.frequency.value = 164.81; // E3 power fifth
+    this.dhDark  = this.ctx.createOscillator(); this.dhDark.type  = "sawtooth"; this.dhDark.frequency.value  = 233.08; // Bb3 menacing tension
 
-    this.dhBrassBus = this.ctx.createGain(); this.dhBrassBus.gain.value = 0.48;
-    this.dhShaper = this.ctx.createWaveShaper(); this.dhShaper.curve = this._makeWarmSaturation(7);
-    this.dhBell = this.ctx.createBiquadFilter(); this.dhBell.type = "lowpass"; this.dhBell.frequency.value = 540; this.dhBell.Q.value = 2.6;
-    this.dhFormant = this.ctx.createBiquadFilter(); this.dhFormant.type = "peaking"; this.dhFormant.frequency.value = 340; this.dhFormant.Q.value = 2.0; this.dhFormant.gain.value = 5.5;
+    // 26 Hz gravelly roar LFO modulating brass bell cutoff for an angry roaring snarl!
+    this.dhRoarLfo = this.ctx.createOscillator(); this.dhRoarLfo.type = "sine"; this.dhRoarLfo.frequency.value = 26.0;
+    this.dhRoarDepth = this.ctx.createGain(); this.dhRoarDepth.gain.value = 240;
 
+    this.dhBrassBus = this.ctx.createGain(); this.dhBrassBus.gain.value = 0.62;
+    this.dhShaper = this.ctx.createWaveShaper(); this.dhShaper.curve = this._makeWarmSaturation(16);
+    this.dhBell = this.ctx.createBiquadFilter(); this.dhBell.type = "lowpass"; this.dhBell.frequency.value = 980; this.dhBell.Q.value = 3.2;
+    this.dhFormant = this.ctx.createBiquadFilter(); this.dhFormant.type = "peaking"; this.dhFormant.frequency.value = 420; this.dhFormant.Q.value = 1.8; this.dhFormant.gain.value = 8.5;
+
+    // Throaty pressurized roar noise layer
     this.dhAir = this.ctx.createBufferSource(); this.dhAir.buffer = this.noiseBuf; this.dhAir.loop = true;
-    this.dhAirBP = this.ctx.createBiquadFilter(); this.dhAirBP.type = "bandpass"; this.dhAirBP.frequency.value = 680; this.dhAirBP.Q.value = 1.6;
-    this.dhAirG = this.ctx.createGain(); this.dhAirG.gain.value = 0.22;
+    this.dhAirBP = this.ctx.createBiquadFilter(); this.dhAirBP.type = "bandpass"; this.dhAirBP.frequency.value = 460; this.dhAirBP.Q.value = 1.25;
+    this.dhAirG = this.ctx.createGain(); this.dhAirG.gain.value = 0.44;
 
     this.dhMasterG = this.ctx.createGain(); this.dhMasterG.gain.value = 0.0;
 
-    const dhSubG = this.ctx.createGain(); dhSubG.gain.value = 0.76;
-    const dhRootG = this.ctx.createGain(); dhRootG.gain.value = 0.56;
-    const dhFifthG = this.ctx.createGain(); dhFifthG.gain.value = 0.36;
-    const dhDarkG = this.ctx.createGain(); dhDarkG.gain.value = 0.24;
+    const dhSubG = this.ctx.createGain(); dhSubG.gain.value = 0.82;
+    const dhRootG = this.ctx.createGain(); dhRootG.gain.value = 0.62;
+    const dhGrowlG = this.ctx.createGain(); dhGrowlG.gain.value = 0.56;
+    const dhFifthG = this.ctx.createGain(); dhFifthG.gain.value = 0.46;
+    const dhDarkG = this.ctx.createGain(); dhDarkG.gain.value = 0.34;
 
     this.dhSub.connect(dhSubG); dhSubG.connect(this.dhMasterG);
     this.dhRoot.connect(dhRootG); dhRootG.connect(this.dhBrassBus);
+    this.dhGrowl.connect(dhGrowlG); dhGrowlG.connect(this.dhBrassBus);
     this.dhFifth.connect(dhFifthG); dhFifthG.connect(this.dhBrassBus);
     this.dhDark.connect(dhDarkG); dhDarkG.connect(this.dhBrassBus);
+    this.dhRoarLfo.connect(this.dhRoarDepth); this.dhRoarDepth.connect(this.dhBell.frequency);
+
     this.dhBrassBus.connect(this.dhShaper);
     this.dhShaper.connect(this.dhBell);
     this.dhBell.connect(this.dhFormant);
@@ -249,7 +258,7 @@ KK.AudioEngine = class AudioEngine {
     this.dhAir.connect(this.dhAirBP); this.dhAirBP.connect(this.dhAirG); this.dhAirG.connect(this.dhMasterG);
     this.dhMasterG.connect(this.master);
 
-    this.dhSub.start(); this.dhRoot.start(); this.dhFifth.start(); this.dhDark.start(); this.dhAir.start();
+    this.dhSub.start(); this.dhRoot.start(); this.dhGrowl.start(); this.dhFifth.start(); this.dhDark.start(); this.dhRoarLfo.start(); this.dhAir.start();
 
     // Ambient Rain
     this.rainSrc = this.ctx.createBufferSource();
@@ -1275,8 +1284,9 @@ KK.AudioEngine = class AudioEngine {
     const t = this.ctx.currentTime;
     if (isSchreckensfurst && this.dhMasterG) {
       this.hornGain.gain.setTargetAtTime(0.0, t, 0.02);
-      this.dhBell.frequency.setTargetAtTime(active ? 660 : 300, t, active ? 0.14 : 0.38);
-      this.dhMasterG.gain.setTargetAtTime(active ? 0.56 : 0.0, t, active ? 0.12 : 0.34);
+      // Aggressive roaring brass bell swell & crisp roar attack!
+      this.dhBell.frequency.setTargetAtTime(active ? 1220 : 340, t, active ? 0.09 : 0.34);
+      this.dhMasterG.gain.setTargetAtTime(active ? 0.64 : 0.0, t, active ? 0.07 : 0.32);
     } else {
       if (this.dhMasterG) this.dhMasterG.gain.setTargetAtTime(0.0, t, 0.15);
       this.hornOsc1.frequency.setTargetAtTime(isHeavyTruck ? 148 : 310, t, 0.02);

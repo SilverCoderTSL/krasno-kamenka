@@ -547,7 +547,7 @@ KK.UIManager = class UIManager {
                  <div><b>Odometer:</b> ${g.stats.distanceKm.toFixed(1)} km</div>
                  <div class="small muted" style="margin-top:4px;">Progress auto-saves to server <code>accounts.json</code> &amp; browser!</div>
                  <div class="btn-row" style="margin-top:10px;">
-                   <button class="btn primary small" onclick="window.__GAME__.syncAccountSave(true)">SAVE PROFILE</button>
+                   <button class="btn primary small" onclick="window.__GAME__.syncAccountSave(true)">SAVE PROFILE</button>${(acc && acc.isDev) ? `<button class="btn accent small" onclick="window.__GAME__.grantDevTestFunds()">DEV +$2,000,000</button>` : ""}
                    <button class="btn warn small" onclick="window.__GAME__.logoutAccount()">SWITCH / LOGOUT</button>
                  </div>
                  <div style="margin-top:12px;padding-top:10px;border-top:1px solid #2a3a4d;">

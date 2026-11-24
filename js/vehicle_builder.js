@@ -264,10 +264,12 @@ KK.VehicleBuilder = {
 
     this._addUndercarriage(chassis, spec, matMetal);
 
-    const engineBlock = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.46, 0.72), matEngineBlk);
-    engineBlock.position.set(0, 0.56, spec.bodyLen * 0.28); chassis.add(engineBlock);
-    const valveCover = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.10, 0.58), matSpring);
-    valveCover.position.set(0, 0.82, spec.bodyLen * 0.28); chassis.add(valveCover);
+    if (!spec.isTracked) {
+      const engineBlock = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.46, 0.72), matEngineBlk);
+      engineBlock.position.set(0, 0.56, spec.bodyLen * 0.28); chassis.add(engineBlock);
+      const valveCover = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.10, 0.58), matSpring);
+      valveCover.position.set(0, 0.82, spec.bodyLen * 0.28); chassis.add(valveCover);
+    }
 
     const hoodPivot = new THREE.Group(); chassis.add(hoodPivot);
 
@@ -2813,15 +2815,16 @@ KK.VehicleBuilder = {
     };
 
     if (spec.isSchreckensfurst) {
-      addXPart("engine",      new THREE.BoxGeometry(1.72, 0.78, 1.85), 0, 1.18, 2.15);
-      addXPart("radiator",    new THREE.BoxGeometry(2.15, 0.20, 1.10), 0, 1.56, 3.15);
-      addXPart("intercooler", new THREE.BoxGeometry(1.85, 0.24, 0.45), 0, 1.15, 3.45);
-      addXPart("gearbox",     new THREE.BoxGeometry(1.98, 0.46, 0.62), 0, 1.06, 3.25);
-      addXPart("transfer",    new THREE.BoxGeometry(2.96, 0.36, 0.40), 0, 1.04, 3.55);
-      addXPart("driveshaft",  new THREE.CylinderGeometry(0.10, 0.10, 0.85, 8), 0, 1.08, 2.80, Math.PI / 2);
+      // Tucked strictly INSIDE the armored front-engine glacis bay (never poking through armor!)
+      addXPart("engine",      new THREE.BoxGeometry(1.56, 0.62, 1.58), 0, 1.08, 1.88);
+      addXPart("radiator",    new THREE.BoxGeometry(1.88, 0.14, 0.88), 0, 1.32, 2.58);
+      addXPart("intercooler", new THREE.BoxGeometry(1.54, 0.20, 0.36), 0, 1.06, 2.86);
+      addXPart("gearbox",     new THREE.BoxGeometry(1.74, 0.38, 0.54), 0, 0.98, 2.74);
+      addXPart("transfer",    new THREE.BoxGeometry(2.58, 0.30, 0.34), 0, 0.96, 3.04);
+      addXPart("driveshaft",  new THREE.CylinderGeometry(0.09, 0.09, 0.72, 8), 0, 1.00, 2.42, Math.PI / 2);
 
-      const capX = new THREE.Mesh(new THREE.BoxGeometry(2.10, 0.96, 2.35), new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.45, depthTest: false }));
-      capX.position.set(0, 1.24, -2.15); capX.renderOrder = 10; xrayGroup.add(capX);
+      const capX = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.86, 2.25), new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.45, depthTest: false }));
+      capX.position.set(0, 1.18, -2.15); capX.renderOrder = 10; xrayGroup.add(capX);
 
       const torsionMat = makeXrayMat();
       xrayParts.tieRods = torsionMat;
@@ -2831,21 +2834,23 @@ KK.VehicleBuilder = {
         bar.rotation.z = Math.PI / 2; bar.position.set(0, 0.80, tz); bar.renderOrder = 10; xrayGroup.add(bar);
       }
 
-      const turX = new THREE.Group(); turX.position.set(0, 1.80, -0.45); xrayGroup.add(turX);
+      const turX = new THREE.Group(); turX.position.set(0, 1.68, -0.38); xrayGroup.add(turX);
       const matBreech = new THREE.MeshBasicMaterial({ color: 0x2de08b, transparent: true, opacity: 0.94, depthTest: false });
       const matRack   = new THREE.MeshBasicMaterial({ color: 0xffbe0b, transparent: true, opacity: 0.92, depthTest: false });
       const matRam    = new THREE.MeshBasicMaterial({ color: 0x00f5ff, transparent: true, opacity: 0.92, depthTest: false });
 
       const breechX = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.48, 1.25), matBreech);
-      breechX.position.set(0, 0.46, 0.85); breechX.renderOrder = 12; turX.add(breechX);
+      breechX.position.set(0, 0.48, 0.92); breechX.renderOrder = 12; turX.add(breechX);
       const barrelX = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.115, 6.2, 8), matBreech);
-      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0.46, 4.45); barrelX.renderOrder = 11; turX.add(barrelX);
+      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0.48, 4.52); barrelX.renderOrder = 11; turX.add(barrelX);
 
+      // Exact 40-shell 1-to-1 bustle ready-rack (4 rows x 10 casings — every single round fired removes 1 casing!)
       const rackShells = [];
-      for (let r = 0; r < 22; r++) {
-        const row = r < 11 ? 0 : 1, col = r % 11;
-        const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.066, 1.18, 6), matRack);
-        sh.rotation.x = Math.PI / 2; sh.position.set(-1.10 + col * 0.22, 0.32 + row * 0.24, -1.42);
+      for (let r = 0; r < 40; r++) {
+        const row = Math.floor(r / 10), col = r % 10;
+        const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.052, 1.12, 6), matRack);
+        sh.rotation.x = Math.PI / 2;
+        sh.position.set(-0.855 + col * 0.19, 0.28 + row * 0.145, -1.56);
         sh.renderOrder = 11; turX.add(sh); rackShells.push(sh);
       }
       const ramShell = new THREE.Mesh(new THREE.CylinderGeometry(0.070, 0.074, 1.28, 8), new THREE.MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity: 0.98, depthTest: false }));
@@ -2981,7 +2986,17 @@ KK.VehicleBuilder = {
       blending: THREE.AdditiveBlending, depthWrite: false
     });
 
-    if (spec.rearEngine) {
+    if (spec.isSchreckensfurst) {
+      // Shrouded stealth thermal signature: flush armored MDV-16 side cooling louvers ONLY — zero engine/radiator poking out the glacis!
+      for (const sx of [-1, 1]) {
+        const thLouver = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.04, 0.80), matThEng);
+        thLouver.position.set(sx * 1.54, 1.69, 2.85);
+        thermalGroup.add(thLouver);
+        const thSideExh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.68), matThExh);
+        thSideExh.position.set(sx * 1.96, 1.52, 2.35);
+        thermalGroup.add(thSideExh);
+      }
+    } else if (spec.rearEngine) {
       const deckW = spec.isTracked ? 2.15 : 1.72;
       const deckL = spec.isTracked ? 2.10 : 1.85;
       const deckY = spec.isTracked ? (spec.id === "t72" ? 1.66 : 1.54) : 1.68;
@@ -3310,8 +3325,8 @@ KK.VehicleBuilder = {
         if (p140XrayAnim && state.xrayActive) {
           p140XrayAnim.turX.rotation.y = typeof state.turretYaw === "number" ? state.turretYaw : 0;
           p140XrayAnim.breechX.position.z = 0.85 - (state.barrelRecoil || 0) * 0.58;
-          const totalS = state.t72TotalShells !== undefined ? state.t72TotalShells : 22;
-          for (let s = 0; s < p140XrayAnim.rackShells.length; s++) p140XrayAnim.rackShells[s].visible = (s < Math.min(22, totalS));
+          const totalS = state.t72TotalShells !== undefined ? state.t72TotalShells : 40;
+          for (let s = 0; s < p140XrayAnim.rackShells.length; s++) p140XrayAnim.rackShells[s].visible = (s < totalS);
           const rRem = state.t72ReloadTimer || 0, rTot = state.t72ReloadTotal || 4.8;
           if (rRem > 0) {
             const frac = Math.max(0, Math.min(1, 1.0 - rRem / rTot));
