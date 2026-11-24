@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.0";
-KK.VERSION_FULL = "v15.0 ONLINE";
+KK.VERSION = "v15.0.1";
+KK.VERSION_FULL = "v15.0.1 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -17,7 +17,7 @@ KK.ISLANDS = [
   { id: 2, name: "Zolotoy Savanna",         cx: -68000, cz:  61000, rx: 17500, rz: 15000, biome: "savanna",       peakH: 95,  labelColor: "#ffd166" },
   { id: 3, name: "Severnyy Proving Ground", cx: -65000, cz: -67000, rx: 16500, rz: 15000, biome: "arctic",        peakH: 220, labelColor: "#8ecae6" },
   { id: 4, name: "Coral Smuggler's Cay",    cx:  77000, cz:  -6000, rx:  4800, rz:  4200, biome: "tropical",      peakH: 38,  labelColor: "#48cae4" },
-  { id: 5, name: "Site-140 Black Rock",     cx:  68000, cz: -68000, rx:  4400, rz:  4100, biome: "volcanic_isle", peakH: 130, labelColor: "#ff5a5f" }
+  { id: 5, name: "Site-140 Black Rock",     cx:  68000, cz: -68000, rx:  4400, rz:  4100, biome: "radioactive",   peakH: 62,  labelColor: "#b8ff3b" }
 ];
 
 KK.AIRSTRIPS = [
@@ -26,6 +26,34 @@ KK.AIRSTRIPS = [
   { id: "savanna_strip",  name: "Zolotoy Savanna Runway",     x: -67100, z:  61300, len: 520, width: 28, yaw: -0.2, surface: "gravel"  },
   { id: "arctic_strip",   name: "Severnyy Ice Runway",        x: -64100, z: -66600, len: 560, width: 30, yaw: 0.1,  surface: "asphalt" },
   { id: "cay_strip",      name: "Coral Cay Bush Strip",       x:  77450, z:  -5900, len: 340, width: 22, yaw: 0.4,  surface: "gravel"  }
+];
+
+// Ostrov Tropika (Indonesia-style) Twin Volcanoes: 1 Active Smoking Cone + 1 Dormant Crater Lake!
+KK.TROPIKA_VOLCANOES = [
+  { id: "gunung_api",   name: "Gunung Api (Active Volcano)",    x: 72600, z: 59000, radius: 3400, peakH: 340, active: true  },
+  { id: "gunung_danau", name: "Gunung Danau (Crater Lake)",     x: 66200, z: 65200, radius: 3100, peakH: 270, active: false, lakeRad: 760 }
+];
+
+// Zolotoy City Massive 6x6 Grid Metropolis + Working Animated Electric Tram Loop!
+KK.ZOLOTOY_CITY = {
+  cx: -68000, cz: 61000,
+  halfSpan: 420,    // 840m x 840m dense urban grid!
+  blockPitch: 120,  // 7 avenues x 7 cross-streets = 36 city blocks
+  roadWidth: 14.0,  // Wide smooth multi-lane asphalt avenues
+  tramRadius: 240   // Working electric tram runs a 480m x 480m square loop along the main boulevard!
+};
+
+// 9 OCEAN PORTS (4 Mainland Coastal Ports + 1 Port per Outer Island, ready for v15.1 boats & barges!)
+KK.PORTS = [
+  { id: "port_main_e",   name: "Vostochny Mainland Port",    x:  44500, z:   2800, yaw:  Math.PI * 0.5, islandId: 0 },
+  { id: "port_main_w",   name: "Zapadny Mainland Port",      x: -44200, z:   3200, yaw: -Math.PI * 0.5, islandId: 0 },
+  { id: "port_main_s",   name: "Yuzhny Desert Harbor",       x:   2400, z:  42600, yaw:  0.0,           islandId: 0 },
+  { id: "port_main_n",   name: "Severny Coastal Dock",       x:  -3200, z: -42400, yaw:  Math.PI,       islandId: 0 },
+  { id: "port_tropika",  name: "Palma Bay Port (Tropika)",   x:  62400, z:  55200, yaw: -Math.PI * 0.75, islandId: 1 },
+  { id: "port_savanna",  name: "Savanna Marina Port",        x: -63200, z:  68800, yaw:  Math.PI * 0.25, islandId: 2 },
+  { id: "port_arctic",   name: "Borey Icebreaker Port",      x: -56800, z: -61800, yaw:  Math.PI * 0.25, islandId: 3 },
+  { id: "port_cay",      name: "Coral Cay Smuggler Pier",    x:  75400, z:  -5200, yaw: -Math.PI * 0.5,  islandId: 4 },
+  { id: "port_site140",  name: "Site-140 Quarantine Pier",   x:  65600, z: -66200, yaw: -Math.PI * 0.75, islandId: 5 }
 ];
 KK.CHUNK_SIZE = 180;
 KK.CHUNK_SEGMENTS = 45;      // Exact 4.0m crisp vertex spacing (180 / 45 = 4m)
@@ -42,11 +70,25 @@ KK.TOWNS = [
   { id: 7, name: "Volchya Far-East Outpost", survivability: "LOW", survScore: 34, survColor: "#ff9f1c", survNote: "Remote far-east taiga frontier • Long haul back to HQ", biome: "taiga", x: 41200, z: -17600, hasGarage: true, hasDock: true, desc: "End-of-the-line 45km taiga expedition. Maximum cash, zero mercy." },
   { id: 8, name: "Buran Desert Radar", survivability: "LOW", survScore: 30, survColor: "#ff9f1c", survNote: "Remote southwest Red Sands canyon • Heavy Sandwyrm hunting grounds", biome: "desert", x: -38800, z: 34200, hasGarage: true, hasDock: true, desc: "Remote southwest Red Sands canyon station across rotten bridges." },
   { id: 9, name: "Vulkan Geothermal Base", survivability: "EXTREME", survScore: 15, survColor: "#ff3b5c", survNote: "Active volcanic caldera • Lava bombs & 131 km/h Vulkan T-Rex", biome: "volcanic", x: -3600, z: 1100, hasGarage: true, hasDock: true, desc: "Obsidian badlands outpost at the foot of smoking Mt. Vulkan! Watch for the T-Rex — freeze motionless if it sees you!" },
-  { id: 10, name: "Palma Bay Harbor (Tropika)", survivability: "MODERATE", survScore: 72, survColor: "#2de08b", survNote: "SE Tropical Jungle Isle • Dense palms, beaches & coastal airstrip", biome: "tropical", x: 69000, z: 62000, hasGarage: true, hasDock: true, isIsland: true, desc: "Lush emerald jungle island in the SE strait! Palms, golden beaches, volcanic ridge & bush airstrip." },
-  { id: 11, name: "Zolotoy Savanna Airfield", survivability: "MODERATE", survScore: 68, survColor: "#ffd166", survNote: "SW Golden Savanna Isle • Wide acacia plains, red clay & mesas", biome: "savanna", x: -68000, z: 61000, hasGarage: true, hasDock: true, isIsland: true, desc: "Sun-baked golden savanna steppe in the SW ocean. Flat-top acacias, fast dirt tracks & long-range airfield." },
-  { id: 12, name: "Severnyy Arctic Base", survivability: "LOW", survScore: 36, survColor: "#8ecae6", survNote: "NW Arctic Glacier Isle • Frozen proving ground & ice runway", biome: "arctic", x: -65000, z: -67000, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen arctic military proving ground in the NW sea. Ice flats, glacier spires & heavy-duty ice runway." },
-  { id: 13, name: "Coral Cay Smuggler Pier", survivability: "HIGH", survScore: 84, survColor: "#48cae4", survNote: "Small Eastern Tropical Atoll • Turquoise lagoon & bush strip", biome: "tropical", x: 77000, z: -6000, hasGarage: true, hasDock: true, isIsland: true, desc: "Tiny sun-drenched coral atoll in the eastern sea. Palm grove, fuel dock & dirt smuggler strip." },
-  { id: 14, name: "Site-140 Black Rock", survivability: "EXTREME", survScore: 20, survColor: "#ff5a5f", survNote: "Small NE Volcanic Fortress Isle • Basalt cliffs & concrete helipad", biome: "volcanic_isle", x: 68000, z: -68000, hasGarage: true, hasDock: true, isIsland: true, desc: "Isolated volcanic basalt sea-fortress in the far NE ocean. High-stakes bunker pad & glowing obsidian fissures." }
+  // --- OSTROV TROPIKA (Indonesian Highland Jungle: Winding Nürburgring-Hell Roads, 2 Volcanoes, Light 4x4 Meta!) ---
+  { id: 10, name: "Palma Bay Port (Tropika)", survivability: "MODERATE", survScore: 74, survColor: "#2de08b", survNote: "Indonesian-style coastal harbor • Narrow mud switchbacks ahead", biome: "tropical", x: 64200, z: 56500, hasGarage: true, hasDock: true, isIsland: true, desc: "Busy tropical fishing harbor & coastal port. Bring a light 4x4 — the mountain roads inland are brutal!" },
+  { id: 15, name: "Desa Kabut (Highland Village)", survivability: "MODERATE", survScore: 62, survColor: "#2de08b", survNote: "Large Indonesian terraced village between twin volcanoes", biome: "tropical", x: 69200, z: 62200, hasGarage: true, hasDock: true, isIsland: true, desc: "Bustling highland village packed with stilt houses, warung stalls & tight winding switchbacks between Gunung Api & Gunung Danau." },
+  { id: 16, name: "Danau Merah (Crater Lake)", survivability: "LOW", survScore: 48, survColor: "#ff9f1c", survNote: "Volcanic crater lake village & dirt jungle airstrip", biome: "tropical", x: 73400, z: 65800, hasGarage: true, hasDock: true, isIsland: true, desc: "Misty highland village overlooking the volcanic crater lake. Iffy bridges & narrow hairpins — heavy trucks beware!" },
+
+  // --- ZOLOTOY SAVANNA (Most Modernized: Massive Grid City + Working Tram + 3 Suburbs + Pristine Highways!) ---
+  { id: 11, name: "Zolotoy City (Metro Center)", survivability: "HIGH", survScore: 95, survColor: "#ffd166", survNote: "Massive modernized grid metropolis • Working electric tram & wide avenues", biome: "savanna", x: -68000, z: 61000, hasGarage: true, hasDock: true, isIsland: true, isMetro: true, desc: "The crown jewel of the archipelago: 6x6 grid skyline, working city tram, international runway & smooth 250+ km/h highways!" },
+  { id: 17, name: "Solnechny Heights (Suburb)", survivability: "HIGH", survScore: 90, survColor: "#ffd166", survNote: "Modern elevated mesa suburb overlooking the golden savanna", biome: "savanna", x: -62500, z: 56800, hasGarage: true, hasDock: true, isIsland: true, desc: "Clean suburban avenue perched on a golden mesa overlooking Zolotoy City." },
+  { id: 18, name: "Steppe Logistics Park", survivability: "HIGH", survScore: 88, survColor: "#ffd166", survNote: "Modern refinery & heavy freight suburb • Concrete viaducts", biome: "savanna", x: -73200, z: 58200, hasGarage: true, hasDock: true, isIsland: true, desc: "High-capacity industrial park built for heavy KamAZ & MAZ-537 highway freight." },
+  { id: 19, name: "Savanna Marina Port", survivability: "HIGH", survScore: 92, survColor: "#ffd166", survNote: "Modern waterfront suburb & deep-water container port", biome: "savanna", x: -64800, z: 67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Sleek coastal marina suburb with paved boat ramps and highway access to Zolotoy City." },
+
+  // --- SEVERNYY PROVING GROUND (Polar Naval & Weapons Testing: Sea-Ice, Gunnery Range, Radar Peak!) ---
+  { id: 12, name: "Borey Icebreaker Port", survivability: "LOW", survScore: 42, survColor: "#8ecae6", survNote: "Frozen polar naval dock • Slippery sea-ice flats — tracks dominate", biome: "arctic", x: -58500, z: -63500, hasGarage: true, hasDock: true, isIsland: true, desc: "Rusted Soviet icebreaker harbor & heated depot on the edge of the Arctic proving ground." },
+  { id: 20, name: "Poligon-9 Gunnery Range", survivability: "LOW", survScore: 34, survColor: "#8ecae6", survNote: "Frozen tank proving ground • Target hulks & heavy ice runway", biome: "arctic", x: -65200, z: -67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Wide open arctic weapons testing range with target tank hulks, concrete blast walls & ice runway." },
+  { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -70800, z: -71400, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" },
+
+  // --- SMALL ISLANDS: CORAL SMUGGLER'S CAY & SITE-140 BLACK ROCK (RADIOACTIVE EXCLUSION ZONE) ---
+  { id: 13, name: "Coral Cay Smuggler Pier", survivability: "HIGH", survScore: 84, survColor: "#48cae4", survNote: "Small Eastern Tropical Atoll • Turquoise lagoon, pier & bush strip", biome: "tropical", x: 77000, z: -6000, hasGarage: true, hasDock: true, isIsland: true, desc: "Tiny sun-drenched coral atoll in the eastern sea. Palm grove, upgraded boat pier & dirt smuggler strip." },
+  { id: 14, name: "Site-140 Exclusion Zone", survivability: "EXTREME", survScore: 10, survColor: "#b8ff3b", survNote: "RADIOACTIVE WASTELAND • Reactor Sarcophagus • Geiger alerts & EMP wear", biome: "radioactive", x: 68000, z: -68000, hasGarage: true, hasDock: true, isIsland: true, desc: "Quarantined sea-fortress & crumbling Reactor Sarcophagus. Intense radiation — EMP-shielded tanks advised. Something worse than Godzilla sleeps beneath..." }
 ];
 
 KK.ROAD_LINKS = [
@@ -54,7 +96,13 @@ KK.ROAD_LINKS = [
   [1, 4], [1, 6], [2, 3], [2, 8],
   [3, 4], [3, 8], [4, 6], [4, 7],
   [5, 6], [6, 7],
-  [0, 9], [2, 9], [5, 9]
+  [0, 9], [2, 9], [5, 9],
+  // Ostrov Tropika (Indonesian Winding Nürburgring-Hell Mountain Loop!)
+  [10, 15], [15, 16], [10, 16],
+  // Zolotoy Savanna (Modernized Pristine Highway Network!)
+  [11, 17], [11, 18], [11, 19], [17, 19], [18, 19],
+  // Severnyy Proving Ground (Arctic Polar Military Roads!)
+  [12, 20], [20, 21], [12, 21]
 ];
 
 // ============================================================================
@@ -156,6 +204,34 @@ KK.BRIDGES = [
     x: 9775, z: -15660, yaw: Math.atan2(-31680, 16850),
     length: 114, width: 7.4, plankCount: 22,
     baseMaxMassKg: 7400, ravineDepth: 22, style: "timber_wellmade"
+  },
+  {
+    id: "tropika_kabut_bridge",
+    name: "Jembatan Kabut (Iffy Jungle Crossing)",
+    x: 66700, z: 59350, yaw: Math.atan2(5700, 5000),
+    length: 98, width: 5.8, plankCount: 20,
+    baseMaxMassKg: 4400, ravineDepth: 16, style: "rickety_wood"
+  },
+  {
+    id: "tropika_danau_bridge",
+    name: "Jembatan Merah (Rotten Ravine Span)",
+    x: 71300, z: 64000, yaw: Math.atan2(3600, 4200),
+    length: 92, width: 5.6, plankCount: 19,
+    baseMaxMassKg: 4800, ravineDepth: 18, style: "timber_wellmade"
+  },
+  {
+    id: "zolotoy_east_viaduct",
+    name: "Zolotoy Express Viaduct East",
+    x: -65250, z: 58900, yaw: Math.atan2(-4200, 5500),
+    length: 120, width: 10.5, plankCount: 22,
+    baseMaxMassKg: 95000, ravineDepth: 14, style: "concrete"
+  },
+  {
+    id: "zolotoy_marina_viaduct",
+    name: "Savanna Marina Grand Viaduct",
+    x: -66400, z: 64100, yaw: Math.atan2(6200, 3200),
+    length: 118, width: 10.5, plankCount: 22,
+    baseMaxMassKg: 95000, ravineDepth: 14, style: "concrete"
   }
 ];
 
@@ -200,6 +276,18 @@ KK.RIVER_PATHS = [
       { x: 12800, z: 2000   }, // Directly beneath Cherny Creek Log Bridge!
       { x: 26500, z: -11000 },
       { x: 45000, z: -29000 }
+    ]
+  },
+  {
+    id: "tropika_sungai_kabut",
+    halfWidth: 20,
+    depth: 3.6,
+    pts: [
+      { x: 63200, z: 61800 },
+      { x: 66700, z: 59350 },
+      { x: 69600, z: 60400 },
+      { x: 71300, z: 64000 },
+      { x: 75200, z: 66800 }
     ]
   }
 ];

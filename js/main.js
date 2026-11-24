@@ -327,7 +327,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.0 ONLINE! 200x200 km 6-Island Archipelago — Tropical Jungle, Golden Savanna, Arctic Glacier, Coral Cay, Black Rock & Open Ocean!');
+      this.ui.toast('Welcome to v15.0.1 ONLINE! Indonesian Hell-Roads, Zolotoy Grid Metropolis + Working Tram, 9 Ocean Ports, Radioactive Site-140 & Solid Building Collisions!');
     }, 650);
   }
 
@@ -3001,6 +3001,29 @@ KK.Game = class Game {
     this.world.updateChunks(focusGx, focusGz);
 
     this.world.updateFallingTrees(dt);
+    if (this.world.updateTram) this.world.updateTram(dt, this.vehicle, this.audio);
+
+    // v15.0.1 SITE-140 BLACK ROCK RADIOACTIVE EXCLUSION ZONE (Geiger Crackle + Slow Radiation Wear!)
+    const dSite140 = Math.hypot(this.vehicle.pos.x - 68065, this.vehicle.pos.z + 68048);
+    if (dSite140 < 1800) {
+      const radInt = Math.max(0, 1.0 - dSite140 / 1800);
+      this._geigerCd = (this._geigerCd || 0) - dt;
+      if (this._geigerCd <= 0) {
+        if (this.audio && this.audio.playGeigerClick) this.audio.playGeigerClick(0.35 + radInt * 0.65);
+        this._geigerCd = Math.max(0.055, 0.55 - radInt * 0.48) * (0.6 + Math.random() * 0.8);
+      }
+      if (dSite140 < 450 && !this.onFoot) {
+        const vsR = this.vehicle.vState;
+        const shielded = !!this.vehicle.spec.isSchreckensfurst || !!(vsR.upgrades && vsR.upgrades.t72EmpShield);
+        if (!shielded && vsR.parts && vsR.parts.sparkPlugs) {
+          vsR.parts.sparkPlugs.hp = Math.max(12, vsR.parts.sparkPlugs.hp - dt * 0.65 * radInt);
+        }
+      }
+    }
+    // Kholodnyy Arctic Peak bitter cold soak when engine is OFF!
+    if (this.vehicle.pos.x < -55000 && this.vehicle.pos.z < -58000 && !this.vehicle.engineRunning) {
+      this.vehicle.coolantTemp = Math.max(5, this.vehicle.coolantTemp - dt * 2.2);
+    }
     this.world.updateFallingFences(dt);
     this.world.updateSettlements(dt, this.weather.isNight);
     if (this.trailer && this.trailerRig) {

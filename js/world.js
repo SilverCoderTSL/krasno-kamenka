@@ -28,6 +28,8 @@ KK.World = class World {
     this.riverSegments = [];
     this.winchTrees = [];
     this.activeColliders = []; // Collidable trees, rocks, cacti & landmark pillars!
+    this.buildingColliders = []; // v15.0.1 Solid collidable boxes for ALL buildings, houses, skyscrapers, ports & reactor walls!
+    this.tramState = null;       // Working Zolotoy City Electric Tram!
     this.brokenTrees = new Set();   // Knocked-down tree IDs (synced over LAN!)
     this.fallingTrees = [];         // Active animated toppling trees!
     this.treeMeshMap = new Map();   // treeId -> { mesh, chunkKey }
@@ -49,6 +51,10 @@ KK.World = class World {
     this._buildLandmarks();
     this._buildTarmacDetails();
     this._buildOceanAndFarIslands();
+    this._buildZolotoyMetropolis();
+    this._buildOceanPorts();
+    this._buildIslandSetpieces();
+    this._extractBuildingColliders();
     this.updateChunks(0, 0, true);
   }
 
@@ -151,23 +157,24 @@ KK.World = class World {
       const isTrop = isl.biome === "tropical" ? m : 0;
       const isSav  = isl.biome === "savanna" ? m : 0;
       const isArc  = isl.biome === "arctic" ? m : 0;
-      const isVolc = isl.biome === "volcanic_isle" ? m : 0;
+      const isRad  = isl.biome === "radioactive" ? m : 0;
       return {
         mountains: isArc * 0.55,
         taiga: 0,
         desert: 0,
-        volcanic: isVolc,
+        volcanic: 0,
         rust: 0,
         tropical: isTrop,
         savanna: isSav,
         arctic: isArc,
+        radioactive: isRad,
         ocean: 1.0 - m
       };
     }
 
     // Open Ocean outside all islands
     if (!isl || islInfo.mask <= 0.02) {
-      return { mountains: 0, taiga: 0, desert: 0, volcanic: 0, rust: 0, tropical: 0, savanna: 0, arctic: 0, ocean: 1.0 };
+      return { mountains: 0, taiga: 0, desert: 0, volcanic: 0, rust: 0, tropical: 0, savanna: 0, arctic: 0, radioactive: 0, ocean: 1.0 };
     }
 
     // Island 1: Classic Krasno-Kamenka Mainland (100% original biome math preserved!)
@@ -190,7 +197,7 @@ KK.World = class World {
 
     const mountains = Math.min(1, Math.max(mtn, nearMtn)) * (1 - volcanic * 0.8);
     const rust = Math.max(0.08, 1.0 - Math.max(mountains, taiga, desert, volcanic));
-    return { mountains, taiga, desert, volcanic, rust, tropical: 0, savanna: 0, arctic: 0, ocean: 1.0 - islInfo.mask };
+    return { mountains, taiga, desert, volcanic, rust, tropical: 0, savanna: 0, arctic: 0, radioactive: 0, ocean: 1.0 - islInfo.mask };
   }
 
   getBiomeName(gx, gz) {
@@ -203,6 +210,7 @@ KK.World = class World {
       return (isl && isl.id === 4) ? "Coral Smuggler's Cay (Tropical)" : "Ostrov Tropika (Tropical Jungle)";
     }
     if (b.savanna > 0.35) return "Zolotoy Steppe (Golden Savanna)";
+    if (b.radioactive > 0.35) return "Site-140 Radioactive Exclusion Zone";
     if (b.arctic > 0.35) return "Severnyy Arctic Glacier";
     if (b.volcanic > 0.40) {
       const isl = this.getIslandInfo(gx, gz).island;
@@ -218,23 +226,42 @@ KK.World = class World {
     this.roadSegments = [];
     for (const [ia, ib] of KK.ROAD_LINKS) {
       const a = KK.TOWNS[ia], b = KK.TOWNS[ib];
+      if (!a || !b) continue;
       const dist = Math.hypot(b.x - a.x, b.z - a.z);
       const isMountain = (a.biome === "mountains" || b.biome === "mountains");
-      const steps = Math.max(6, Math.min(48, Math.floor(dist / 900)));
+      const isTropikaHell = (a.biome === "tropical" && b.biome === "tropical");
+      const isModernHwy = (a.biome === "savanna" && b.biome === "savanna");
+      const isArcticRoad = (a.biome === "arctic" && b.biome === "arctic");
+
+      const steps = isTropikaHell
+        ? Math.max(24, Math.min(72, Math.floor(dist / 220)))
+        : Math.max(6, Math.min(48, Math.floor(dist / 900)));
       const pts = [];
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
         let px = a.x + (b.x - a.x) * t;
         let pz = a.z + (b.z - a.z) * t;
         const env = Math.sin(t * Math.PI);
-        if (env > 0.05 && dist > 2000) {
+        if (env > 0.05 && dist > 1500) {
           const dx = (b.x - a.x) / dist, dz = (b.z - a.z) / dist;
           const nx = -dz, nz = dx;
-          const freq = isMountain ? 6.0 : 2.5;
-          const amp = isMountain ? Math.min(850, dist * 0.045) : Math.min(420, dist * 0.025);
-          const midPin = Math.abs(t - 0.5) < 0.14 ? (Math.abs(t - 0.5) / 0.14) : 1.0;
-          const wobble = Math.sin(t * Math.PI * freq) * amp * env * midPin;
-          px += nx * wobble; pz += nz * wobble;
+          if (isTropikaHell) {
+            // INDONESIAN NÜRBURGRING-FROM-HELL: Extreme multi-harmonic switchbacks & mountain hairpins!
+            const midPin = Math.abs(t - 0.5) < 0.08 ? (Math.abs(t - 0.5) / 0.08) : 1.0;
+            const w1 = Math.sin(t * Math.PI * 11.0 + ia) * Math.min(920, dist * 0.11);
+            const w2 = Math.cos(t * Math.PI * 23.0 - ib) * Math.min(340, dist * 0.042);
+            const wobble = (w1 + w2) * env * midPin;
+            px += nx * wobble; pz += nz * wobble;
+          } else if (isModernHwy) {
+            const wobble = Math.sin(t * Math.PI * 2.0) * Math.min(260, dist * 0.018) * env;
+            px += nx * wobble; pz += nz * wobble;
+          } else {
+            const freq = isMountain ? 6.0 : (isArcticRoad ? 3.5 : 2.5);
+            const amp = isMountain ? Math.min(850, dist * 0.045) : Math.min(420, dist * 0.025);
+            const midPin = Math.abs(t - 0.5) < 0.14 ? (Math.abs(t - 0.5) / 0.14) : 1.0;
+            const wobble = Math.sin(t * Math.PI * freq) * amp * env * midPin;
+            px += nx * wobble; pz += nz * wobble;
+          }
         }
         pts.push({ x: px, z: pz });
       }
@@ -244,7 +271,28 @@ KK.World = class World {
           x0: p0.x, z0: p0.z, x1: p1.x, z1: p1.z,
           minX: Math.min(p0.x, p1.x) - 45, maxX: Math.max(p0.x, p1.x) + 45,
           minZ: Math.min(p0.z, p1.z) - 45, maxZ: Math.max(p0.z, p1.z) + 45,
-          isMountain, width: isMountain ? 5.6 : 7.4
+          isMountain: isMountain || isTropikaHell,
+          isTropikaHell,
+          isModernHwy,
+          width: isTropikaHell ? 5.1 : (isModernHwy ? 10.6 : (isMountain ? 5.6 : 7.4))
+        });
+      }
+    }
+
+    // ZOLOTOY CITY MASSIVE 6x6 GRID AVENUE NETWORK (7 N-S Avenues x 7 E-W Streets!)
+    if (KK.ZOLOTOY_CITY) {
+      const zc = KK.ZOLOTOY_CITY;
+      const hs = zc.halfSpan, pitch = zc.blockPitch, w = zc.roadWidth;
+      for (let off = -hs; off <= hs; off += pitch) {
+        this.roadSegments.push({
+          x0: zc.cx + off, z0: zc.cz - hs, x1: zc.cx + off, z1: zc.cz + hs,
+          minX: zc.cx + off - 28, maxX: zc.cx + off + 28, minZ: zc.cz - hs - 28, maxZ: zc.cz + hs + 28,
+          isMountain: false, isModernHwy: true, isCityGrid: true, width: w
+        });
+        this.roadSegments.push({
+          x0: zc.cx - hs, z0: zc.cz + off, x1: zc.cx + hs, z1: zc.cz + off,
+          minX: zc.cx - hs - 28, maxX: zc.cx + hs + 28, minZ: zc.cz + off - 28, maxZ: zc.cz + off + 28,
+          isMountain: false, isModernHwy: true, isCityGrid: true, width: w
         });
       }
     }
@@ -402,6 +450,297 @@ KK.World = class World {
     this.rootGroup.add(this.farIslandsGroup);
   }
 
+  // ==========================================================================
+  // v15.0.1 ZOLOTOY CITY MASSIVE 6x6 GRID METROPOLIS + WORKING ELECTRIC TRAM!
+  // ==========================================================================
+  _buildZolotoyMetropolis() {
+    if (!KK.ZOLOTOY_CITY) return;
+    const zc = KK.ZOLOTOY_CITY;
+    const baseY = zc._baseH !== undefined ? zc._baseH : this.getBaseHeight(zc.cx, zc.cz);
+    const grp = new THREE.Group();
+    grp.position.set(zc.cx, baseY, zc.cz);
+
+    const matGlass1 = new THREE.MeshStandardMaterial({ color: 0x3b6e8c, roughness: 0.22, metalness: 0.65 });
+    const matGlass2 = new THREE.MeshStandardMaterial({ color: 0x264458, roughness: 0.28, metalness: 0.55 });
+    const matConc   = new THREE.MeshStandardMaterial({ color: 0xc2c6ca, roughness: 0.82 });
+    const matSandB  = new THREE.MeshStandardMaterial({ color: 0xd9c298, roughness: 0.84 });
+    const matWinLit = new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb703, emissiveIntensity: 0.75 });
+    const matRail   = new THREE.MeshStandardMaterial({ color: 0x454c54, metalness: 0.75, roughness: 0.35 });
+
+    const pitch = zc.blockPitch;
+    for (let bx = -3; bx < 3; bx++) {
+      for (let bz = -3; bz < 3; bz++) {
+        const blockCx = (bx + 0.5) * pitch;
+        const blockCz = (bz + 0.5) * pitch;
+        if (Math.hypot(blockCx, blockCz) < 92) continue;
+
+        const hSeed = this.hash2(bx * 19 + 7, bz * 23 - 11);
+        const distCenter = Math.hypot(blockCx, blockCz);
+        const isDowntown = distCenter < 260;
+
+        const subOffs = [[-22, -18], [22, 18]];
+        for (let si = 0; si < subOffs.length; si++) {
+          const s2 = this.hash2(bx * 41 + si * 7, bz * 37 - si * 13);
+          const bw = isDowntown ? (22 + s2 * 14) : (18 + s2 * 12);
+          const bd = isDowntown ? (22 + hSeed * 12) : (16 + hSeed * 12);
+          const bh = isDowntown ? (26 + s2 * 54) : (11 + s2 * 20);
+          const lx = blockCx + subOffs[si][0], lz = blockCz + subOffs[si][1];
+          const bMat = (si === 0 && isDowntown) ? (s2 > 0.5 ? matGlass1 : matGlass2) : (s2 > 0.45 ? matConc : matSandB);
+
+          const tower = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), bMat);
+          tower.position.set(lx, bh * 0.5, lz);
+          tower.castShadow = true; tower.receiveShadow = true;
+          grp.add(tower);
+
+          this.buildingColliders.push({
+            minX: zc.cx + lx - bw * 0.5, maxX: zc.cx + lx + bw * 0.5,
+            minZ: zc.cz + lz - bd * 0.5, maxZ: zc.cz + lz + bd * 0.5,
+            yMin: baseY - 2, yMax: baseY + bh + 1, label: "Zolotoy Tower"
+          });
+
+          const bandCount = Math.min(4, Math.floor(bh / 12));
+          for (let fl = 1; fl <= bandCount; fl++) {
+            const band = new THREE.Mesh(new THREE.BoxGeometry(bw + 0.3, 1.2, bd + 0.3), matWinLit);
+            band.position.set(lx, fl * (bh / (bandCount + 1)), lz);
+            grp.add(band);
+          }
+        }
+      }
+    }
+
+    const R = zc.tramRadius;
+    for (const side of [-1, 1]) {
+      for (const railOff of [-0.75, 0.75]) {
+        const ns = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, R * 2 + 2), matRail);
+        ns.position.set(side * R + railOff, 0.06, 0); grp.add(ns);
+        const ew = new THREE.Mesh(new THREE.BoxGeometry(R * 2 + 2, 0.10, 0.16), matRail);
+        ew.position.set(0, 0.06, side * R + railOff); grp.add(ew);
+      }
+    }
+
+    const tramGrp = new THREE.Group();
+    const matTramBody = new THREE.MeshStandardMaterial({ color: 0xe63946, roughness: 0.35, metalness: 0.3 });
+    const matTramTrim = new THREE.MeshStandardMaterial({ color: 0xf1faee, roughness: 0.4 });
+    const matTramGlass = new THREE.MeshStandardMaterial({ color: 0xffe8a3, emissive: 0xffc857, emissiveIntensity: 0.85, roughness: 0.2 });
+    const matDark = new THREE.MeshStandardMaterial({ color: 0x1b1e23, roughness: 0.8 });
+
+    for (const czOff of [-6.2, 6.2]) {
+      const car = new THREE.Mesh(new THREE.BoxGeometry(2.7, 3.1, 11.2), matTramBody);
+      car.position.set(0, 2.05, czOff); car.castShadow = true; tramGrp.add(car);
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.76, 0.55, 11.26), matTramTrim);
+      stripe.position.set(0, 1.25, czOff); tramGrp.add(stripe);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(2.78, 1.15, 9.8), matTramGlass);
+      win.position.set(0, 2.45, czOff); tramGrp.add(win);
+      const bogie = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.55, 9.2), matDark);
+      bogie.position.set(0, 0.35, czOff); tramGrp.add(bogie);
+    }
+    const coupler = new THREE.Mesh(new THREE.BoxGeometry(1.9, 2.4, 1.4), matDark);
+    coupler.position.set(0, 1.9, 0); tramGrp.add(coupler);
+    const panto = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 0.18), matRail);
+    panto.position.set(0, 4.05, 6.0); tramGrp.add(panto);
+    for (const hx of [-0.85, 0.85]) {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.14), matWinLit);
+      hl.position.set(hx, 1.1, 11.82); tramGrp.add(hl);
+    }
+    grp.add(tramGrp);
+
+    this.tramState = {
+      mesh: tramGrp, cx: zc.cx, cz: zc.cz, baseY, radius: R,
+      progress: 0, speed: 15.5,
+      gx: zc.cx + R, gy: baseY, gz: zc.cz, yaw: 0, bellCd: 0
+    };
+
+    this.rootGroup.add(grp);
+    this.zolotoyCityGroup = grp;
+  }
+
+  updateTram(dt, vehicle, audio) {
+    const tr = this.tramState;
+    if (!tr || !tr.mesh) return;
+    const sideLen = tr.radius * 2;
+    const perim = sideLen * 4;
+    tr.progress = (tr.progress + tr.speed * dt) % perim;
+
+    let lx = 0, lz = 0, yaw = 0;
+    const p = tr.progress;
+    if (p < sideLen) {
+      lx = tr.radius; lz = -tr.radius + p; yaw = 0;
+    } else if (p < sideLen * 2) {
+      lx = tr.radius - (p - sideLen); lz = tr.radius; yaw = -Math.PI * 0.5;
+    } else if (p < sideLen * 3) {
+      lx = -tr.radius; lz = tr.radius - (p - sideLen * 2); yaw = Math.PI;
+    } else {
+      lx = -tr.radius + (p - sideLen * 3); lz = -tr.radius; yaw = Math.PI * 0.5;
+    }
+
+    tr.mesh.position.set(lx, 0, lz);
+    tr.mesh.rotation.y = yaw;
+    tr.gx = tr.cx + lx;
+    tr.gy = tr.baseY;
+    tr.gz = tr.cz + lz;
+    tr.yaw = yaw;
+
+    if (vehicle) {
+      const d = Math.hypot(vehicle.pos.x - tr.gx, vehicle.pos.z - tr.gz);
+      if (tr.bellCd > 0) tr.bellCd -= dt;
+      if (d < 42 && tr.bellCd <= 0 && audio && audio.playTramBell) {
+        audio.playTramBell();
+        tr.bellCd = 4.2;
+      }
+      if (d < 16 && Math.abs(vehicle.pos.y - tr.gy) < 4.5) {
+        const dx = vehicle.pos.x - tr.gx, dz = vehicle.pos.z - tr.gz;
+        const c = Math.cos(-yaw), s = Math.sin(-yaw);
+        const relX = dx * c - dz * s, relZ = dx * s + dz * c;
+        const hx = 1.65 + vehicle.spec.bodyWidth * 0.48;
+        const hz = 12.1 + vehicle.spec.bodyLen * 0.45;
+        if (Math.abs(relX) < hx && Math.abs(relZ) < hz) {
+          const pushDir = relX >= 0 ? 1 : -1;
+          const pen = hx - Math.abs(relX) + 0.15;
+          const wx = pushDir * Math.cos(yaw), wz = -pushDir * Math.sin(yaw);
+          vehicle.pos.x += wx * pen; vehicle.pos.z += wz * pen;
+          vehicle.applyExternalImpulse(wx * 14, 3.2, wz * 14, pushDir * 2.5);
+          if (audio) audio.playImpact(0.85);
+        }
+      }
+    }
+  }
+
+  _buildOceanPorts() {
+    if (!KK.PORTS) return;
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const matPier = new THREE.MeshStandardMaterial({ color: 0x6f757a, roughness: 0.88 });
+    const matRamp = new THREE.MeshStandardMaterial({ color: 0x4b5258, roughness: 0.92 });
+    const matPad  = new THREE.MeshStandardMaterial({ color: 0x00d4ff, emissive: 0x006d88, roughness: 0.5 });
+    const matWh   = new THREE.MeshStandardMaterial({ color: 0x2f5373, roughness: 0.72 });
+    const matCrane = new THREE.MeshStandardMaterial({ color: 0xe6a817, roughness: 0.55, metalness: 0.35 });
+
+    for (const pt of KK.PORTS) {
+      const grp = new THREE.Group();
+      const py = seaL + 2.2;
+      grp.position.set(pt.x, py, pt.z);
+      grp.rotation.y = pt.yaw || 0;
+
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(24, 1.4, 48), matPier);
+      deck.position.set(0, 0, 12); deck.castShadow = true; deck.receiveShadow = true; grp.add(deck);
+      for (const px of [-10, 10]) {
+        for (const pz of [-8, 8, 24, 34]) {
+          const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.75, 10, 8), matRamp);
+          pile.position.set(px, -5.2, pz); grp.add(pile);
+        }
+      }
+      const ramp = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 22), matRamp);
+      ramp.position.set(16.5, -1.6, 16); ramp.rotation.x = 0.22; grp.add(ramp);
+      const bPad = new THREE.Mesh(new THREE.BoxGeometry(10, 0.16, 10), matPad);
+      bPad.position.set(0, 0.78, 26); grp.add(bPad);
+      const wh = new THREE.Mesh(new THREE.BoxGeometry(14, 7.5, 18), matWh);
+      wh.position.set(-4, 4.4, -2); wh.castShadow = true; grp.add(wh);
+      const craneBase = new THREE.Mesh(new THREE.BoxGeometry(4.5, 14, 4.5), matCrane);
+      craneBase.position.set(7.5, 7.6, 10); grp.add(craneBase);
+      const craneArm = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 22), matCrane);
+      craneArm.position.set(7.5, 14.8, 17); grp.add(craneArm);
+      const bcn = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 36, 8), new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.45 }));
+      bcn.position.set(0, 18, 26); grp.add(bcn);
+
+      this.rootGroup.add(grp);
+      const c = Math.cos(pt.yaw || 0), s = Math.sin(pt.yaw || 0);
+      const wx = pt.x + (-4 * c + -2 * s), wz = pt.z + (4 * s + -2 * c);
+      this.buildingColliders.push({ minX: wx - 8.5, maxX: wx + 8.5, minZ: wz - 9.5, maxZ: wz + 9.5, yMin: py - 2, yMax: py + 9, label: pt.name });
+    }
+  }
+
+  _buildIslandSetpieces() {
+    if (KK.TROPIKA_VOLCANOES) {
+      for (const v of KK.TROPIKA_VOLCANOES) {
+        const vy = this._computeNaturalGroundHeight(v.x, v.z);
+        if (v.active) {
+          const lava = new THREE.Mesh(new THREE.CircleGeometry(340, 20), new THREE.MeshBasicMaterial({ color: 0xff4d00 }));
+          lava.rotation.x = -Math.PI / 2; lava.position.set(v.x, vy + 18, v.z);
+          this.rootGroup.add(lava);
+        } else {
+          const lake = new THREE.Mesh(
+            new THREE.CircleGeometry(v.lakeRad * 0.88, 24),
+            new THREE.MeshStandardMaterial({ color: 0x18a4b8, emissive: 0x083842, roughness: 0.16, transparent: true, opacity: 0.86 })
+          );
+          lake.rotation.x = -Math.PI / 2; lake.position.set(v.x, vy + 24, v.z);
+          this.rootGroup.add(lake);
+        }
+      }
+    }
+
+    const polX = -65200, polZ = -67200;
+    const matHulk = new THREE.MeshStandardMaterial({ color: 0x5c4234, roughness: 0.92, metalness: 0.4 });
+    const matWall = new THREE.MeshStandardMaterial({ color: 0x868c92, roughness: 0.9 });
+    for (let k = 0; k < 6; k++) {
+      const tx = polX + 180 + k * 55, tz = polZ - 140 + (k % 2) * 75;
+      const ty = this.getBaseHeight(tx, tz);
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.5, 6.8), matHulk);
+      hull.position.set(tx, ty + 0.8, tz); hull.rotation.y = k * 0.4; this.rootGroup.add(hull);
+      const tur = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.3, 0.9, 10), matHulk);
+      tur.position.set(tx, ty + 1.9, tz); this.rootGroup.add(tur);
+      this.buildingColliders.push({ minX: tx - 2.6, maxX: tx + 2.6, minZ: tz - 3.6, maxZ: tz + 3.6, yMin: ty - 1, yMax: ty + 3.5, label: "Target Tank Hulk" });
+    }
+    const blastW = new THREE.Mesh(new THREE.BoxGeometry(36, 5.5, 2.8), matWall);
+    const bwy = this.getBaseHeight(polX + 110, polZ - 60);
+    blastW.position.set(polX + 110, bwy + 2.75, polZ - 60); this.rootGroup.add(blastW);
+    this.buildingColliders.push({ minX: polX + 92, maxX: polX + 128, minZ: polZ - 62, maxZ: polZ - 58, yMin: bwy - 1, yMax: bwy + 6, label: "Blast Wall" });
+
+    const aurMat = new THREE.MeshBasicMaterial({ color: 0x2de08b, transparent: true, opacity: 0.24, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+    const aurora = new THREE.Mesh(new THREE.PlaneGeometry(18000, 1800, 12, 1), aurMat);
+    aurora.position.set(-65000, 1450, -76000);
+    aurora.rotation.y = 0.28;
+    this.rootGroup.add(aurora);
+
+    const rx = 68000, rz = -68000;
+    const ry = this.getBaseHeight(rx, rz);
+    const sGrp = new THREE.Group();
+    sGrp.position.set(rx + 65, ry, rz - 48);
+    const matSarc = new THREE.MeshStandardMaterial({ color: 0x4c524b, roughness: 0.94 });
+    const matRadGlow = new THREE.MeshBasicMaterial({ color: 0x9eff2a, transparent: true, opacity: 0.78 });
+
+    const vault = new THREE.Mesh(new THREE.BoxGeometry(46, 24, 38), matSarc);
+    vault.position.set(0, 12, 0); vault.castShadow = true; sGrp.add(vault);
+    const stack = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 4.4, 48, 12), matSarc);
+    stack.position.set(10, 24, -6); sGrp.add(stack);
+    const coreGlow = new THREE.Mesh(new THREE.BoxGeometry(16, 6, 4), matRadGlow);
+    coreGlow.position.set(0, 8, 19.2); sGrp.add(coreGlow);
+
+    const heliPad = new THREE.Mesh(new THREE.CylinderGeometry(16, 16, 0.5, 18), matWall);
+    heliPad.position.set(-42, 0.25, 16); sGrp.add(heliPad);
+    this.rootGroup.add(sGrp);
+
+    this.buildingColliders.push({
+      minX: rx + 65 - 23.5, maxX: rx + 65 + 23.5,
+      minZ: rz - 48 - 19.5, maxZ: rz - 48 + 19.5,
+      yMin: ry - 2, yMax: ry + 26, label: "Site-140 Reactor Sarcophagus"
+    });
+  }
+
+  _extractBuildingColliders() {
+    this.rootGroup.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    const size = new THREE.Vector3();
+    for (const grp of this.townGroups.values()) {
+      grp.traverse((obj) => {
+        if (!obj.isMesh || !obj.geometry) return;
+        const mat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+        if (mat && mat.transparent && mat.opacity < 0.7) return;
+        if (mat && mat.isMeshBasicMaterial) return;
+        box.setFromObject(obj);
+        box.getSize(size);
+        if (size.x < 2.2 || size.z < 2.2 || size.y < 2.0) return;
+        if (size.x > 60 || size.z > 60) return;
+        const groundY = this.getBaseHeight((box.min.x + box.max.x) * 0.5, (box.min.z + box.max.z) * 0.5);
+        if (box.min.y > groundY + 2.8) return;
+        this.buildingColliders.push({
+          minX: box.min.x, maxX: box.max.x,
+          minZ: box.min.z, maxZ: box.max.z,
+          yMin: box.min.y - 1.0, yMax: box.max.y + 0.5,
+          label: "Building"
+        });
+      });
+    }
+  }
+
   _initSharedAssets() {
     this.matTerrain = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.04 });
     this.matWood = new THREE.MeshStandardMaterial({ color: 0x6b4c30, roughness: 0.92 });
@@ -476,8 +815,22 @@ KK.World = class World {
       let landH = seaL + 8.0 + macro + detail;
 
       if (isl.biome === "tropical") {
-        // Lush emerald jungle ridges & volcanic emerald spine + gentle sandy beaches!
-        landH += Math.pow(ridge, 1.55) * (isl.peakH || 140) * mask;
+        // Very mountainous Indonesian jungle highlands + 2 dramatic volcanoes (Gunung Api + Gunung Danau crater lake!)
+        landH += Math.pow(ridge, 1.38) * (isl.peakH || 155) * 1.45 * mask;
+        if (isl.id === 1 && KK.TROPIKA_VOLCANOES) {
+          for (const v of KK.TROPIKA_VOLCANOES) {
+            const dv = Math.hypot(gx - v.x, gz - v.z);
+            if (dv < v.radius) {
+              const u = 1.0 - dv / v.radius;
+              let cone = Math.pow(u, 1.45) * v.peakH;
+              if (dv < (v.lakeRad || 420)) {
+                const cu = 1.0 - dv / (v.lakeRad || 420);
+                cone -= cu * cu * (v.active ? 55 : 78);
+              }
+              landH += cone;
+            }
+          }
+        }
       } else if (isl.biome === "savanna") {
         // Wide golden rolling grasslands + flat-top mesa plateaus!
         const mesaRaw = Math.pow(ridge, 1.35) * (isl.peakH || 90);
@@ -486,9 +839,9 @@ KK.World = class World {
       } else if (isl.biome === "arctic") {
         // Dramatic jagged alpine glacier peaks + frozen coastal ice shelf!
         landH += Math.pow(ridge, 1.65) * (isl.peakH || 210) * mask + 14 * mask;
-      } else if (isl.biome === "volcanic_isle") {
-        // Sheer obsidian sea-cliffs & caldera peak on Site-140 Black Rock!
-        landH += Math.pow(ridge, 1.25) * (isl.peakH || 130) * mask + 18 * mask;
+      } else if (isl.biome === "radioactive") {
+        // Bleak Chernobyl-style coastal wasteland plateau on Site-140 Black Rock!
+        landH += Math.pow(ridge, 1.8) * (isl.peakH || 58) * mask + 14 * mask;
       }
 
       // Smooth coastal beach drop-off into ocean floor
@@ -563,6 +916,10 @@ KK.World = class World {
       const rcB = this.getRiverChannel(jb.x, jb.z);
       if (rcB.seg && rcB.dist < jb.radius + 80) bH = Math.max(bH, rcB.waterY + 2.6);
       jb._baseH = bH;
+    }
+    if (KK.ZOLOTOY_CITY) {
+      const zc = KK.ZOLOTOY_CITY;
+      zc._baseH = Math.max((KK.SEA_LEVEL || -32) + 8.0, sampleRingAvg(zc.cx, zc.cz, 180));
     }
     if (KK.AIRSTRIPS) {
       for (const a of KK.AIRSTRIPS) {
@@ -667,6 +1024,16 @@ KK.World = class World {
     }
 
     // Glass-smooth Krasny-Ring Tarmac Proving Grounds flattening
+    if (KK.ZOLOTOY_CITY && KK.ZOLOTOY_CITY._baseH !== undefined) {
+      const zc = KK.ZOLOTOY_CITY;
+      const dxC = Math.abs(gx - zc.cx), dzC = Math.abs(gz - zc.cz);
+      const maxD = Math.max(dxC, dzC);
+      if (maxD < zc.halfSpan + 110) {
+        const bC = maxD < zc.halfSpan + 22 ? 1.0 : Math.max(0, 1.0 - (maxD - (zc.halfSpan + 22)) / 88);
+        const sC = bC * bC * (3 - 2 * bC);
+        h = h * (1 - sC) + zc._baseH * sC;
+      }
+    }
     const airInfo = this.getAirstripInfo(gx, gz);
     if (airInfo && airInfo.blend > 0.001 && airInfo.targetY !== undefined) {
       h = h * (1 - airInfo.blend) + airInfo.targetY * airInfo.blend;
@@ -749,7 +1116,7 @@ KK.World = class World {
   }
 
   getPotholeDepth(gx, gz, roadDist, seg) {
-    if (!seg || roadDist > seg.width * 0.65) return 0;
+    if (!seg || seg.isModernHwy || seg.isCityGrid || roadDist > seg.width * 0.65) return 0;
     if (Math.hypot(gx, gz) < 75) return 0;
     const cell = 13.0;
     const ix = Math.floor(gx / cell), iz = Math.floor(gz / cell);
@@ -937,10 +1304,20 @@ KK.World = class World {
       const camberTilt = road.seg.isMountain ? Math.sin(road.cx * 0.015) * 0.14 * (road.dist / road.seg.width) : 0;
       h = h * (1 - blend) + (centerH + camberTilt) * blend;
       if (road.dist < road.seg.width * 0.56) {
-        surface = road.seg.isMountain ? "shale" : "asphalt";
-        if (abutSuppress < 0.15) {
-          potholeDepth = this.getPotholeDepth(gx, gz, road.dist, road.seg);
-          h -= potholeDepth;
+        if (road.seg.isModernHwy || road.seg.isCityGrid) {
+          surface = road.dist < 0.45 ? "tarmac_line" : "race_tarmac";
+        } else if (road.seg.isTropikaHell) {
+          surface = "bad_road";
+          if (abutSuppress < 0.15) {
+            potholeDepth = this.getPotholeDepth(gx, gz, road.dist, road.seg) * 1.45;
+            h -= potholeDepth;
+          }
+        } else {
+          surface = road.seg.isMountain ? "shale" : "asphalt";
+          if (abutSuppress < 0.15) {
+            potholeDepth = this.getPotholeDepth(gx, gz, road.dist, road.seg);
+            h -= potholeDepth;
+          }
         }
       } else if (road.dist < road.seg.width * 0.95) {
         surface = "gravel";
@@ -1984,7 +2361,10 @@ KK.World = class World {
         const v = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
         col.setRGB(0.24 + v, 0.48 + v, 0.18 + v);
       } else {
-        if (info.surface === "snow" || (b.arctic || 0) > 0.42) {
+        if ((b.radioactive || 0) > 0.35) {
+          const rv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
+          col.setRGB(0.24 + rv, 0.28 + rv, 0.16 + rv);
+        } else if (info.surface === "snow" || (b.arctic || 0) > 0.42) {
           const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.04;
           col.setRGB(0.84 + sv, 0.90 + sv, 0.96 + sv);
         } else if ((b.tropical || 0) > 0.35) {
@@ -2029,6 +2409,7 @@ KK.World = class World {
     const isTropChunk = (bCenter.tropical || 0) > 0.40;
     const isSavChunk  = (bCenter.savanna || 0) > 0.40;
     const isArcChunk  = (bCenter.arctic || 0) > 0.40;
+    const isRadChunk  = (bCenter.radioactive || 0) > 0.40;
     const isOceanChunk = (bCenter.ocean || 0) > 0.88;
     const treeCount = isOceanChunk ? 0 : (isTropChunk ? 18 : (isSavChunk ? 7 : (isArcChunk ? 6 : (isVolcChunk ? 3 : (isDesertChunk ? 5 : Math.floor(8 + bCenter.taiga * 15 + bCenter.rust * 4))))));
     const chunkKey = cx + "," + cz;
@@ -2040,6 +2421,8 @@ KK.World = class World {
       const rz = (this.hash2(cx * 13, cz * 29 + t) - 0.5) * (size - 10);
       const gx = startX + size * 0.5 + rx, gz = startZ + size * 0.5 + rz;
       const info = this.getTerrainInfo(gx, gz, false);
+      const inZCity = KK.ZOLOTOY_CITY && Math.abs(gx - KK.ZOLOTOY_CITY.cx) < (KK.ZOLOTOY_CITY.halfSpan + 35) && Math.abs(gz - KK.ZOLOTOY_CITY.cz) < (KK.ZOLOTOY_CITY.halfSpan + 35);
+      if (inZCity) continue;
       const aChk = this.getAirstripInfo(gx, gz);
       if (info.roadDist < 12 || info.waterDepth > 0.1 || info.height > 290 || info.surface === "race_tarmac" || info.surface === "kerb" || info.surface === "tarmac_line" || (aChk && aChk.blend > 0.1)) continue;
 
@@ -2108,6 +2491,14 @@ KK.World = class World {
         group.add(tGrp);
         this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
         colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.60 * scale, h: 8.5 * scale, kind: "tree", mesh: tGrp, broken: false });
+      } else if (isRadChunk) {
+        const deadTrk = new THREE.Mesh(this.geoTrunk, this.matObsidian);
+        tGrp.add(deadTrk);
+        tGrp.scale.set(scale * 0.75, scale * 0.85, scale * 0.75);
+        tGrp.position.set(rx, info.height - 0.15, rz);
+        group.add(tGrp);
+        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.45 * scale, h: 7.5 * scale, kind: "tree", mesh: tGrp, broken: false });
       } else if (isDesertChunk) {
         const cMesh = new THREE.Mesh(this.geoCactus, this.matCactus);
         tGrp.add(cMesh);

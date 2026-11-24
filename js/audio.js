@@ -792,6 +792,32 @@ KK.AudioEngine = class AudioEngine {
     bolt.connect(bg); bg.connect(this.master); bolt.start(t + 0.045); bolt.stop(t + 0.17);
   }
 
+  playGeigerClick(intensity = 0.6) {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+    const hp = this.ctx.createBiquadFilter(); hp.type = "bandpass"; hp.frequency.value = 3400 + Math.random() * 1800; hp.Q.value = 2.5;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.28 * Math.max(0.2, Math.min(1.0, intensity)), t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.014);
+    src.connect(hp); hp.connect(g); g.connect(this.master);
+    src.start(t); src.stop(t + 0.018);
+  }
+
+  playTramBell() {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    for (const [del, freq] of [[0.0, 920], [0.16, 920]]) {
+      const st = t + del;
+      const o = this.ctx.createOscillator(); o.type = "sine"; o.frequency.value = freq;
+      const o2 = this.ctx.createOscillator(); o2.type = "triangle"; o2.frequency.value = freq * 2.02;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.24, st); g.gain.exponentialRampToValueAtTime(0.001, st + 0.35);
+      o.connect(g); o2.connect(g); g.connect(this.master);
+      o.start(st); o2.start(st); o.stop(st + 0.38); o2.stop(st + 0.38);
+    }
+  }
+
   playMolotovIgnite() {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;

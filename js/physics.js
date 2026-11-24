@@ -977,6 +977,61 @@ KK.VehiclePhysics = class VehiclePhysics {
       }
     }
 
+    // 1C. v15.0.1 SOLID BUILDING, HOUSE, SKYSCRAPER, PORT & REACTOR COLLISIONS!
+    if (world.buildingColliders && world.buildingColliders.length > 0) {
+      const bRad = Math.max(spec.bodyWidth, spec.bodyLen * 0.45) * 0.50;
+      const bList = world.buildingColliders;
+      const tankArmB = spec.isSchreckensfurst ? 0.16 : (spec.isTracked ? 0.28 : 1.0);
+      for (let bi = 0; bi < bList.length; bi++) {
+        const b = bList[bi];
+        if (this.pos.x + bRad < b.minX || this.pos.x - bRad > b.maxX) continue;
+        if (this.pos.z + bRad < b.minZ || this.pos.z - bRad > b.maxZ) continue;
+        if (this.pos.y + 1.8 < b.yMin || this.pos.y > b.yMax) continue;
+
+        const cx = Math.max(b.minX, Math.min(this.pos.x, b.maxX));
+        const cz = Math.max(b.minZ, Math.min(this.pos.z, b.maxZ));
+        const dx = this.pos.x - cx;
+        const dz = this.pos.z - cz;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= bRad * bRad) continue;
+
+        let nx = 0, nz = 1, pen = 0;
+        if (d2 > 0.0001) {
+          const d = Math.sqrt(d2);
+          nx = dx / d; nz = dz / d;
+          pen = bRad - d;
+        } else {
+          const dl = Math.abs(this.pos.x - b.minX), dr = Math.abs(b.maxX - this.pos.x);
+          const df = Math.abs(this.pos.z - b.minZ), db = Math.abs(b.maxZ - this.pos.z);
+          const m = Math.min(dl, dr, df, db);
+          if (m === dl) { nx = -1; nz = 0; pen = dl + bRad; }
+          else if (m === dr) { nx = 1; nz = 0; pen = dr + bRad; }
+          else if (m === df) { nx = 0; nz = -1; pen = df + bRad; }
+          else { nx = 0; nz = 1; pen = db + bRad; }
+        }
+
+        this.pos.x += nx * (pen + 0.02);
+        this.pos.z += nz * (pen + 0.02);
+        const vDotN = this.vel.x * nx + this.vel.z * nz;
+        if (vDotN < 0) {
+          const impactSpd = -vDotN;
+          this.vel.x -= 1.32 * vDotN * nx;
+          this.vel.z -= 1.32 * vDotN * nz;
+          this.vel.x *= 0.72;
+          this.vel.z *= 0.72;
+          if (impactSpd > 3.8 && this.treeHitCooldown <= 0) {
+            this.treeHitCooldown = 0.45;
+            const bDmg = Math.min(34, (impactSpd - 2.5) * 1.75 * (upg.bullbar ? 0.45 : 1.0) * tankArmB);
+            hlth.body = Math.max(0, hlth.body - bDmg * 0.85);
+            this._wearPart("radiator", bDmg * 0.55);
+            if (!spec.isTracked) this.damageHeadlights(bDmg * 1.4, 0);
+            this.emit("impact", Math.min(1.0, impactSpd / 15));
+            this.emit("crash_burst", { x: cx, y: this.pos.y + 0.8, z: cz, strength: Math.min(1.4, impactSpd / 12), surface: "rock" });
+          }
+        }
+      }
+    }
+
     // 2. MULTIPLAYER CAR-TO-CAR COLLISIONS (LAN RAMMING CHAOS!)
     if (remotePlayersMap && remotePlayersMap.size > 0) {
       const myRad = Math.max(spec.bodyWidth, spec.bodyLen * 0.56) * 0.50;

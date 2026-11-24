@@ -72,11 +72,11 @@ KK.MapController = class MapController {
           shade = Math.max(0.68, Math.min(1.28, 1.0 - (hE - h) * 0.008 - (hS - h) * 0.008));
 
           r = 46 * b.rust + 24 * b.taiga + 136 * b.desert + 66 * b.mountains + 34 * b.volcanic
-            + 32 * (b.tropical || 0) + 178 * (b.savanna || 0) + 188 * (b.arctic || 0);
+            + 32 * (b.tropical || 0) + 178 * (b.savanna || 0) + 188 * (b.arctic || 0) + 92 * (b.radioactive || 0);
           g = 60 * b.rust + 58 * b.taiga + 102 * b.desert + 74 * b.mountains + 28 * b.volcanic
-            + 128 * (b.tropical || 0) + 148 * (b.savanna || 0) + 212 * (b.arctic || 0);
+            + 128 * (b.tropical || 0) + 148 * (b.savanna || 0) + 212 * (b.arctic || 0) + 114 * (b.radioactive || 0);
           bl = 42 * b.rust + 38 * b.taiga + 58 * b.desert + 82 * b.mountains + 32 * b.volcanic
-            + 52 * (b.tropical || 0) + 62 * (b.savanna || 0) + 232 * (b.arctic || 0);
+            + 52 * (b.tropical || 0) + 62 * (b.savanna || 0) + 232 * (b.arctic || 0) + 46 * (b.radioactive || 0);
 
           // Sandy coastal beach ribbon
           if (h < seaL + 4.5 && (b.arctic || 0) < 0.4 && b.volcanic < 0.4) {

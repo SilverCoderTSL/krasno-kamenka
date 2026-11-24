@@ -502,6 +502,45 @@ KK.SettlementBuilder = {
       grp.add(pc);
     }
 
+    // v15.0.1 OUTER ISLAND THEMATIC ARCHITECTURE (All Solid & Automatically Collidable!)
+    if (town.biome === "tropical") {
+      const houseSpots = (town.id === 15)
+        ? [[-36, 26], [-12, 34], [14, 32], [38, 24], [-42, -32], [-4, -38], [40, -34], [52, 2], [-52, 4]]
+        : [[-34, 24], [12, 30], [36, -28], [-38, -28], [44, 6]];
+      for (let i = 0; i < houseSpots.length; i++) {
+        const [hx, hz] = houseSpots[i];
+        const w = 6.2 + (i % 3) * 1.4, d = 5.4 + ((i + 1) % 2) * 1.6, h = 3.4 + (i % 2) * 1.1;
+        const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), i % 2 === 0 ? mats.sandstone : mats.woodLog);
+        body.position.set(hx, h * 0.5, hz); body.castShadow = true; body.receiveShadow = true; grp.add(body);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.78, 2.2, 4), mats.redMetal);
+        roof.rotation.y = Math.PI * 0.25; roof.position.set(hx, h + 1.05, hz); grp.add(roof);
+      }
+      this._addWelcomeSign(grp, town, -2, 22, 0, "OSTROV TROPIKA • LIGHT 4x4 ZONE", "#2de08b");
+    } else if (town.biome === "savanna" && !town.isMetro) {
+      const subSpots = [[-36, 24], [0, 32], [38, 22], [-38, -32], [40, -30]];
+      for (let i = 0; i < subSpots.length; i++) {
+        const [sx, sz] = subSpots[i];
+        const bh = 6.5 + (i % 3) * 4.5;
+        const bldg = new THREE.Mesh(new THREE.BoxGeometry(11, bh, 9), i % 2 === 0 ? mats.concreteLt : mats.blueMetal);
+        bldg.position.set(sx, bh * 0.5, sz); bldg.castShadow = true; grp.add(bldg);
+      }
+      this._addWelcomeSign(grp, town, -2, 22, 0, "ZOLOTOY SAVANNA • MODERN DISTRICT", "#ffd166");
+    } else if (town.biome === "arctic") {
+      for (const [ax, az] of [[-36, 22], [38, -28], [-34, -30]]) {
+        const bnk = new THREE.Mesh(new THREE.BoxGeometry(10, 4.2, 8), mats.concrete);
+        bnk.position.set(ax, 2.1, az); bnk.castShadow = true; grp.add(bnk);
+      }
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(5.8, 14, 10), mats.whiteDome);
+      dome.position.set(-36, 6.2, 22); grp.add(dome);
+      this._addWelcomeSign(grp, town, -2, 22, 0, "SEVERNYY ARCTIC PROVING GROUND", "#8ecae6");
+    } else if (town.biome === "radioactive") {
+      for (const [rx, rz] of [[-32, 22], [36, 20], [-36, -28]]) {
+        const qb = new THREE.Mesh(new THREE.BoxGeometry(9.5, 4.4, 7.5), mats.concrete);
+        qb.position.set(rx, 2.2, rz); qb.castShadow = true; grp.add(qb);
+      }
+      this._addWelcomeSign(grp, town, -2, 22, 0, "SITE-140 • EXTREME RADIATION ZONE", "#b8ff3b");
+    }
+
     for (const [lx, lz] of [[14, 24], [-14, 24], [14, -22], [-18, -22]]) {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 5.8, 6), mats.steel);
       pole.position.set(lx, 2.9, lz); grp.add(pole);

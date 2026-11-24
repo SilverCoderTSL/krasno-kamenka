@@ -1,12 +1,16 @@
-# Krasno-Kamenka Oblast (v15.0 ONLINE — 200×200 km Archipelago & Biomes Edition)
+# Krasno-Kamenka Oblast (v15.0.1 ONLINE — Island Personalities, Cities, Roads, Ports & Solid Buildings)
 
-## What's New in Version 15.0 ONLINE
-* **200 × 200 km 6-Island Archipelago (`js/config.js`, `js/world.js`):**
-  1. **Krasno-Kamenka Mainland (`0, 0`):** 100% of your existing towns, roads, rivers, bridges, farms, pub, and secret camps preserved untouched—now framed by natural coastlines, beaches, and open sea!
-  2. **Ostrov Tropika (SE Medium Island):** Brand-new **Tropical Jungle** biome with curved palm trees, splayed emerald fronds, lush ridges, sandy beaches, harbor & jungle airstrip!
-  3. **Zolotoy Savanna (SW Medium Island):** Brand-new **Golden Savanna** biome with flat-top African acacia trees, warm golden grasslands, flat-top mesas & savanna runway!
-  4. **Severnyy Proving Ground (NW Medium Island):** Brand-new **Arctic Glacier** biome with frost spires, snow pines, frozen shelves, jagged glacier peaks & ice runway!
-  5. **Coral Smuggler's Cay (East Small Atoll):** Compact tropical coral atoll with turquoise shallows, palm grove & bush strip!
-  6. **Site-140 Black Rock (NE Small Fortress Isle):** Isolated volcanic basalt sea-fortress with glowing obsidian fissures!
-* **Open Ocean Plane, Coastal Beaches & Far-Horizon Silhouettes (`js/world.js`):** Real ocean depth around all 6 islands, paved/marked **Airstrips** ready for v15.2 aircraft, and distant island silhouettes visible across the sea!
-* **Updated 200×200 km GPS Map & Start Menu Spawn Map (`js/map_ui.js`, `js/start_menu.js`):** Full archipelago rendering with ocean depth, turquoise coastal shelves, biome shading, and instant spawn selection on **all 15 towns across all 6 islands**!
+## What's New in Version 15.0.1 ONLINE
+1. **Universal Building & House Collisions (`js/world.js`, `js/physics.js`):**
+   - Every town hangar, cabin, Indonesian village house, Zolotoy skyscraper, Arctic bunker, port warehouse, and Site-140 Reactor wall is now 100% solid and collidable!
+2. **Ostrov Tropika — Indonesian Highland Nürburgring-from-Hell (`js/config.js`, `js/world.js`, `js/settlements.js`):**
+   - 3 outposts (**Palma Bay Port**, large highland village **Desa Kabut**, and **Danau Merah**), **2 volcanoes** (`Gunung Api` active glowing cone & `Gunung Danau` turquoise crater lake), jungle river, **extreme narrow switchback mountain roads**, and **2 iffy wooden/timber bridges** (`4,400 kg` & `4,800 kg` max). Light 4x4s dominate here!
+3. **Zolotoy Savanna — Modernized Crown Jewel + Working City Tram (`js/config.js`, `js/world.js`):**
+   - **Zolotoy City**: Massive 6×6 gridlike metropolis (`840 m × 840 m`) with 14m wide smooth asphalt avenues, 60+ collidable skyscrapers & towers, steel boulevard rails, and a **working animated 2-car Electric City Tram** with headlights, bell, and solid collision!
+   - 3 modern suburbs (**Solnechny Heights**, **Steppe Logistics Park**, **Savanna Marina Port**) connected by pristine 250+ km/h expressways and **indestructible reinforced concrete viaducts**.
+4. **Severnyy Proving Ground — Polar Naval & Weapons Testing (`js/config.js`, `js/world.js`):**
+   - 3 arctic outposts (**Borey Icebreaker Port**, **Poligon-9 Gunnery Range** with target tank hulks & blast wall, and **Kholodnyy Radar Peak** with severe cold soak) plus a glowing northern **Aurora Borealis** curtain.
+5. **Site-140 Black Rock — Radioactive Exclusion Zone (`js/config.js`, `js/world.js`, `js/audio.js`, `js/main.js`):**
+   - Rebuilt from volcanic into a bleak Chernobyl-style radioactive sea-fortress with dead blackened trees, a massive crumbling **Reactor Sarcophagus**, concrete helipad, live **Geiger counter crackle**, and slow electrical wear on unshielded rigs near the core.
+6. **9 Ocean Ports (`js/config.js`, `js/world.js`):**
+   - 4 Mainland coastal ports + 1 port per outer island (including **Coral Cay Smuggler Pier**), each with a concrete pier, drive-on boat launch ramp, warehouse, harbor crane, beacon, and glowing **Boat Summon Pad** ready for v15.1!
