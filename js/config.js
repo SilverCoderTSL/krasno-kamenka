@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.1.2";
-KK.VERSION_FULL = "v15.1.2 ONLINE";
+KK.VERSION = "v15.1.3";
+KK.VERSION_FULL = "v15.1.3 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -527,6 +527,10 @@ KK.MANUFACTURERS = {
   porsche: {
     id: "porsche", name: "Porsche", country: "Germany", tagline: "Stuttgart Dakar Rally Engineering", color: "#e63946",
     logoSvg: `<svg viewBox="0 0 80 50" width="56" height="36"><path d="M20 6 L60 6 L56 36 L40 46 L24 36 Z" fill="#d4af37" stroke="#181a1e" stroke-width="2.5"/><rect x="24" y="10" width="16" height="12" fill="#c1121f"/><rect x="40" y="22" width="14" height="12" fill="#c1121f"/><text x="40" y="19" text-anchor="middle" fill="#111" font-family="monospace" font-size="7" font-weight="900">911</text></svg>`
+  },
+  pindad: {
+    id: "pindad", name: "PT Pindad", country: "Indonesia", tagline: "Tropical Tactical Armor & Medium Tanks", color: "#2de08b",
+    logoSvg: `<svg viewBox="0 0 80 50" width="56" height="36"><polygon points="40,4 68,14 62,38 40,47 18,38 12,14" fill="#1e3528" stroke="#2de08b" stroke-width="3"/><polygon points="40,10 43.5,19 53,19 45.5,24.5 48.5,33.5 40,28 31.5,33.5 34.5,24.5 27,19 36.5,19" fill="#ffd166"/><text x="40" y="42" text-anchor="middle" fill="#e6f4ea" font-family="monospace" font-size="7.5" font-weight="900">PINDAD</text></svg>`
   },
   silver_directive: {
     id: "silver_directive", name: "The Silver Directive", country: "Imperium", tagline: "Dev-Exclusive Breakthrough Armor", color: "#d62828", secretOnly: true, devOnly: true,
@@ -1399,7 +1403,7 @@ KK.VEHICLES = {
     desc: "850 Nm 10.8L Twin-Turbo V8 diesel 6x6 titan. Unstoppable pulling power — WILL smash wooden bridges!"
   },
   komodo_std: {
-    id: "komodo_std", brand: "boreal", name: "Pindad Komodo 4x4 (Standard APC)", category: "Indonesian 4x4 Tactical Armored Car",
+    id: "komodo_std", brand: "pindad", name: "Pindad Komodo 4x4 (Standard APC)", category: "Indonesian 4x4 Tactical Armored Car",
     suspensionType: "Heavy-Duty 4x4 Independent Coil Tactical Suspension (440mm Clearance)",
     price: 48000, color: "#4e5c42", accentColor: "#21261e", massKg: 7300, cargoSlots: 4, enclosedCargo: true,
     bodyLen: 5.65, bodyWidth: 2.25, bodyHeight: 2.15, cogOffsetY: 0.28, intakeHeight: 1.75,
@@ -1419,7 +1423,7 @@ KK.VEHICLES = {
     desc: "PT Pindad Komodo 4x4 Standard APC (5.65m × 2.25m × 2.15m, 7.3t). High-clearance monocoque armored 4x4 built for brutal tropical mountain passes!"
   },
   komodo_recon: {
-    id: "komodo_recon", brand: "boreal", name: "Pindad Komodo 4x4 (Reconnaissance)", category: "Indonesian 4x4 Thermal Recon Vehicle",
+    id: "komodo_recon", brand: "pindad", name: "Pindad Komodo 4x4 (Reconnaissance)", category: "Indonesian 4x4 Thermal Recon Vehicle",
     suspensionType: "Heavy-Duty 4x4 Independent Coil Tactical Suspension (440mm Clearance)",
     price: 62000, color: "#43523a", accentColor: "#1b2019", massKg: 8000, cargoSlots: 3, enclosedCargo: true,
     bodyLen: 5.50, bodyWidth: 2.30, bodyHeight: 2.20, cogOffsetY: 0.30, intakeHeight: 1.82,
@@ -1439,7 +1443,7 @@ KK.VEHICLES = {
     desc: "PT Pindad Komodo 4x4 Recon (5.50m × 2.30m × 2.20m, 8.0t). Telescoping thermal/EO surveillance mast, VHF/HF comms & built-in FLIR Thermal / NVG [6]!"
   },
   komodo_turret: {
-    id: "komodo_turret", brand: "boreal", name: "Pindad Komodo 4x4 (CPWS 30mm Turret)", category: "Indonesian 4x4 Autocannon Combat Car",
+    id: "komodo_turret", brand: "pindad", name: "Pindad Komodo 4x4 (CPWS 30mm Turret)", category: "Indonesian 4x4 Autocannon Combat Car",
     suspensionType: "Reinforced 4x4 Tactical Combat Suspension (440mm Clearance)",
     price: 94000, color: "#3d4a35", accentColor: "#1a1f18", massKg: 8200, cargoSlots: 2, enclosedCargo: true,
     bodyLen: 5.65, bodyWidth: 2.25, bodyHeight: 2.15, cogOffsetY: 0.34, intakeHeight: 1.80,
@@ -1459,7 +1463,7 @@ KK.VEHICLES = {
     desc: "PT Pindad Komodo 4x4 armed with a John Cockerill CPWS 30mm Remote Autocannon Turret (8.2t)! Right-click toggle scope, Left-click 30mm fire & FLIR [6]!"
   },
   harimau: {
-    id: "harimau", brand: "boreal", name: "Pindad Harimau (Kaplan MT 105mm)", category: "Indonesian-Turkish 31.5t Medium Tank",
+    id: "harimau", brand: "pindad", name: "Pindad Harimau (Kaplan MT 105mm)", category: "Indonesian-Turkish 31.5t Medium Tank",
     suspensionType: "6-Roadwheel Torsion-Bar Tropical Tracked Suspension (STANAG Lvl 4)",
     price: 215000, color: "#4a593d", accentColor: "#232a1e", massKg: 31500, cargoSlots: 4, enclosedCargo: true,
     isTracked: true, isHarimau: true, rearEngine: true,

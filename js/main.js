@@ -340,7 +340,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1.2 ONLINE! Island-Themed Piers (Glowing Savanna Terminal & Rustic/Dilapidated Docks) + 4 Buyable PT Pindad Vehicles (Komodo Standard/Recon/30mm Turret & Harimau 105mm Medium Tank)!');
+      this.ui.toast('Welcome to v15.1.3 ONLINE! Island-Themed Piers (Glowing Savanna Terminal & Rustic/Dilapidated Docks) + 4 Buyable PT Pindad Vehicles (Komodo Standard/Recon/30mm Turret & Harimau 105mm Medium Tank)!');
     }, 650);
   }
 
