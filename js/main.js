@@ -3031,17 +3031,30 @@ KK.Game = class Game {
     }
 
     this.entities.update(dt, this.vehicle, this.weather, (kind, hitKmh, dgx, dgz) => {
-      if (kind === "deer" && this.skinwalker) this.skinwalker.recordDeerKill(dgx || this.vehicle.pos.x, dgz || this.vehicle.pos.z);
-      const dmg = Math.min(38, hitKmh * 0.42 * (this.vehicle.vState.upgrades.bullbar ? 0.35 : 1.0));
-      this.vehicle.vState.parts.radiator.hp = Math.max(0, this.vehicle.vState.parts.radiator.hp - dmg);
-      this.vehicle.vState.parts.intercooler.hp = Math.max(0, this.vehicle.vState.parts.intercooler.hp - dmg * 0.6);
-      this.vehicle.vState.health.body = Math.max(0, this.vehicle.vState.health.body - dmg * 0.7);
-      this.vehicle.damageHeadlights(dmg * 1.6, 0);
-      this.vehicle.peakGForce = Math.max(this.vehicle.peakGForce, 2.8);
-      if (this.vehicle.cargoCount > 0) this.vehicle.cargoIntegrity = Math.max(0, this.vehicle.cargoIntegrity - dmg * 0.4);
-      this.particles.emitCrashBurst(this.vehicle.pos.x, this.vehicle.pos.y, this.vehicle.pos.z, 0.85, "gravel", this.weather.weather);
-      this.audio.playImpact(0.9);
-      this.ui.toast(`SMASH!! You hit a deer at ${Math.round(hitKmh)} km/h! Radiator -${Math.round(dmg)}%!`, true);
+      if (kind === "deer" && this.skinwalker) this.skinwalker.recordDeerKill(dgx || this.vehicle.pos.x, dgz || this.vehicle.pos.z, this.vehicle);
+      const isTank = !!this.vehicle.spec.isTracked;
+      const is140  = !!this.vehicle.spec.isSchreckensfurst;
+      const animalName = kind === "camel" ? "camel" : "deer";
+      if (isTank) {
+        // Armored tracked tanks crush wildlife with zero headlight damage & minimal radiator/hull scratch!
+        const scratch = is140 ? 0.5 : Math.min(3.5, hitKmh * 0.04);
+        this.vehicle.vState.parts.radiator.hp = Math.max(0, this.vehicle.vState.parts.radiator.hp - scratch);
+        this.vehicle.vState.health.body = Math.max(0, this.vehicle.vState.health.body - scratch * 0.6);
+        this.particles.emitCrashBurst(this.vehicle.pos.x, this.vehicle.pos.y, this.vehicle.pos.z, 0.65, "gravel", this.weather.weather);
+        this.audio.playImpact(0.45);
+        this.ui.toast(`THUD! Rolled over a ${animalName} at ${Math.round(hitKmh)} km/h (Armor held!)`);
+      } else {
+        const dmg = Math.min(38, hitKmh * 0.42 * (this.vehicle.vState.upgrades.bullbar ? 0.35 : 1.0));
+        this.vehicle.vState.parts.radiator.hp = Math.max(0, this.vehicle.vState.parts.radiator.hp - dmg);
+        this.vehicle.vState.parts.intercooler.hp = Math.max(0, this.vehicle.vState.parts.intercooler.hp - dmg * 0.6);
+        this.vehicle.vState.health.body = Math.max(0, this.vehicle.vState.health.body - dmg * 0.7);
+        this.vehicle.damageHeadlights(dmg * 1.6, 0);
+        this.vehicle.peakGForce = Math.max(this.vehicle.peakGForce, 2.8);
+        if (this.vehicle.cargoCount > 0) this.vehicle.cargoIntegrity = Math.max(0, this.vehicle.cargoIntegrity - dmg * 0.4);
+        this.particles.emitCrashBurst(this.vehicle.pos.x, this.vehicle.pos.y, this.vehicle.pos.z, 0.85, "gravel", this.weather.weather);
+        this.audio.playImpact(0.9);
+        this.ui.toast(`SMASH!! You hit a ${animalName} at ${Math.round(hitKmh)} km/h! Radiator -${Math.round(dmg)}%!`, true);
+      }
     }, { x: this.cryptids.sirenhead.gx, z: this.cryptids.sirenhead.gz });
 
     const focusLocal = this.world.toLocal(focusGx, focusGy, focusGz, new THREE.Vector3());

@@ -188,7 +188,8 @@ KK.EntityManager = class EntityManager {
           const legs = d.mesh.userData.legs;
           legs[0].rotation.x = sw; legs[1].rotation.x = -sw; legs[2].rotation.x = -sw; legs[3].rotation.x = sw;
         }
-        if (distToPlayer < 2.55 && vehicle.speedKmh > 14 && Math.abs(d.gy - vehicle.pos.y) < 2.2) { d.stunTimer = 6.0; if (onDeerImpact) onDeerImpact(d, vehicle.speedKmh); }
+        const deerHitRad = Math.max(2.55, Math.max(vehicle.spec.bodyWidth, vehicle.spec.bodyLen * 0.56) * 0.54 + 0.75);
+        if (distToPlayer < deerHitRad && vehicle.speedKmh > 10 && Math.abs(d.gy - vehicle.pos.y) < 2.8) { d.stunTimer = 6.0; if (onDeerImpact) onDeerImpact("deer", vehicle.speedKmh, d.gx, d.gz); }
       }
       const ti = this.world.getTerrainInfo(d.gx, d.gz, false);
       d.gy = ti.height; this.world.toLocal(d.gx, d.gy, d.gz, d.mesh.position);
@@ -245,7 +246,8 @@ KK.EntityManager = class EntityManager {
           const legs = c.mesh.userData.legs;
           legs[0].rotation.x = sw; legs[1].rotation.x = -sw; legs[2].rotation.x = -sw; legs[3].rotation.x = sw;
         }
-        if (dP < 2.8 && vehicle.speedKmh > 15 && Math.abs(c.gy - vehicle.pos.y) < 2.5) { c.stunTimer = 6.0; if (onDeerImpact) onDeerImpact(c, vehicle.speedKmh); }
+        const camelHitRad = Math.max(2.8, Math.max(vehicle.spec.bodyWidth, vehicle.spec.bodyLen * 0.56) * 0.54 + 0.85);
+      if (dP < camelHitRad && vehicle.speedKmh > 12 && Math.abs(c.gy - vehicle.pos.y) < 3.0) { c.stunTimer = 6.0; if (onDeerImpact) onDeerImpact("camel", vehicle.speedKmh, c.gx, c.gz); }
       }
       c.gy = this.world.getTerrainInfo(c.gx, c.gz, false).height;
       this.world.toLocal(c.gx, c.gy, c.gz, c.mesh.position); c.mesh.rotation.y = c.yaw; c.mesh.visible = dP < 310;

@@ -309,7 +309,8 @@ KK.HazardManager = class HazardManager {
         if (dVeh < 9.5) {
           audio.playImpact(0.95);
           const ang = Math.atan2(px - lb.gx, pz - lb.gz);
-          vehicle.applyExternalImpulse(Math.sin(ang) * 14, 7.5, Math.cos(ang) * 14, (Math.random() - 0.5) * 3.5);
+          const lvScale = vehicle.spec.isSchreckensfurst ? 0.16 : (vehicle.spec.isTracked ? 0.28 : 1.0);
+        vehicle.applyExternalImpulse(Math.sin(ang) * 14 * lvScale, 7.5 * lvScale, Math.cos(ang) * 14 * lvScale, (Math.random() - 0.5) * 3.5 * lvScale);
           vehicle.coolantTemp = Math.min(130, vehicle.coolantTemp + 14);
           
         }
@@ -365,8 +366,9 @@ KK.HazardManager = class HazardManager {
       this.world.toLocal(rk.gx, rk.gy, rk.gz, rk.mesh.position);
       if (Math.hypot(rk.gx - px, rk.gz - pz) < rk.radius + 2.2 && Math.abs(rk.gy - (py + 1.0)) < 2.6) {
         audio.playImpact(0.95);
-        vehicle.applyExternalImpulse(rk.vx * 0.8, 5.0, rk.vz * 0.8, (Math.random() - 0.5) * 4.0);
-        const bull = vehicle.vState.upgrades.bullbar ? 0.35 : 1.0;
+        const rkArmor = vehicle.spec.isSchreckensfurst ? 0.14 : (vehicle.spec.isTracked ? 0.24 : 1.0);
+        vehicle.applyExternalImpulse(rk.vx * 0.8 * rkArmor, 5.0 * rkArmor, rk.vz * 0.8 * rkArmor, (Math.random() - 0.5) * 4.0 * rkArmor);
+        const bull = (vehicle.vState.upgrades.bullbar ? 0.35 : 1.0) * rkArmor;
         vehicle.vState.health.body = Math.max(0, vehicle.vState.health.body - 18 * bull);
         particles.emitCrashBurst(rk.gx, rk.gy, rk.gz, 1.0, "rock", weatherSys.weather);
         
@@ -408,7 +410,8 @@ KK.HazardManager = class HazardManager {
       if (Math.random() < 0.4) particles.emitFrostOrSand(av.gx, av.gy, av.gz, true, 1);
       if (Math.hypot(av.gx - px, av.gz - pz) < av.radius + 2.5 && Math.abs(av.gy - (py + 1.0)) < 3.2) {
         audio.playImpact(0.75);
-        vehicle.applyExternalImpulse(av.vx * 0.55, 3.2, av.vz * 0.55, (Math.random() - 0.5) * 3.0);
+        const avScale = vehicle.spec.isSchreckensfurst ? 0.14 : (vehicle.spec.isTracked ? 0.24 : 1.0);
+        vehicle.applyExternalImpulse(av.vx * 0.55 * avScale, 3.2 * avScale, av.vz * 0.55 * avScale, (Math.random() - 0.5) * 3.0 * avScale);
         this.scene.remove(av.mesh); this.avalancheChunks.splice(i, 1);
         continue;
       }

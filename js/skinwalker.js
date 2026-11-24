@@ -104,19 +104,27 @@ KK.SkinwalkerManager = class SkinwalkerManager {
     this.mesh = grp;
   }
 
-  recordDeerKill(gx, gz) {
+  recordDeerKill(gx, gz, vehicle = null) {
     this.deerKills++;
-    // Completely silent — ZERO warning text! After 3+ deer kills it quietly stalks the woods!
+    // Completely silent — ZERO warning text! After 3+ deer kills it quietly manifests ahead of your headlights!
     if (this.deerKills >= 3 && this.state === "dormant" && this.spawnCooldown <= 0) {
-      this.spawnNear(gx, gz);
+      this.spawnNear(gx, gz, vehicle);
     }
   }
 
-  spawnNear(px, pz) {
-    const ang = Math.random() * Math.PI * 2;
-    const dist = 58 + Math.random() * 42;
-    this.gx = px + Math.cos(ang) * dist;
-    this.gz = pz + Math.sin(ang) * dist;
+  spawnNear(px, pz, vehicle = null) {
+    if (vehicle && vehicle.quat) {
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(vehicle.quat);
+      const ahead = 52 + Math.random() * 24;
+      const side = (Math.random() > 0.5 ? 1 : -1) * (8 + Math.random() * 14);
+      this.gx = vehicle.pos.x + fwd.x * ahead - fwd.z * side;
+      this.gz = vehicle.pos.z + fwd.z * ahead + fwd.x * side;
+    } else {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 52 + Math.random() * 28;
+      this.gx = px + Math.cos(ang) * dist;
+      this.gz = pz + Math.sin(ang) * dist;
+    }
     this.gy = this.world.getTerrainInfo(this.gx, this.gz, false).height;
     this.state = "disguised";
     this.isGrabbing = false;
@@ -243,8 +251,10 @@ KK.SkinwalkerManager = class SkinwalkerManager {
         if (ov) ov.classList.remove("active");
         const boulder = this._findNearestBoulderOrCliff(px, pz);
         const flingAng = boulder ? Math.atan2(boulder.x - px, boulder.z - pz) : (vehYaw + (Math.random() > 0.5 ? 1.4 : -1.4));
+        const is140 = !!vehicle.spec.isSchreckensfurst;
+        const isTank = !!vehicle.spec.isTracked;
         const hasK5 = (vehicle.spec.id === "t72" && !!vehicle.vState.upgrades.t72Kontakt5);
-        const k5Scale = hasK5 ? 0.36 : 1.0;
+        const k5Scale = is140 ? 0.24 : (isTank || hasK5 ? 0.36 : 1.0);
 
         vehicle.applyExternalImpulse(
           Math.sin(flingAng) * 34 * k5Scale,

@@ -876,20 +876,20 @@ KK.VehiclePhysics = class VehiclePhysics {
         const nx = dx / d, nz = dz / d;
         const vDotN = this.vel.x * nx + this.vel.z * nz;
         const impactSpd = vDotN < 0 ? -vDotN : 0;
-        const bullShield = upg.bullbar ? 0.35 : 1.0;
+        const tankArmor = spec.isSchreckensfurst ? 0.14 : (spec.isTracked ? 0.24 : 1.0);
+        const bullShield = (upg.bullbar ? 0.35 : 1.0) * tankArmor;
 
-        // DESTRUCTIBLE TREES: Hit a tree fast enough (or in a heavy truck / bullbar) and SMASH right through it!
-        const smashSpd = (mass > 2500 || upg.bullbar) ? 8.2 : 13.0; // ~29 km/h heavy/bullbar, ~47 km/h normal car
+        // DESTRUCTIBLE TREES: Tanks crush straight through trees at 16 km/h with near-zero damage!
+        const smashSpd = spec.isTracked ? 4.5 : ((mass > 2500 || upg.bullbar) ? 8.2 : 13.0);
         if (c.kind === "tree" && impactSpd >= smashSpd) {
           c.broken = true;
-          // Slow car slightly + minor/moderate front-end damage depending on Bullbar
-          this.vel.x *= 0.80;
-          this.vel.z *= 0.80;
+          this.vel.x *= spec.isTracked ? 0.94 : 0.80;
+          this.vel.z *= spec.isTracked ? 0.94 : 0.80;
           const treeDmg = Math.min(18, impactSpd * 0.72 * bullShield);
-          this._wearPart("radiator", treeDmg * 0.45);
-          this._wearPart("intercooler", treeDmg * 0.30);
+          this._wearPart("radiator", treeDmg * (spec.isTracked ? 0.15 : 0.45));
+          this._wearPart("intercooler", treeDmg * (spec.isTracked ? 0.15 : 0.30));
           hlth.body = Math.max(0, hlth.body - treeDmg * 0.65);
-          this.damageHeadlights(treeDmg * 1.4, (forward.x * nz - forward.z * nx));
+          if (!spec.isTracked) this.damageHeadlights(treeDmg * 1.4, (forward.x * nz - forward.z * nx));
           this.emit("tree_break", { treeId: c.id, x: c.x, y: c.y, z: c.z, dirX: this.vel.x, dirZ: this.vel.z });
           this.emit("impact", Math.min(0.95, impactSpd / 16));
           this.emit("crash_burst", { x: c.x, y: c.y + 0.9, z: c.z, strength: 1.0, surface: "gravel" });
@@ -921,8 +921,8 @@ KK.VehiclePhysics = class VehiclePhysics {
             if (impactSpd > 10.5) {
               this._wearPart("shockFL", hitDmg * 0.55);
               this._wearPart("shockFR", hitDmg * 0.55);
-              this._wearPart("tieRods", hitDmg * 0.65);
-              if (isRock && Math.random() < 0.45 * bullShield) {
+              this._wearPart("tieRods", hitDmg * (spec.isTracked ? 0.25 : 0.65));
+              if (isRock && !spec.isTracked && Math.random() < 0.45 * bullShield) {
                 hlth.tieRodBias = Math.max(-0.18, Math.min(0.18, hlth.tieRodBias + (Math.random() - 0.5) * 0.08));
               }
               if (isRock && impactSpd > 13.5) {
@@ -931,10 +931,10 @@ KK.VehiclePhysics = class VehiclePhysics {
               }
             }
             hlth.body = Math.max(0, hlth.body - hitDmg * 0.95);
-            this.damageHeadlights(hitDmg * 1.6, sideSign);
+            if (!spec.isTracked || impactSpd > 14.0) this.damageHeadlights(hitDmg * (spec.isTracked ? 0.45 : 1.6), sideSign);
             this.emit("impact", Math.min(1.0, impactSpd / 16));
             this.emit("crash_burst", { x: c.x, y: c.y + 0.6, z: c.z, strength: Math.min(1.5, impactSpd / 11), surface: isRock ? "rock" : "gravel" });
-            if (impactSpd > 10.0) {
+            if (impactSpd > 10.0 && !spec.isTracked) {
               this.emit("toast", isRock ? `BRUTAL BOULDER SLAM (-${Math.round(hitDmg)}% front-end)!` : "THUD! Hit a tree — hit it >48 km/h to smash through!");
             }
           }
