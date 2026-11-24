@@ -1957,6 +1957,37 @@ KK.World = class World {
     return null;
   }
 
+  // v14.4 BULLET / AUTOCANNON / CANNON / ROCKET TREE DAMAGE & FELLING!
+  damageTreesAt(gx, gy, gz, dmg = 35, blastRad = 0, dirX = 1, dirZ = 0) {
+    const res = { hit: false, broken: [] };
+    if (!this.activeColliders || this.activeColliders.length === 0) return res;
+    const isBlast = blastRad > 0.5;
+    for (let i = 0; i < this.activeColliders.length; i++) {
+      const c = this.activeColliders[i];
+      if (c.broken || c.kind !== "tree") continue;
+      const dx = c.x - gx, dz = c.z - gz;
+      const hitR = (c.r || 0.55) + (isBlast ? blastRad : 0.95);
+      if (Math.abs(dx) > hitR || Math.abs(dz) > hitR) continue;
+      const d = Math.hypot(dx, dz);
+      if (d > hitR) continue;
+      if (!isBlast && (gy < c.y - 0.5 || gy > c.y + (c.h || 7.5) + 0.8)) continue;
+      if (isBlast && Math.abs(gy - c.y) > Math.max(10.0, blastRad * 1.1)) continue;
+
+      res.hit = true;
+      const falloff = isBlast ? Math.max(0.25, 1.0 - d / hitR) : 1.0;
+      if (typeof c.hp !== "number") c.hp = 100;
+      c.hp -= dmg * falloff;
+      if (c.hp <= 0) {
+        const fx = isBlast && d > 0.2 ? dx : dirX;
+        const fz = isBlast && d > 0.2 ? dz : dirZ;
+        this.knockDownTree(c.id, fx, fz);
+        res.broken.push({ treeId: c.id, x: c.x, y: c.y, z: c.z, dirX: fx, dirZ: fz });
+      }
+      if (!isBlast) break;
+    }
+    return res;
+  }
+
   knockDownTree(treeId, dirX = 1, dirZ = 0) {
     if (!treeId || this.brokenTrees.has(treeId)) return;
     this.brokenTrees.add(treeId);

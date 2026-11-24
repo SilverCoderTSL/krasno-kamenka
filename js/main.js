@@ -100,6 +100,7 @@ KK.Game = class Game {
     this.barrelSmokeTimer = 0;
     this.barrelSmokeCd = 0;
     this.barrelHeat = 0;
+    this.autoBarrelHeat = 0;
     this.t72CoaxCd = 0;
     this.t72CoaxFlash = 0;
     this.thermalMode = 0; // 0 = Day, 1 = FLIR White-Hot Thermal, 2 = 1PN51 Green IR Night Vision
@@ -326,7 +327,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v14.3 ONLINE! Revamped Bukhanka Starter Van, Screenshot Version Stamp, Fixed James May Beer Run & Online WSS Multiplayer!');
+      this.ui.toast('Welcome to v14.4 ONLINE! Thick 3D Winch Cable, Destructible Trees by Gunfire, Synced Tank Gun Pitch, Red-Hot Glowing Barrels & 2-Axis T-72B Roof MG!');
     }, 650);
   }
 
@@ -2255,6 +2256,21 @@ KK.Game = class Game {
     if (this.audio && this.audio.playImpact) this.audio.playImpact(Math.min(1.0, 0.4 + falloff * 0.6));
   }
 
+  _applyTreeBallistics(gx, gy, gz, dmg, blastRad = 0, dirX = 1, dirZ = 0) {
+    if (!this.world || !this.world.damageTreesAt) return { hit: false, broken: [] };
+    const tr = this.world.damageTreesAt(gx, gy, gz, dmg, blastRad, dirX, dirZ);
+    if (tr.broken && tr.broken.length > 0) {
+      if (this.audio && this.audio.playWoodSnap) this.audio.playWoodSnap();
+      for (const b of tr.broken) {
+        if (this.particles) this.particles.emitCrashBurst(b.x, b.y + 1.4, b.z, 1.2, "gravel", this.weather.weather);
+        if (this.network) this.network.send({ type: "tree_break", treeId: b.treeId, x: +b.x.toFixed(1), y: +b.y.toFixed(1), z: +b.z.toFixed(1), dirX: +(b.dirX || 1).toFixed(2), dirZ: +(b.dirZ || 0).toFixed(2) });
+      }
+    } else if (tr.hit && blastRad <= 0.5 && this.particles) {
+      this.particles.emitCrashBurst(gx, gy, gz, 0.45, "gravel", this.weather.weather);
+    }
+    return tr;
+  }
+
   triggerDonnerschildAps() {
     this.apsFlashTimer = 0.65;
     if (this.audio.playApsIntercept) this.audio.playApsIntercept();
@@ -2333,6 +2349,7 @@ KK.Game = class Game {
       if (cHit.hit) { endPt.set(rx, ry, rz); break; }
       if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio).hit) { endPt.set(rx, ry, rz); break; }
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, isAp140 ? 1.5 : 6.5, this, false)) { endPt.set(rx, ry, rz); break; }
+      if (this._applyTreeBallistics(rx, ry, rz, 160, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       const gh = this.world.getTerrainInfo(rx, rz, false).height;
       if (ry <= gh) {
         endPt.set(rx, gh, rz);
@@ -2350,6 +2367,7 @@ KK.Game = class Game {
     const beamCol = sh === "ap140" ? 0x7df9ff : (sh === "therm140" ? 0xff4500 : 0xffbe0b);
     this._spawnTracerBeam(mz.tipWorld.x, mz.tipWorld.y, mz.tipWorld.z, endPt.x, endPt.y, endPt.z, beamCol, 0.22);
     this.particles.emitCrashBurst(endPt.x, endPt.y + 1.0, endPt.z, isAp140 ? 0.75 : 2.8, "rock", this.weather.weather);
+    if (!isAp140) this._applyTreeBallistics(endPt.x, endPt.y, endPt.z, sh === "therm140" ? 220 : 160, sh === "therm140" ? 18.0 : 12.0, aimDir.x, aimDir.z);
     this._applyIncomingOrdnanceDamage(endPt.x, endPt.y, endPt.z, sh, 140, true);
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 32)) this.clarksonFarm.triggerRage(this.ui, this.audio);
     this.network.send({
@@ -2366,6 +2384,7 @@ KK.Game = class Game {
     if ((vs.p140AutoAmmo || 0) <= 0) return;
     this.t72CoaxCd = 0.22;
     this.t72CoaxFlash = 0.09;
+    this.autoBarrelHeat = Math.min(1.0, this.autoBarrelHeat + 0.095);
     vs.p140AutoAmmo--;
 
     let muzzleG, aimDir;
@@ -2393,6 +2412,7 @@ KK.Game = class Game {
       if (cHit.hit) { endPt.set(rx, ry, rz); this.particles.emitCrashBurst(rx, ry, rz, 1.1, "rock", this.weather.weather); break; }
       if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio).hit) { endPt.set(rx, ry, rz); break; }
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.5, this, false)) { endPt.set(rx, ry, rz); break; }
+      if (this._applyTreeBallistics(rx, ry, rz, 42, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       const gh = this.world.getTerrainInfo(rx, rz, false).height;
       if (ry <= gh) { endPt.set(rx, gh, rz); this.particles.emitCrashBurst(rx, gh + 0.3, rz, 0.9, "rock", this.weather.weather); break; }
     }
@@ -2445,6 +2465,7 @@ KK.Game = class Game {
       const cHit = this.cryptids.applyCannonHit(rx, ry, rz, shell, this.audio, 125);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
+      if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       if (cHit.hit) { endPt.set(rx, ry, rz); hitRes = cHit; break; }
       const gh = this.world.getTerrainInfo(rx, rz, false).height;
       if (ry <= gh) {
@@ -2500,10 +2521,22 @@ KK.Game = class Game {
     }
     this.t72CoaxCd = 0.16;
     this.t72CoaxFlash = 0.08;
+    this.autoBarrelHeat = Math.min(1.0, this.autoBarrelHeat + 0.068);
     vs.t72CoaxAmmo--;
 
-    const muzzleG = new THREE.Vector3(0.54, 2.65, 0.18).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
-    const aimDir = this._getBarrelAimWorldDir();
+    let muzzleG, aimDir;
+    if (this.vehicleRig && this.vehicleRig.p140RwsMuzzleTip && this.vehicleRig.p140RwsGunPitch) {
+      this.vehicleRig.root.updateMatrixWorld(true);
+      const tipL = new THREE.Vector3();
+      this.vehicleRig.p140RwsMuzzleTip.getWorldPosition(tipL);
+      muzzleG = new THREE.Vector3(tipL.x + this.world.originX, tipL.y, tipL.z + this.world.originZ);
+      const qW = new THREE.Quaternion();
+      this.vehicleRig.p140RwsGunPitch.getWorldQuaternion(qW);
+      aimDir = new THREE.Vector3(0, 0, 1).applyQuaternion(qW).normalize();
+    } else {
+      muzzleG = new THREE.Vector3(0.58, 2.96, 0.18).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
+      aimDir = this._getBarrelAimWorldDir(this.p140RwsYaw);
+    }
     let endPt = muzzleG.clone().addScaledVector(aimDir, 240);
     let hitRes = { hit: false };
     for (let s = 8; s <= 240; s += 6) {
@@ -2511,6 +2544,7 @@ KK.Game = class Game {
       const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer));
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
+      if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       if (cHit.hit) { endPt.set(rx, ry, rz); hitRes = cHit; this.particles.emitCrashBurst(rx, ry, rz, 0.7, "rock", this.weather.weather); break; }
       const gh = this.world.getTerrainInfo(rx, rz, false).height;
       if (ry <= gh) { endPt.set(rx, gh, rz); this.particles.emitCrashBurst(rx, gh + 0.3, rz, 0.5, "rock", this.weather.weather); break; }
@@ -2555,6 +2589,7 @@ KK.Game = class Game {
       const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer));
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
+      if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       if (cHit.hit) {
         endPt.set(rx, ry, rz);
         hitRes = cHit;
@@ -2577,6 +2612,7 @@ KK.Game = class Game {
     this.particles.emitMuzzleShockwave(mzBtr.tipWorld, mzBtr.dirWorld, this.world, this.weather.weather, 0.50, false);
     this.barrelSmokeTimer = Math.max(this.barrelSmokeTimer, 2.8);
     this.barrelHeat = Math.min(1.0, this.barrelHeat + 0.09);
+    this.autoBarrelHeat = Math.min(1.0, this.autoBarrelHeat + 0.075);
 
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 25)) {
       this.clarksonFarm.triggerRage(this.ui, this.audio);
@@ -2751,6 +2787,7 @@ KK.Game = class Game {
       const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 23);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
+      if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       if (cHit.hit) { endPt.set(rx, ry, rz); hitRes = cHit; this.particles.emitCrashBurst(rx, ry, rz, 0.85, "rock", this.weather.weather); break; }
       const gh = this.world.getTerrainInfo(rx, rz, false).height;
       if (ry <= gh) { endPt.set(rx, gh, rz); this.particles.emitCrashBurst(rx, gh + 0.25, rz, 0.55, "rock", this.weather.weather); break; }
@@ -2766,6 +2803,7 @@ KK.Game = class Game {
     }
     this.barrelSmokeTimer = Math.max(this.barrelSmokeTimer, 3.4);
     this.barrelHeat = Math.min(1.0, this.barrelHeat + 0.055);
+    this.autoBarrelHeat = Math.min(1.0, this.autoBarrelHeat + 0.048);
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 25)) this.clarksonFarm.triggerRage(this.ui, this.audio);
     
 
@@ -3003,7 +3041,7 @@ KK.Game = class Game {
       t72ShellType: this.vehicle.vState.t72ShellType,
       t72CoaxAmmo: this.vehicle.vState.t72CoaxAmmo || 0,
       thermalMode: this.thermalMode || 0,
-      barrelHeat: this.barrelHeat || 0,
+      barrelHeat: this.barrelHeat || 0, autoBarrelHeat: this.autoBarrelHeat || 0,
       egtTemp: this.vehicle.egtTemp || 320,
       waterDepth: this.vehicle.inWaterDepth || 0,
       hasT72Snorkel: !!this.vehicle.vState.upgrades.t72Snorkel,
@@ -3168,7 +3206,8 @@ KK.Game = class Game {
     if (this.gradFlashTimer > 0) this.gradFlashTimer = Math.max(0, this.gradFlashTimer - dt);
     if (this.shilkaFireCd > 0) this.shilkaFireCd = Math.max(0, this.shilkaFireCd - dt);
     if (this.shilkaFlashTimer > 0) this.shilkaFlashTimer = Math.max(0, this.shilkaFlashTimer - dt);
-    if (this.barrelHeat > 0) this.barrelHeat = Math.max(0, this.barrelHeat - dt * 0.042);
+    if (this.barrelHeat > 0) this.barrelHeat = Math.max(0, this.barrelHeat - dt * 0.046);
+    if (this.autoBarrelHeat > 0) this.autoBarrelHeat = Math.max(0, this.autoBarrelHeat - dt * 0.095);
     if (this.barrelSmokeTimer > 0) {
       this.barrelSmokeTimer = Math.max(0, this.barrelSmokeTimer - dt);
       this.barrelSmokeCd -= dt;
@@ -3206,7 +3245,7 @@ KK.Game = class Game {
 
         // Remote 40mm AutoKanone Turret on PzKpfw 140A4: Independent 2-Axis Tracking!
         // Azimuth: 125°/s (2.18 rad/s, 3.1x faster than 140mm turret) | Elevation: -10° depression to +55° anti-air/Kaiju at 78°/s!
-        if (is140T) {
+        if (is140T || curVid === "t72") {
           let dyRws = targetYaw - (this.p140RwsYaw || 0);
           while (dyRws > Math.PI) dyRws -= Math.PI * 2; while (dyRws < -Math.PI) dyRws += Math.PI * 2;
           const maxRwsStep = 2.18 * dt;
@@ -3269,6 +3308,7 @@ KK.Game = class Game {
         this.particles.emitCrashBurst(rk.gx, hitY + 1.8, rk.gz, 4.2, "rock", this.weather.weather);
         this.particles.emitCrashBurst(rk.gx, hitY + 4.5, rk.gz, 3.2, "sand", this.weather.weather);
         if (rk.isOwner && this.gasStations) this.gasStations.checkProjectileHit(rk.gx, hitY, rk.gz, 16.0, this, false);
+        if (rk.isOwner) this._applyTreeBallistics(rk.gx, hitY, rk.gz, 180, 15.0, rk.vx, rk.vz);
         if (dPlayer < 950) {
           this.audio.playArtilleryExplosion(Math.max(0.16, 1.0 - dPlayer / 950));
           this.cameraShake = Math.max(this.cameraShake, Math.max(0, 1.0 - dPlayer / 360) * 1.15);
@@ -3379,7 +3419,7 @@ KK.Game = class Game {
       this.wpBeacon.visible = true;
     } else { this.wpBeacon.visible = false; }
 
-    this.network.broadcastPlayerState(dt, this.vehicle, this.playerFoot, this.onFoot, this.trailer, this.wipersOn, !!this.timedWork, this.btrTurretYaw, this.carriedByPeerId, false, this.barrelHeat, this.p140RwsYaw, this.p140RwsPitch);
+    this.network.broadcastPlayerState(dt, this.vehicle, this.playerFoot, this.onFoot, this.trailer, this.wipersOn, !!this.timedWork, this.btrTurretYaw, this.carriedByPeerId, false, this.barrelHeat, this.p140RwsYaw, this.p140RwsPitch, this.btrAimPitch, this.autoBarrelHeat);
     const lerpF = Math.min(1, dt * 12);
     for (const rp of this.network.remotePlayers.values()) {
       rp.gx += (rp.tx - rp.gx) * lerpF; rp.gy += (rp.ty - rp.gy) * lerpF; rp.gz += (rp.tz - rp.gz) * lerpF;
@@ -3392,7 +3432,7 @@ KK.Game = class Game {
         rp.rig.baseColor.set(rp.paintColor || "#5b6d5b");
         rp.rig.updateVisuals(dt, {
           wheelOffsets: rp.wheelOffsets, wheelSpins: rp.wheelSpins, blownTires: rp.blownTires, steerAngle: rp.steerAngle,
-          camberDeg: rp.camberDeg, toeDeg: 0, headlights: rp.headlights, lightbar: rp.lightbar, hasLightbar: rp.hasLightbar, headlightL: rp.headlightL, headlightR: rp.headlightR, wipersOn: rp.wipersOn, inCockpitCam: false, isEmpty: !!rp.onFoot, hasBtrTurret: !!rp.hasBtrTurret, turretYaw: rp.turretYaw || 0, rwsYaw: rp.rwsYaw !== undefined ? rp.rwsYaw : (rp.turretYaw || 0), rwsPitch: rp.rwsPitch || 0, t72Upgrades: { sturmKit: false }, isSchreckensfurst: rp.vehicleId === "pzkpfw_140a4",
+          camberDeg: rp.camberDeg, toeDeg: 0, headlights: rp.headlights, lightbar: rp.lightbar, hasLightbar: rp.hasLightbar, headlightL: rp.headlightL, headlightR: rp.headlightR, wipersOn: rp.wipersOn, inCockpitCam: false, isEmpty: !!rp.onFoot, hasBtrTurret: !!rp.hasBtrTurret, turretYaw: rp.turretYaw || 0, gunPitch: rp.gunPitch || 0, rwsYaw: rp.rwsYaw !== undefined ? rp.rwsYaw : (rp.turretYaw || 0), rwsPitch: rp.rwsPitch || 0, autoBarrelHeat: rp.autoBarrelHeat || 0, t72Upgrades: { sturmKit: false }, isSchreckensfurst: rp.vehicleId === "pzkpfw_140a4",
           braking: rp.braking, reversing: false, hazards: rp.hazards, hoodOpen: false,
           smokeLevel: rp.smokeLevel, dirtLevel: rp.dirtLevel, backfireTimer: rp.backfireTimer,
           cargoTilt: 0, rideHeight: rp.rideHeight, thermalMode: this.thermalMode || 0, coolantTemp: rp.coolantTemp !== undefined ? rp.coolantTemp : 82, egtTemp: rp.egtTemp !== undefined ? rp.egtTemp : 320, barrelHeat: rp.barrelHeat || 0, speedKmh: Math.hypot(rp.vx || 0, rp.vz || 0) * 3.6

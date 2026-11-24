@@ -1093,7 +1093,7 @@ KK.LanNetwork = class LanNetwork {
         vehicleId: pkt.vid || "uaz452", paintColor: pkt.col || "#5b6d5b",
         onFoot: !!pkt.foot, footX: pkt.fx || 0, footY: pkt.fy || 5, footZ: pkt.fz || 0, footYaw: pkt.fyaw || 0,
         wheelOffsets: pkt.wo || [], wheelSpins: pkt.ws || [], blownTires: pkt.bt || [], steerAngle: pkt.st || 0,
-        headlights: !!pkt.hl, lightbar: !!pkt.lb, hasLightbar: !!pkt.ulb, headlightL: pkt.hll !== undefined ? pkt.hll : 100, headlightR: pkt.hlr !== undefined ? pkt.hlr : 100, engOn: pkt.eng !== undefined ? !!pkt.eng : true, rpm: pkt.rpm || 800, engineId: pkt.eid || null, throttle: pkt.thr || 0, hornActive: !!pkt.hrn, rwsYaw: pkt.rwsy !== undefined ? pkt.rwsy : (pkt.tyaw || 0), rwsPitch: pkt.rwsp || 0, wipersOn: !!pkt.wp, repairing: !!pkt.rep, hasBtrTurret: !!pkt.btur, turretYaw: pkt.tyaw || 0, carriedByPeerId: pkt.cbp || null, braking: !!pkt.br, hazards: !!pkt.hz,
+        headlights: !!pkt.hl, lightbar: !!pkt.lb, hasLightbar: !!pkt.ulb, headlightL: pkt.hll !== undefined ? pkt.hll : 100, headlightR: pkt.hlr !== undefined ? pkt.hlr : 100, engOn: pkt.eng !== undefined ? !!pkt.eng : true, rpm: pkt.rpm || 800, engineId: pkt.eid || null, throttle: pkt.thr || 0, hornActive: !!pkt.hrn, rwsYaw: pkt.rwsy !== undefined ? pkt.rwsy : (pkt.tyaw || 0), rwsPitch: pkt.rwsp || 0, gunPitch: pkt.gp || 0, autoBarrelHeat: pkt.abh || 0, wipersOn: !!pkt.wp, repairing: !!pkt.rep, hasBtrTurret: !!pkt.btur, turretYaw: pkt.tyaw || 0, carriedByPeerId: pkt.cbp || null, braking: !!pkt.br, hazards: !!pkt.hz,
         smokeLevel: pkt.smk || 0, dirtLevel: pkt.dirt || 0, backfireTimer: pkt.bf || 0, coolantTemp: pkt.etmp !== undefined ? pkt.etmp : 82, egtTemp: pkt.egt !== undefined ? pkt.egt : 320, barrelHeat: pkt.bh || 0,
         cargoCount: pkt.cc || 0, cargoType: pkt.ct || "standard",
         rideHeight: pkt.rh || 0, camberDeg: pkt.cb || 0, lastSeen: performance.now(), rig: null, avatar: null
@@ -1113,7 +1113,7 @@ KK.LanNetwork = class LanNetwork {
       entry.paintColor = pkt.col || entry.paintColor;
       entry.onFoot = !!pkt.foot; entry.footX = pkt.fx || pkt.x; entry.footY = pkt.fy || pkt.y; entry.footZ = pkt.fz || pkt.z; entry.footYaw = pkt.fyaw || 0;
       entry.wheelOffsets = pkt.wo || entry.wheelOffsets; entry.wheelSpins = pkt.ws || entry.wheelSpins; entry.blownTires = pkt.bt || entry.blownTires;
-      entry.steerAngle = pkt.st || 0; entry.headlights = !!pkt.hl; entry.lightbar = !!pkt.lb; entry.hasLightbar = !!pkt.ulb; entry.headlightL = pkt.hll !== undefined ? pkt.hll : 100; entry.headlightR = pkt.hlr !== undefined ? pkt.hlr : 100; entry.engOn = pkt.eng !== undefined ? !!pkt.eng : true; entry.rpm = pkt.rpm || 800; entry.engineId = pkt.eid || entry.engineId; entry.throttle = pkt.thr || 0; entry.hornActive = !!pkt.hrn; entry.rwsYaw = pkt.rwsy !== undefined ? pkt.rwsy : (pkt.tyaw || 0); entry.rwsPitch = pkt.rwsp || 0; entry.wipersOn = !!pkt.wp; entry.repairing = !!pkt.rep; entry.hasBtrTurret = !!pkt.btur; entry.turretYaw = pkt.tyaw || 0; entry.carriedByPeerId = pkt.cbp || null;
+      entry.steerAngle = pkt.st || 0; entry.headlights = !!pkt.hl; entry.lightbar = !!pkt.lb; entry.hasLightbar = !!pkt.ulb; entry.headlightL = pkt.hll !== undefined ? pkt.hll : 100; entry.headlightR = pkt.hlr !== undefined ? pkt.hlr : 100; entry.engOn = pkt.eng !== undefined ? !!pkt.eng : true; entry.rpm = pkt.rpm || 800; entry.engineId = pkt.eid || entry.engineId; entry.throttle = pkt.thr || 0; entry.hornActive = !!pkt.hrn; entry.rwsYaw = pkt.rwsy !== undefined ? pkt.rwsy : (pkt.tyaw || 0); entry.rwsPitch = pkt.rwsp || 0; entry.gunPitch = pkt.gp || 0; entry.autoBarrelHeat = pkt.abh || 0; entry.wipersOn = !!pkt.wp; entry.repairing = !!pkt.rep; entry.hasBtrTurret = !!pkt.btur; entry.turretYaw = pkt.tyaw || 0; entry.carriedByPeerId = pkt.cbp || null;
       entry.braking = !!pkt.br; entry.hazards = !!pkt.hz; entry.smokeLevel = pkt.smk || 0;
       entry.dirtLevel = pkt.dirt || 0; entry.backfireTimer = pkt.bf || 0; entry.coolantTemp = pkt.etmp !== undefined ? pkt.etmp : 82; entry.egtTemp = pkt.egt !== undefined ? pkt.egt : 320; entry.barrelHeat = pkt.bh || 0;
       entry.cargoCount = pkt.cc || 0; entry.cargoType = pkt.ct || "standard";
@@ -1121,7 +1121,7 @@ KK.LanNetwork = class LanNetwork {
     }
   }
 
-  broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0) {
+  broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0, gunPitch = 0, autoBarrelHeat = 0) {
     this.sendAccum += dt;
     if (!force && this.sendAccum < 0.10) return; // Broker-friendly 10 Hz over WSS (smoothly lerped!)
     this.sendAccum = 0;
@@ -1141,8 +1141,8 @@ KK.LanNetwork = class LanNetwork {
       wo: vehicle.wheels.map((w) => +w.visualOffsetY.toFixed(2)),
       ws: vehicle.wheels.map((w) => +w.spinAngle.toFixed(2)),
       bt: (vehicle.vState.blownTires || []).map((b) => (b ? 1 : 0)),
-      st: +vehicle.steerAngle.toFixed(2), hl: vehicle.headlights ? 1 : 0, lb: vehicle.lightbar ? 1 : 0, ulb: vehicle.vState.upgrades.ledLightbar ? 1 : 0, hll: Math.round(vehicle.vState.health.headlightL ?? 100), hlr: Math.round(vehicle.vState.health.headlightR ?? 100), eng: vehicle.engineRunning ? 1 : 0, rpm: Math.round(vehicle.rpm || 0), eid: vehicle.vState.engineId, thr: +(vehicle.throttle || 0).toFixed(2), hrn: vehicle.hornActive ? 1 : 0, wp: wipersOn ? 1 : 0, rep: repairing ? 1 : 0, btur: vehicle.vState.upgrades.btrTurret ? 1 : 0, tyaw: +(turretYaw || 0).toFixed(2), rwsy: +(rwsYaw || 0).toFixed(2), rwsp: +(rwsPitch || 0).toFixed(2), cbp: carriedByPeerId || null,
-      br: vehicle.braking ? 1 : 0, hz: vehicle.hazards ? 1 : 0, smk: +Math.max(0, smoke).toFixed(2), etmp: Math.round(vehicle.coolantTemp || 82), egt: Math.round(vehicle.egtTemp || 320), bh: +(barrelHeat || 0).toFixed(2),
+      st: +vehicle.steerAngle.toFixed(2), hl: vehicle.headlights ? 1 : 0, lb: vehicle.lightbar ? 1 : 0, ulb: vehicle.vState.upgrades.ledLightbar ? 1 : 0, hll: Math.round(vehicle.vState.health.headlightL ?? 100), hlr: Math.round(vehicle.vState.health.headlightR ?? 100), eng: vehicle.engineRunning ? 1 : 0, rpm: Math.round(vehicle.rpm || 0), eid: vehicle.vState.engineId, thr: +(vehicle.throttle || 0).toFixed(2), hrn: vehicle.hornActive ? 1 : 0, wp: wipersOn ? 1 : 0, rep: repairing ? 1 : 0, btur: vehicle.vState.upgrades.btrTurret ? 1 : 0, tyaw: +(turretYaw || 0).toFixed(2), gp: +(gunPitch || 0).toFixed(3), rwsy: +(rwsYaw || 0).toFixed(2), rwsp: +(rwsPitch || 0).toFixed(2), cbp: carriedByPeerId || null,
+      br: vehicle.braking ? 1 : 0, hz: vehicle.hazards ? 1 : 0, smk: +Math.max(0, smoke).toFixed(2), etmp: Math.round(vehicle.coolantTemp || 82), egt: Math.round(vehicle.egtTemp || 320), bh: +(barrelHeat || 0).toFixed(2), abh: +(autoBarrelHeat || 0).toFixed(2),
       dirt: +(vehicle.vState.dirtLevel || 0).toFixed(2),
       bf: vehicle.backfireTimer > 0 ? 1 : 0,
       cc: vehicle.cargoCount, ct: vehicle.cargoType,

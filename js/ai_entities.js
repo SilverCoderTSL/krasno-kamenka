@@ -9,11 +9,30 @@ KK.EntityManager = class EntityManager {
     this.scene = scene; this.world = world;
     this.deers = []; this.goats = []; this.camels = []; this.fishes = []; this.looseCrates = [];
 
-    this.winchLineGeo = new THREE.BufferGeometry();
-    this.winchLineGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(12 * 3), 3));
-    this.winchLine = new THREE.Line(this.winchLineGeo, new THREE.LineBasicMaterial({ color: 0xffd166 }));
-    this.winchLine.visible = false;
-    this.scene.add(this.winchLine);
+    // v14.4 THICK 3D HIGH-VISIBILITY WINCH CABLE (12-segment 3D cylinder rope + glowing hook!)
+    this.winchGroup = new THREE.Group();
+    this.winchGroup.visible = false;
+    this.winchSegs = [];
+    const ropeGeo = new THREE.CylinderGeometry(0.055, 0.055, 1.0, 8);
+    const ropeMat = new THREE.MeshStandardMaterial({
+      color: 0xffc300, emissive: 0xff7b00, emissiveIntensity: 0.55,
+      roughness: 0.42, metalness: 0.55
+    });
+    for (let s = 0; s < 12; s++) {
+      const seg = new THREE.Mesh(ropeGeo, ropeMat);
+      seg.castShadow = true;
+      this.winchGroup.add(seg);
+      this.winchSegs.push(seg);
+    }
+    this.winchHook = new THREE.Mesh(
+      new THREE.TorusGeometry(0.18, 0.055, 8, 14),
+      new THREE.MeshStandardMaterial({ color: 0xff3b30, emissive: 0xff3b30, emissiveIntensity: 0.65, roughness: 0.35, metalness: 0.7 })
+    );
+    this.winchGroup.add(this.winchHook);
+    this.scene.add(this.winchGroup);
+    this._winchYAxis = new THREE.Vector3(0, 1, 0);
+    this._winchPts = [];
+    for (let i = 0; i <= 12; i++) this._winchPts.push(new THREE.Vector3());
 
     this.matDeerFur   = new THREE.MeshStandardMaterial({ color: 0x6e4b30, roughness: 0.9 });
     this.matDeerBelly = new THREE.MeshStandardMaterial({ color: 0xc9b498, roughness: 0.9 });
@@ -287,27 +306,42 @@ KK.EntityManager = class EntityManager {
   }
 
   updateWinchLine(vehicle, remotePlayersMap) {
-    if (!vehicle.winch.active) { this.winchLine.visible = false; return; }
+    if (!vehicle.winch.active) { this.winchGroup.visible = false; return; }
     let anchorG = vehicle.winch.anchorPos;
     if (vehicle.winch.targetPeerId && remotePlayersMap) {
       const rp = remotePlayersMap.get(vehicle.winch.targetPeerId);
       if (rp) anchorG = new THREE.Vector3(rp.gx, rp.gy + 0.8, rp.gz);
     }
-    if (!anchorG) { this.winchLine.visible = false; return; }
-    this.winchLine.visible = true;
+    if (!anchorG) { this.winchGroup.visible = false; return; }
+    this.winchGroup.visible = true;
     const localAtt = vehicle.winch.localAttach || new THREE.Vector3(0, 0.62, vehicle.spec.bodyLen * 0.5);
     const startG = localAtt.clone().applyQuaternion(vehicle.quat).add(vehicle.pos);
     const startL = this.world.toLocal(startG.x, startG.y, startG.z, new THREE.Vector3());
     const endL = this.world.toLocal(anchorG.x, anchorG.y, anchorG.z, new THREE.Vector3());
-    const arr = this.winchLineGeo.attributes.position.array;
-    for (let i = 0; i < 12; i++) {
-      const t = i / 11;
-      const sag = Math.sin(t * Math.PI) * Math.max(0.1, (vehicle.winch.length - startL.distanceTo(endL)) * 0.18);
-      arr[i * 3 + 0] = startL.x + (endL.x - startL.x) * t;
-      arr[i * 3 + 1] = startL.y + (endL.y - startL.y) * t - sag;
-      arr[i * 3 + 2] = startL.z + (endL.z - startL.z) * t;
+    const dist = startL.distanceTo(endL);
+    const sagAmp = Math.max(0.08, Math.min(2.4, (vehicle.winch.length - dist) * 0.18));
+
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12;
+      const sag = Math.sin(t * Math.PI) * sagAmp;
+      this._winchPts[i].set(
+        startL.x + (endL.x - startL.x) * t,
+        startL.y + (endL.y - startL.y) * t - sag,
+        startL.z + (endL.z - startL.z) * t
+      );
     }
-    this.winchLineGeo.attributes.position.needsUpdate = true;
+    const dir = new THREE.Vector3();
+    for (let s = 0; s < 12; s++) {
+      const a = this._winchPts[s], b = this._winchPts[s + 1];
+      dir.subVectors(b, a);
+      const len = Math.max(0.02, dir.length());
+      const seg = this.winchSegs[s];
+      seg.position.copy(a).addScaledVector(dir, 0.5);
+      seg.scale.set(1, len + 0.04, 1);
+      seg.quaternion.setFromUnitVectors(this._winchYAxis, dir.normalize());
+    }
+    this.winchHook.position.copy(endL);
+    this.winchHook.lookAt(startL);
   }
 
   setThermalMode(isFlir) {

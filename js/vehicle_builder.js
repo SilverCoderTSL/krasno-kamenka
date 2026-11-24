@@ -227,7 +227,7 @@ KK.VehicleBuilder = {
     const chassis = new THREE.Group();
     root.add(chassis);
     const cockpitCfg = KK.CockpitBuilder ? KK.CockpitBuilder.getConfig(vehicleId) : null;
-    let cockpit = null, btrTurretPivot = null, btrGunGroup = null, btrMuzzleFlash = null, tankTurretPivot = null, tankGunPitch = null, tankBarrelSlide = null, tankMainFlash = null, tankCoaxFlash = null, trackSys = null, tankDriverHoodMesh = null, tankUpgVisuals = null, tankXrayAnim = null, gradTurretPivot = null, gradPodPitch = null, gradFlashMesh = null, shilkaTurretPivot = null, shilkaGunPitch = null, shilkaBarrels = null, shilkaRadarDish = null, shilkaFlashes = null, p140SturmGroup = null, p140ApsFlash = null, p140XrayAnim = null, p140RwsPivot = null, p140RwsGunPitch = null, p140RwsMuzzleTip = null;
+    let cockpit = null, btrTurretPivot = null, btrGunGroup = null, btrMuzzleFlash = null, tankTurretPivot = null, tankGunPitch = null, tankBarrelSlide = null, tankMainFlash = null, tankCoaxFlash = null, trackSys = null, tankDriverHoodMesh = null, tankUpgVisuals = null, tankXrayAnim = null, gradTurretPivot = null, gradPodPitch = null, gradFlashMesh = null, shilkaTurretPivot = null, shilkaGunPitch = null, shilkaBarrels = null, shilkaRadarDish = null, shilkaFlashes = null, p140SturmGroup = null, p140ApsFlash = null, p140XrayAnim = null, p140RwsPivot = null, p140RwsGunPitch = null, p140RwsMuzzleTip = null, matMainBarrelHot = null, matAutoBarrelHot = null;
 
     const basePaintHex = (vState && vState.paintColor) ? vState.paintColor : spec.color;
     const basePaintColor = new THREE.Color(basePaintHex);
@@ -1234,7 +1234,8 @@ KK.VehicleBuilder = {
       btrGunGroup.visible = false;
       const mantlet = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.36, 0.42), matArmorDk);
       mantlet.position.set(0, 0.06, 0.92); btrGunGroup.add(mantlet);
-      const kpvtBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.058, 2.15, 10), matMetal);
+      matAutoBarrelHot = matMetal.clone();
+      const kpvtBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.058, 2.15, 10), matAutoBarrelHot);
       kpvtBarrel.rotation.x = Math.PI / 2; kpvtBarrel.position.set(0, 0.06, 2.05); kpvtBarrel.castShadow = true; btrGunGroup.add(kpvtBarrel);
       const muzzleBrake = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.055, 0.24, 8), matRubber);
       muzzleBrake.rotation.x = Math.PI / 2; muzzleBrake.position.set(0, 0.06, 3.16); btrGunGroup.add(muzzleBrake);
@@ -1702,16 +1703,37 @@ KK.VehicleBuilder = {
 
       const cupola = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.42, 0.24, 12), matArmorDk);
       cupola.position.set(0.58, 0.94, -0.18); tankTurretPivot.add(cupola);
-      const mgMount = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.24, 0.58), matSteel);
-      mgMount.position.set(0.58, 1.18, 0.20); tankTurretPivot.add(mgMount);
-      const mgBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.044, 1.65, 8), matSteel);
-      mgBarrel.rotation.x = Math.PI / 2; mgBarrel.position.set(0.58, 1.22, 1.24); tankTurretPivot.add(mgBarrel);
+      // v14.4 INDEPENDENT 2-AXIS ROTATING & ELEVATING T-72B 14.5mm ROOF MG TURRET!
+      matAutoBarrelHot = matSteel.clone();
+      p140RwsPivot = new THREE.Group();
+      p140RwsPivot.position.set(0.58, 1.06, -0.18);
+      tankTurretPivot.add(p140RwsPivot);
+
+      const mgRing = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.10, 12), matArmorDk);
+      mgRing.position.y = 0.05; p140RwsPivot.add(mgRing);
+      const mgPost = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.22, 0.14), matSteel);
+      mgPost.position.set(0, 0.18, 0.08); p140RwsPivot.add(mgPost);
+
+      p140RwsGunPitch = new THREE.Group();
+      p140RwsGunPitch.position.set(0, 0.28, 0.08);
+      p140RwsPivot.add(p140RwsGunPitch);
+
+      const mgReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.20, 0.56), matArmorDk);
+      mgReceiver.position.set(0, 0, 0.10); mgReceiver.castShadow = true; p140RwsGunPitch.add(mgReceiver);
+      const mgAmmoBox = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.20, 0.30), matPaint);
+      mgAmmoBox.position.set(0.18, -0.02, 0.04); p140RwsGunPitch.add(mgAmmoBox);
+      const mgBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.046, 1.65, 8), matAutoBarrelHot);
+      mgBarrel.rotation.x = Math.PI / 2; mgBarrel.position.set(0, 0.02, 1.15); mgBarrel.castShadow = true; p140RwsGunPitch.add(mgBarrel);
+      p140RwsMuzzleTip = new THREE.Object3D();
+      p140RwsMuzzleTip.position.set(0, 0.02, 2.02);
+      p140RwsGunPitch.add(p140RwsMuzzleTip);
+
       tankCoaxFlash = new THREE.Mesh(
         new THREE.ConeGeometry(0.24, 0.90, 7),
         new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.92 })
       );
-      tankCoaxFlash.rotation.x = Math.PI / 2; tankCoaxFlash.position.set(0.58, 1.22, 2.34); tankCoaxFlash.visible = false;
-      tankTurretPivot.add(tankCoaxFlash);
+      tankCoaxFlash.rotation.x = Math.PI / 2; tankCoaxFlash.position.set(0, 0.02, 2.48); tankCoaxFlash.visible = false;
+      p140RwsGunPitch.add(tankCoaxFlash);
 
       const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.024, 3.0, 5), matSteel);
       ant.position.set(-0.92, 2.18, -0.82); tankTurretPivot.add(ant);
@@ -1732,7 +1754,8 @@ KK.VehicleBuilder = {
       barrelBase.rotation.x = Math.PI / 2; barrelBase.position.z = 1.08; barrelBase.castShadow = true; tankBarrelSlide.add(barrelBase);
       const evac = new THREE.Mesh(new THREE.CylinderGeometry(0.182, 0.182, 0.88, 12), matERA);
       evac.rotation.x = Math.PI / 2; evac.position.z = 2.42; evac.castShadow = true; tankBarrelSlide.add(evac);
-      const barrelTip = new THREE.Mesh(new THREE.CylinderGeometry(0.090, 0.108, 1.98, 12), matSteel);
+      matMainBarrelHot = matSteel.clone();
+      const barrelTip = new THREE.Mesh(new THREE.CylinderGeometry(0.090, 0.108, 1.98, 12), matMainBarrelHot);
       barrelTip.rotation.x = Math.PI / 2; barrelTip.position.z = 3.44; barrelTip.castShadow = true; tankBarrelSlide.add(barrelTip);
 
       tankMainFlash = new THREE.Mesh(
@@ -2011,7 +2034,8 @@ KK.VehicleBuilder = {
         bGrp.position.set(bx, by, 0);
         const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.062, 1.15, 8), matArmorDk);
         jacket.rotation.x = Math.PI / 2; jacket.position.z = 0.62; bGrp.add(jacket);
-        const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.038, 1.65, 8), matSteel);
+        if (!matAutoBarrelHot) matAutoBarrelHot = matSteel.clone();
+        const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.038, 1.65, 8), matAutoBarrelHot);
         tube.rotation.x = Math.PI / 2; tube.position.z = 1.65; tube.castShadow = true; bGrp.add(tube);
         const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.032, 0.20, 8), matSteel);
         cone.rotation.x = Math.PI / 2; cone.position.z = 2.52; bGrp.add(cone);
@@ -2481,7 +2505,8 @@ KK.VehicleBuilder = {
       const rwsLens = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.04), matRedAcc);
       rwsLens.position.set(-0.32, 0.04, 0.28); p140RwsGunPitch.add(rwsLens);
 
-      const akBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.068, 2.35, 10), matSteel);
+      matAutoBarrelHot = matSteel.clone();
+      const akBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.068, 2.35, 10), matAutoBarrelHot);
       akBarrel.rotation.x = Math.PI / 2; akBarrel.position.set(0, 0.02, 1.46); akBarrel.castShadow = true; p140RwsGunPitch.add(akBarrel);
       const akBrake = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.058, 0.26, 8), matArmorDk);
       akBrake.rotation.x = Math.PI / 2; akBrake.position.set(0, 0.02, 2.70); p140RwsGunPitch.add(akBrake);
@@ -2515,7 +2540,8 @@ KK.VehicleBuilder = {
       bCollar1.rotation.x = Math.PI / 2; bCollar1.position.z = 2.45; tankBarrelSlide.add(bCollar1);
       const bEvac = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 1.05, 16), matCamo);
       bEvac.rotation.x = Math.PI / 2; bEvac.position.z = 3.08; bEvac.castShadow = true; tankBarrelSlide.add(bEvac);
-      const bTip = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.142, 2.35, 16), matSteel);
+      matMainBarrelHot = matSteel.clone();
+      const bTip = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.142, 2.35, 16), matMainBarrelHot);
       bTip.rotation.x = Math.PI / 2; bTip.position.z = 4.75; bTip.castShadow = true; tankBarrelSlide.add(bTip);
 
       // Sculpted 4-Port Slotted German Muzzle Brake (Matches Reference Images 2, 3, 4!)
@@ -3518,6 +3544,22 @@ KK.VehicleBuilder = {
             p.mesh.material.color.setHex(smk > 0.65 ? 0x303338 : 0xdde5ed);
           } else { p.mesh.material.opacity = 0; }
         }
+
+        // v14.4 VISIBLE RED-HOT GLOWING BARRELS ON REPEATED FIRE (Day & Night, Local & Remote Tanks!)
+        const applyHotGlow = (mat, heatVal) => {
+          if (!mat || !mat.emissive) return;
+          const h = Math.max(0, Math.min(1, heatVal || 0));
+          if (h > 0.14) {
+            const norm = (h - 0.14) / 0.86;
+            mat.emissive.setRGB(1.0, Math.min(0.45, norm * norm * 0.48), Math.max(0, (norm - 0.72) * 0.35));
+            mat.emissiveIntensity = norm * norm * 3.4;
+          } else {
+            mat.emissive.setRGB(0, 0, 0);
+            mat.emissiveIntensity = 0;
+          }
+        };
+        applyHotGlow(matMainBarrelHot, state.barrelHeat);
+        applyHotGlow(matAutoBarrelHot, state.autoBarrelHeat !== undefined ? state.autoBarrelHeat : state.barrelHeat);
 
         // DYNAMIC FLIR ENGINE, EXHAUST, BARREL & TIRE THERMAL SIGNATURES!
         const isFlir = (state.thermalMode === 1);
