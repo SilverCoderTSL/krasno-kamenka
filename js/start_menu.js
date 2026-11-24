@@ -1,5 +1,5 @@
 // ============================================================================
-// js/start_menu.js (v15.0.1 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
+// js/start_menu.js (v15.1 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
 // Clean Spawn Map (Roads, Rivers & Settlements Only + Survivability Ratings) &
 // Account Password Management
 // ============================================================================
@@ -12,6 +12,13 @@ KK.StartMenu = class StartMenu {
     this.activeTab = "deploy"; // deploy | account | settings
     this.deployStep = "rig";   // rig | map
     this.selectedTownId = 0;
+    this.mapZoom = 1.0;
+    this.mapPanX = 0;
+    this.mapPanZ = 0;
+    this._mapDragging = false;
+    this._mapDragMoved = false;
+    this._mapLastX = 0;
+    this._mapLastY = 0;
     this.selectedVehicleId = game.activeVehicleId || "uaz452";
     this.animT = 0;
     this._raf = null;
@@ -160,52 +167,84 @@ KK.StartMenu = class StartMenu {
       <div class="small" style="margin-top:6px;color:#80faff;"><b>Selected Rig:</b> ${rig.name}</div>`;
   }
 
-  // CLEAN SPAWN MAP — ONLY Roads, Rivers & 10 Settlements (ZERO Easter Eggs / Secret Camps / Hunting Sites!)
+  zoomSpawnMap(mult) {
+    this.mapZoom = Math.max(0.85, Math.min(8.5, this.mapZoom * mult));
+    this._drawSpawnMap();
+  }
+
+  resetSpawnMap() {
+    this.mapZoom = 1.0;
+    this.mapPanX = 0;
+    this.mapPanZ = 0;
+    this._drawSpawnMap();
+  }
+
+  focusSpawnIsland(islandId) {
+    const isl = (KK.ISLANDS || []).find((x) => x.id === islandId);
+    if (!isl) { this.resetSpawnMap(); return; }
+    this.mapPanX = isl.cx;
+    this.mapPanZ = isl.cz;
+    this.mapZoom = islandId === 0 ? 1.85 : (isl.rx < 7000 ? 6.0 : 3.8);
+    this._drawSpawnMap();
+  }
+
+  // ZOOMABLE & PANNABLE ARCHIPELAGO SPAWN MAP (Scroll to Zoom, Drag to Pan, Click Town!)
   _drawSpawnMap() {
     const cv = document.getElementById("sm-spawn-map-canvas");
     if (!cv) return;
     const ctx = cv.getContext("2d");
     const W = cv.width, H = cv.height;
-    const minX = -96000, maxX = 96000, minZ = -94000, maxZ = 94000;
+    const baseSpanX = 196000 / this.mapZoom;
+    const baseSpanZ = (baseSpanX * H) / W;
+    const minX = this.mapPanX - baseSpanX * 0.5;
+    const minZ = this.mapPanZ - baseSpanZ * 0.5;
     const toPx = (gx, gz) => [
-      ((gx - minX) / (maxX - minX)) * (W - 36) + 18,
-      ((gz - minZ) / (maxZ - minZ)) * (H - 36) + 18
+      ((gx - minX) / baseSpanX) * W,
+      ((gz - minZ) / baseSpanZ) * H
     ];
 
-    // Deep Archipelago Ocean Background
     ctx.fillStyle = "#081c2e"; ctx.fillRect(0, 0, W, H);
 
-    // Draw all 6 Archipelago Island silhouettes on Spawn Map!
+    ctx.strokeStyle = "rgba(90, 140, 180, 0.10)"; ctx.lineWidth = 1;
+    const gridStep = this.mapZoom > 3.5 ? 5000 : (this.mapZoom > 1.8 ? 10000 : 20000);
+    const gx0 = Math.floor(minX / gridStep) * gridStep;
+    const gz0 = Math.floor(minZ / gridStep) * gridStep;
+    for (let x = gx0; x <= minX + baseSpanX; x += gridStep) {
+      const [px] = toPx(x, 0);
+      ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
+    }
+    for (let z = gz0; z <= minZ + baseSpanZ; z += gridStep) {
+      const [, py] = toPx(0, z);
+      ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W, py); ctx.stroke();
+    }
+
     if (KK.ISLANDS) {
       for (const isl of KK.ISLANDS) {
         const [ix, iy] = toPx(isl.cx, isl.cz);
-        const rxPx = (isl.rx / (maxX - minX)) * (W - 36);
-        const ryPx = (isl.rz / (maxZ - minZ)) * (H - 36);
+        const rxPx = (isl.rx / baseSpanX) * W;
+        const ryPx = (isl.rz / baseSpanZ) * H;
         ctx.save();
         ctx.beginPath();
         ctx.ellipse(ix, iy, rxPx, ryPx, 0, 0, Math.PI * 2);
-        const fillCol = isl.biome === "tropical" ? "rgba(38, 138, 72, 0.42)"
-          : (isl.biome === "savanna" ? "rgba(186, 148, 56, 0.40)"
-          : (isl.biome === "arctic" ? "rgba(165, 208, 232, 0.38)"
-          : (isl.biome === "radioactive" ? "rgba(110, 140, 42, 0.48)" : "rgba(58, 76, 62, 0.42)")));
+        const fillCol = isl.biome === "tropical" ? "rgba(38, 138, 72, 0.44)"
+          : (isl.biome === "savanna" ? "rgba(186, 148, 56, 0.42)"
+          : (isl.biome === "arctic" ? "rgba(165, 208, 232, 0.40)"
+          : (isl.biome === "radioactive" ? "rgba(110, 140, 42, 0.48)" : "rgba(58, 76, 62, 0.44)")));
         ctx.fillStyle = fillCol;
         ctx.fill();
-        ctx.strokeStyle = "rgba(120, 200, 225, 0.42)";
-        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = "rgba(120, 205, 230, 0.48)";
+        ctx.lineWidth = 1.6;
         ctx.stroke();
         ctx.fillStyle = isl.labelColor || "#cfe3f2";
-        ctx.font = "bold 9px monospace";
+        ctx.font = "bold 10px monospace";
         ctx.textAlign = "center";
-        ctx.fillText(isl.name.toUpperCase(), ix, iy - ryPx - 4);
+        ctx.fillText(isl.name.toUpperCase(), ix, iy - ryPx - 5);
         ctx.restore();
       }
     }
-    ctx.strokeStyle = "rgba(90, 130, 165, 0.10)"; ctx.lineWidth = 1;
-    for (let x = 22; x < W; x += 48) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 22; y < H; y += 48) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
 
     if (this.game.world && this.game.world.riverSegments) {
-      ctx.strokeStyle = "rgba(38, 165, 224, 0.55)"; ctx.lineWidth = 4.2; ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(38, 165, 224, 0.58)"; ctx.lineWidth = Math.max(1.8, 2.2 * Math.sqrt(this.mapZoom)); ctx.lineCap = "round";
       for (const seg of this.game.world.riverSegments) {
         const [x0, y0] = toPx(seg.x0, seg.z0), [x1, y1] = toPx(seg.x1, seg.z1);
         ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
@@ -215,54 +254,124 @@ KK.StartMenu = class StartMenu {
     if (this.game.world && this.game.world.roadSegments) {
       for (const seg of this.game.world.roadSegments) {
         const [x0, y0] = toPx(seg.x0, seg.z0), [x1, y1] = toPx(seg.x1, seg.z1);
-        ctx.strokeStyle = seg.surface === "asphalt" ? "rgba(195, 210, 225, 0.62)" : "rgba(155, 132, 96, 0.48)";
-        ctx.lineWidth = seg.surface === "asphalt" ? 2.4 : 1.5;
+        ctx.strokeStyle = seg.isModernHwy ? "rgba(255, 214, 102, 0.72)" : (seg.isTropikaHell ? "rgba(210, 140, 88, 0.65)" : "rgba(195, 210, 225, 0.55)");
+        ctx.lineWidth = seg.isModernHwy ? 2.4 : 1.5;
         ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
       }
     }
 
     this._spawnPts = [];
+    const placedLabels = [];
     for (const tw of KK.TOWNS) {
       const [px, py] = toPx(tw.x, tw.z);
       const sel = (tw.id === this.selectedTownId);
       const col = tw.survColor || "#ffd166";
       this._spawnPts.push({ id: tw.id, px, py });
 
+      if (px < -20 || px > W + 20 || py < -20 || py > H + 20) continue;
+
       if (sel) {
         ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.arc(px, py, 13, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py, 12, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.fillStyle = col;
-      ctx.beginPath(); ctx.arc(px, py, sel ? 7.5 : 5.8, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "#081018"; ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, py, sel ? 7.0 : 5.2, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#081016"; ctx.lineWidth = 1.5; ctx.stroke();
 
-      ctx.font = sel ? "bold 11px monospace" : "bold 10px monospace";
-      const lbl = tw.name.replace(" Crossing", "").replace(" Station", "");
-      const lw = ctx.measureText(lbl).width;
-      const lx = Math.min(W - lw - 8, Math.max(8, px + 10));
-      const ly = Math.max(16, py - 8);
-      ctx.fillStyle = "rgba(8, 13, 20, 0.84)";
-      ctx.fillRect(lx - 3, ly - 10, lw + 6, 14);
-      ctx.fillStyle = sel ? "#ffffff" : "#cfe0f0";
-      ctx.fillText(lbl, lx, ly + 1);
+      const shortName = tw.name.split(" (")[0];
+      const lblY = py - 10;
+      let overlaps = false;
+      if (!sel && this.mapZoom < 2.2) {
+        for (const p of placedLabels) {
+          if (Math.abs(p.x - px) < 76 && Math.abs(p.y - lblY) < 13) { overlaps = true; break; }
+        }
+      }
+      if (!overlaps) {
+        placedLabels.push({ x: px, y: lblY });
+        ctx.font = sel ? "bold 11px monospace" : "bold 9.5px monospace";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(8, 16, 24, 0.82)";
+        const twW = ctx.measureText(shortName).width + 8;
+        ctx.fillRect(px - twW * 0.5, lblY - 10, twW, 13);
+        ctx.fillStyle = sel ? "#ffffff" : "#dce8f4";
+        ctx.fillText(shortName, px, lblY);
+      }
     }
+
+    ctx.fillStyle = "rgba(8, 16, 24, 0.72)";
+    ctx.fillRect(W - 210, H - 22, 204, 18);
+    ctx.fillStyle = "#9ab8cf";
+    ctx.font = "10px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(`ZOOM ${this.mapZoom.toFixed(1)}x • SCROLL / DRAG`, W - 12, H - 9);
   }
 
   _bindSpawnMapClick() {
     const cv = document.getElementById("sm-spawn-map-canvas");
-    if (!cv || cv._bound) return;
-    cv._bound = true;
-    cv.addEventListener("click", (e) => {
-      if (!this._spawnPts) return;
-      const r = cv.getBoundingClientRect();
-      const mx = (e.clientX - r.left) * (cv.width / r.width);
-      const my = (e.clientY - r.top) * (cv.height / r.height);
-      let best = null, bestD = 38;
-      for (const p of this._spawnPts) {
-        const d = Math.hypot(p.px - mx, p.py - my);
-        if (d < bestD) { bestD = d; best = p.id; }
+    if (!cv || cv._kkMapBound) return;
+    cv._kkMapBound = true;
+
+    cv.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const rect = cv.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (cv.width / rect.width);
+      const my = (e.clientY - rect.top) * (cv.height / rect.height);
+      const oldSpanX = 196000 / this.mapZoom;
+      const oldSpanZ = (oldSpanX * cv.height) / cv.width;
+      const wx = this.mapPanX + (mx / cv.width - 0.5) * oldSpanX;
+      const wz = this.mapPanZ + (my / cv.height - 0.5) * oldSpanZ;
+      const factor = e.deltaY < 0 ? 1.25 : 0.8;
+      this.mapZoom = Math.max(0.85, Math.min(8.5, this.mapZoom * factor));
+      const newSpanX = 196000 / this.mapZoom;
+      const newSpanZ = (newSpanX * cv.height) / cv.width;
+      this.mapPanX = wx - (mx / cv.width - 0.5) * newSpanX;
+      this.mapPanZ = wz - (my / cv.height - 0.5) * newSpanZ;
+      this._drawSpawnMap();
+    }, { passive: false });
+
+    cv.addEventListener("mousedown", (e) => {
+      this._mapDragging = true;
+      this._mapDragMoved = false;
+      this._mapLastX = e.clientX;
+      this._mapLastY = e.clientY;
+      cv.style.cursor = "grabbing";
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!this._mapDragging) return;
+      const dx = e.clientX - this._mapLastX;
+      const dy = e.clientY - this._mapLastY;
+      if (Math.hypot(dx, dy) > 3) this._mapDragMoved = true;
+      this._mapLastX = e.clientX;
+      this._mapLastY = e.clientY;
+      const rect = cv.getBoundingClientRect();
+      const spanX = 196000 / this.mapZoom;
+      const spanZ = (spanX * cv.height) / cv.width;
+      this.mapPanX -= (dx / rect.width) * spanX;
+      this.mapPanZ -= (dy / rect.height) * spanZ;
+      this._drawSpawnMap();
+    });
+    window.addEventListener("mouseup", () => {
+      if (this._mapDragging) {
+        this._mapDragging = false;
+        cv.style.cursor = "grab";
       }
-      if (best !== null) this.selectStartTown(best);
+    });
+
+    cv.addEventListener("click", (e) => {
+      if (this._mapDragMoved) return;
+      const rect = cv.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * (cv.width / rect.width);
+      const my = (e.clientY - rect.top) * (cv.height / rect.height);
+      let bestId = this.selectedTownId, bestD = 30;
+      for (const pt of (this._spawnPts || [])) {
+        const d = Math.hypot(pt.px - mx, pt.py - my);
+        if (d < bestD) { bestD = d; bestId = pt.id; }
+      }
+      if (bestId !== this.selectedTownId) {
+        this.selectedTownId = bestId;
+        this._drawSpawnMap();
+        this._updateSpawnTownCard();
+      }
     });
   }
 
@@ -325,7 +434,19 @@ KK.StartMenu = class StartMenu {
             <label class="sm-lbl" style="margin:0;">STEP 2/2 — CLICK ANY SETTLEMENT ON THE OBLAST MAP TO DEPLOY</label>
             <span class="small muted"><b style="color:#2de08b;">●</b> High &nbsp; <b style="color:#ffd166;">●</b> Moderate &nbsp; <b style="color:#ff9f1c;">●</b> Low &nbsp; <b style="color:#ff3b5c;">●</b> Extreme</span>
           </div>
-          <canvas id="sm-spawn-map-canvas" width="780" height="270" style="width:100%;height:auto;border:1px solid #30475e;border-radius:8px;cursor:pointer;display:block;"></canvas>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;align-items:center;">
+            <button class="btn small" onclick="window.__GAME__.startMenu.focusSpawnIsland(0)">MAINLAND</button>
+            <button class="btn small" style="color:#2de08b;" onclick="window.__GAME__.startMenu.focusSpawnIsland(1)">TROPIKA</button>
+            <button class="btn small" style="color:#ffd166;" onclick="window.__GAME__.startMenu.focusSpawnIsland(2)">SAVANNA</button>
+            <button class="btn small" style="color:#8ecae6;" onclick="window.__GAME__.startMenu.focusSpawnIsland(3)">ARCTIC</button>
+            <button class="btn small" style="color:#48cae4;" onclick="window.__GAME__.startMenu.focusSpawnIsland(4)">CORAL CAY</button>
+            <button class="btn small" style="color:#b8ff3b;" onclick="window.__GAME__.startMenu.focusSpawnIsland(5)">SITE-140</button>
+            <span style="flex:1;"></span>
+            <button class="btn small" onclick="window.__GAME__.startMenu.zoomSpawnMap(1.35)">+</button>
+            <button class="btn small" onclick="window.__GAME__.startMenu.zoomSpawnMap(0.74)">−</button>
+            <button class="btn small" onclick="window.__GAME__.startMenu.resetSpawnMap()">FIT ALL</button>
+          </div>
+          <canvas id="sm-spawn-map-canvas" width="780" height="320" style="width:100%;height:auto;border:1px solid #30475e;border-radius:8px;cursor:grab;display:block;" title="Scroll to zoom, drag to pan, click any town dot to deploy"></canvas>
           <div id="sm-spawn-town-card" class="sm-acc-box" style="margin-top:8px;"></div>
           <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
             <button class="btn" onclick="window.__GAME__.startMenu.backToRigStep()">◀ CHANGE VEHICLE</button>
@@ -406,7 +527,7 @@ KK.StartMenu = class StartMenu {
             </div>
           </div>
           <div class="sm-acc-box small" style="line-height:1.5;">
-            <label class="sm-lbl">v15.0.1 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
+            <label class="sm-lbl">v15.1 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
             <b>[F]</b> Universal Interact / Enter-Exit (Front/Rear for Hood • <b>Shift+F</b> Force Exit)<br/>
             <b>[E]</b> On-Foot Inventory • <b>[Q/E]</b> Manual Gears (in car) • <b>[4]</b> Auto/Manual<br/>
             <b>[LMB/RMB/MMB]</b> Fire Primary / Turret Scope / Lock Turret<br/>

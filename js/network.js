@@ -1069,6 +1069,9 @@ KK.LanNetwork = class LanNetwork {
       case "winch_update":
         if (this.cb.onRemoteWinch) this.cb.onRemoteWinch(msg);
         break;
+      case "winch_pull":
+        if (msg.targetPeerId === this.peerId && this.cb.onWinchPull) this.cb.onWinchPull(msg);
+        break;
       case "convoy_create":
       case "convoy_join":
       case "convoy_complete":

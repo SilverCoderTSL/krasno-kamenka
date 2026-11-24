@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.0.1";
-KK.VERSION_FULL = "v15.0.1 ONLINE";
+KK.VERSION = "v15.1";
+KK.VERSION_FULL = "v15.1 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -55,6 +55,34 @@ KK.PORTS = [
   { id: "port_cay",      name: "Coral Cay Smuggler Pier",    x:  75400, z:  -5200, yaw: -Math.PI * 0.5,  islandId: 4 },
   { id: "port_site140",  name: "Site-140 Quarantine Pier",   x:  65600, z: -66200, yaw: -Math.PI * 0.75, islandId: 5 }
 ];
+
+// v15.1 UNLOCKABLE OCEAN BOATS & HOVERCRAFT (Summon at any of the 9 Ports!)
+KK.BOATS = {
+  patrol: {
+    id: "patrol", name: "Krasnaya Utility Patrol Boat", price: 24000,
+    topSpeedKmh: 92, accelMs2: 11.5, len: 11.5, seats: 4, maxCarMassKg: 3600,
+    amphibious: false, deckY: 1.45, deckZ: -1.6,
+    desc: "Twin-outboard harbor patrol craft. Seats 4 & mounts 1 light 4x4 (Jimny, UAZ-452, Hilux, Wrangler) on the stern deck!"
+  },
+  strela: {
+    id: "strela", name: "Strela-X1 Offshore Speedboat", price: 38000,
+    topSpeedKmh: 155, accelMs2: 22.0, len: 8.5, seats: 1, maxCarMassKg: 0,
+    amphibious: false, deckY: 1.0, deckZ: 0,
+    desc: "Blistering 155 km/h hydroplane racing speedboat! Strictly 1 person only (NO vehicles) — fastest way across the archipelago."
+  },
+  serna: {
+    id: "serna", name: "Projekt 11770 'Serna' Tank Landing Barge", price: 68000,
+    topSpeedKmh: 68, accelMs2: 7.5, len: 19.0, seats: 6, maxCarMassKg: 75000,
+    amphibious: false, deckY: 1.95, deckZ: 1.5,
+    desc: "Heavy steel coastal landing craft with drop-down bow ramp. Carries ANY truck or main battle tank (up to 75 tons)!"
+  },
+  zubr: {
+    id: "zubr", name: "Projekt 12322 'Zubr' LCAC Hovercraft", price: 165000,
+    topSpeedKmh: 105, accelMs2: 13.0, len: 24.4, seats: 8, maxCarMassKg: 85000,
+    amphibious: true, deckY: 3.05, deckZ: 1.2,
+    desc: "Massive amphibious Soviet assault hovercraft! Glides over ocean waves AND coastal beaches while carrying the 68-ton PzKpfw 140A4 or T-72B!"
+  }
+};
 KK.CHUNK_SIZE = 180;
 KK.CHUNK_SEGMENTS = 45;      // Exact 4.0m crisp vertex spacing (180 / 45 = 4m)
 KK.CHUNK_RADIUS = 3;
@@ -70,25 +98,19 @@ KK.TOWNS = [
   { id: 7, name: "Volchya Far-East Outpost", survivability: "LOW", survScore: 34, survColor: "#ff9f1c", survNote: "Remote far-east taiga frontier • Long haul back to HQ", biome: "taiga", x: 41200, z: -17600, hasGarage: true, hasDock: true, desc: "End-of-the-line 45km taiga expedition. Maximum cash, zero mercy." },
   { id: 8, name: "Buran Desert Radar", survivability: "LOW", survScore: 30, survColor: "#ff9f1c", survNote: "Remote southwest Red Sands canyon • Heavy Sandwyrm hunting grounds", biome: "desert", x: -38800, z: 34200, hasGarage: true, hasDock: true, desc: "Remote southwest Red Sands canyon station across rotten bridges." },
   { id: 9, name: "Vulkan Geothermal Base", survivability: "EXTREME", survScore: 15, survColor: "#ff3b5c", survNote: "Active volcanic caldera • Lava bombs & 131 km/h Vulkan T-Rex", biome: "volcanic", x: -3600, z: 1100, hasGarage: true, hasDock: true, desc: "Obsidian badlands outpost at the foot of smoking Mt. Vulkan! Watch for the T-Rex — freeze motionless if it sees you!" },
-  // --- OSTROV TROPIKA (Indonesian Highland Jungle: Winding Nürburgring-Hell Roads, 2 Volcanoes, Light 4x4 Meta!) ---
+  // --- STRICTLY ORDERED IDs 10..21 (KK.TOWNS[i].id === i ALWAYS!) ---
   { id: 10, name: "Palma Bay Port (Tropika)", survivability: "MODERATE", survScore: 74, survColor: "#2de08b", survNote: "Indonesian-style coastal harbor • Narrow mud switchbacks ahead", biome: "tropical", x: 64200, z: 56500, hasGarage: true, hasDock: true, isIsland: true, desc: "Busy tropical fishing harbor & coastal port. Bring a light 4x4 — the mountain roads inland are brutal!" },
+  { id: 11, name: "Zolotoy City (Metro Center)", survivability: "HIGH", survScore: 95, survColor: "#ffd166", survNote: "Massive modernized grid metropolis • Working tram, NPC traffic & wide avenues", biome: "savanna", x: -68000, z: 61000, hasGarage: true, hasDock: true, isIsland: true, isMetro: true, desc: "The crown jewel of the archipelago: 6x6 grid skyline, working city tram, NPC traffic, international runway & smooth 250+ km/h highways!" },
+  { id: 12, name: "Borey Icebreaker Port", survivability: "LOW", survScore: 42, survColor: "#8ecae6", survNote: "Frozen polar naval dock • Slippery sea-ice flats — tracks dominate", biome: "arctic", x: -58500, z: -63500, hasGarage: true, hasDock: true, isIsland: true, desc: "Rusted Soviet icebreaker harbor & heated depot on the edge of the Arctic proving ground." },
+  { id: 13, name: "Coral Cay Smuggler Pier", survivability: "HIGH", survScore: 84, survColor: "#48cae4", survNote: "Small Eastern Tropical Atoll • Turquoise lagoon, pier & bush strip", biome: "tropical", x: 77000, z: -6000, hasGarage: true, hasDock: true, isIsland: true, desc: "Tiny sun-drenched coral atoll in the eastern sea. Palm grove, upgraded boat pier & dirt smuggler strip." },
+  { id: 14, name: "Site-140 Exclusion Zone", survivability: "EXTREME", survScore: 10, survColor: "#b8ff3b", survNote: "RADIOACTIVE WASTELAND • Reactor Sarcophagus • Geiger alerts & EMP wear", biome: "radioactive", x: 68000, z: -68000, hasGarage: true, hasDock: true, isIsland: true, desc: "Quarantined sea-fortress & crumbling Reactor Sarcophagus. Intense radiation — EMP-shielded tanks advised. Something worse than Godzilla sleeps beneath..." },
   { id: 15, name: "Desa Kabut (Highland Village)", survivability: "MODERATE", survScore: 62, survColor: "#2de08b", survNote: "Large Indonesian terraced village between twin volcanoes", biome: "tropical", x: 69200, z: 62200, hasGarage: true, hasDock: true, isIsland: true, desc: "Bustling highland village packed with stilt houses, warung stalls & tight winding switchbacks between Gunung Api & Gunung Danau." },
   { id: 16, name: "Danau Merah (Crater Lake)", survivability: "LOW", survScore: 48, survColor: "#ff9f1c", survNote: "Volcanic crater lake village & dirt jungle airstrip", biome: "tropical", x: 73400, z: 65800, hasGarage: true, hasDock: true, isIsland: true, desc: "Misty highland village overlooking the volcanic crater lake. Iffy bridges & narrow hairpins — heavy trucks beware!" },
-
-  // --- ZOLOTOY SAVANNA (Most Modernized: Massive Grid City + Working Tram + 3 Suburbs + Pristine Highways!) ---
-  { id: 11, name: "Zolotoy City (Metro Center)", survivability: "HIGH", survScore: 95, survColor: "#ffd166", survNote: "Massive modernized grid metropolis • Working electric tram & wide avenues", biome: "savanna", x: -68000, z: 61000, hasGarage: true, hasDock: true, isIsland: true, isMetro: true, desc: "The crown jewel of the archipelago: 6x6 grid skyline, working city tram, international runway & smooth 250+ km/h highways!" },
   { id: 17, name: "Solnechny Heights (Suburb)", survivability: "HIGH", survScore: 90, survColor: "#ffd166", survNote: "Modern elevated mesa suburb overlooking the golden savanna", biome: "savanna", x: -62500, z: 56800, hasGarage: true, hasDock: true, isIsland: true, desc: "Clean suburban avenue perched on a golden mesa overlooking Zolotoy City." },
   { id: 18, name: "Steppe Logistics Park", survivability: "HIGH", survScore: 88, survColor: "#ffd166", survNote: "Modern refinery & heavy freight suburb • Concrete viaducts", biome: "savanna", x: -73200, z: 58200, hasGarage: true, hasDock: true, isIsland: true, desc: "High-capacity industrial park built for heavy KamAZ & MAZ-537 highway freight." },
   { id: 19, name: "Savanna Marina Port", survivability: "HIGH", survScore: 92, survColor: "#ffd166", survNote: "Modern waterfront suburb & deep-water container port", biome: "savanna", x: -64800, z: 67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Sleek coastal marina suburb with paved boat ramps and highway access to Zolotoy City." },
-
-  // --- SEVERNYY PROVING GROUND (Polar Naval & Weapons Testing: Sea-Ice, Gunnery Range, Radar Peak!) ---
-  { id: 12, name: "Borey Icebreaker Port", survivability: "LOW", survScore: 42, survColor: "#8ecae6", survNote: "Frozen polar naval dock • Slippery sea-ice flats — tracks dominate", biome: "arctic", x: -58500, z: -63500, hasGarage: true, hasDock: true, isIsland: true, desc: "Rusted Soviet icebreaker harbor & heated depot on the edge of the Arctic proving ground." },
   { id: 20, name: "Poligon-9 Gunnery Range", survivability: "LOW", survScore: 34, survColor: "#8ecae6", survNote: "Frozen tank proving ground • Target hulks & heavy ice runway", biome: "arctic", x: -65200, z: -67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Wide open arctic weapons testing range with target tank hulks, concrete blast walls & ice runway." },
-  { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -70800, z: -71400, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" },
-
-  // --- SMALL ISLANDS: CORAL SMUGGLER'S CAY & SITE-140 BLACK ROCK (RADIOACTIVE EXCLUSION ZONE) ---
-  { id: 13, name: "Coral Cay Smuggler Pier", survivability: "HIGH", survScore: 84, survColor: "#48cae4", survNote: "Small Eastern Tropical Atoll • Turquoise lagoon, pier & bush strip", biome: "tropical", x: 77000, z: -6000, hasGarage: true, hasDock: true, isIsland: true, desc: "Tiny sun-drenched coral atoll in the eastern sea. Palm grove, upgraded boat pier & dirt smuggler strip." },
-  { id: 14, name: "Site-140 Exclusion Zone", survivability: "EXTREME", survScore: 10, survColor: "#b8ff3b", survNote: "RADIOACTIVE WASTELAND • Reactor Sarcophagus • Geiger alerts & EMP wear", biome: "radioactive", x: 68000, z: -68000, hasGarage: true, hasDock: true, isIsland: true, desc: "Quarantined sea-fortress & crumbling Reactor Sarcophagus. Intense radiation — EMP-shielded tanks advised. Something worse than Godzilla sleeps beneath..." }
+  { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -70800, z: -71400, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" }
 ];
 
 KK.ROAD_LINKS = [

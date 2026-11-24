@@ -51,6 +51,10 @@ KK.Game = class Game {
     this.scene.add(this.localAvatar);
 
     this.entities = new KK.EntityManager(this.scene, this.world);
+    this.boats = new KK.BoatManager(this.scene, this.world);
+    this.ownedBoats = { patrol: false, strela: false, serna: false, zubr: false };
+    this.activeHarborPort = null;
+    this._winchPullNetCd = 0;
     this.cryptids = new KK.CryptidManager(this.scene, this.world);
     this.hazards = new KK.HazardManager(this.scene, this.world);
     this.clarksonFarm = new KK.ClarksonFarm(this.scene, this.world);
@@ -196,6 +200,15 @@ KK.Game = class Game {
       onFenceBreak: (msg) => {
         if (msg.fenceId) this.world.smashFence(msg.fenceId, msg.dirX || 1, msg.dirZ || 0);
       },
+      onWinchPull: (msg) => {
+        if (!this.vehicle || this.onFoot) return;
+        const dx = (msg.px || 0) - this.vehicle.pos.x;
+        const dy = (msg.py || this.vehicle.pos.y) - this.vehicle.pos.y;
+        const dz = (msg.pz || 0) - this.vehicle.pos.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const st = Math.min(8.5, Number(msg.strength) || 2.5);
+        this.vehicle.applyExternalImpulse((dx / d) * st, Math.max(0.25, Math.min(2.2, dy * 0.25 + 0.35)), (dz / d) * st, 0);
+      },
       onCoopAssist: (msg) => {
         this._handleIncomingCoopAssist(msg);
       },
@@ -327,7 +340,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.0.1 ONLINE! Indonesian Hell-Roads, Zolotoy Grid Metropolis + Working Tram, 9 Ocean Ports, Radioactive Site-140 & Solid Building Collisions!');
+      this.ui.toast('Welcome to v15.1 ONLINE! Toggle Right-Click Scope, Visible Smart-Recovery Winch Rope & 4 Unlockable Ocean Boats (Zubr Hovercraft, Serna Barge, Patrol Boat & Strela-X1 Speedboat)!');
     }, 650);
   }
 
@@ -338,7 +351,8 @@ KK.Game = class Game {
       activeVehicleId: this.activeVehicleId,
       stats: this.stats,
       claimedLandmarks: this.claimedLandmarks,
-      ownedTrailers: this.ownedTrailers
+      ownedTrailers: this.ownedTrailers,
+      ownedBoats: this.ownedBoats
     };
   }
 
@@ -585,8 +599,9 @@ KK.Game = class Game {
         if (isArmed) this.toggleTurretFreeze();
       } else if (e.button === 2) {
         if (isArmed) {
-          this.mouseAimHeld = true;
-          if (!this.pointerLocked && this.canvas.requestPointerLock) {
+          // v15.1 TOGGLE SCOPE: Click Right-Mouse once to aim, click again to exit!
+          this.mouseAimHeld = !this.mouseAimHeld;
+          if (this.mouseAimHeld && !this.pointerLocked && this.canvas.requestPointerLock) {
             try { this.canvas.requestPointerLock(); } catch (err) {}
           }
         } else {
@@ -602,7 +617,6 @@ KK.Game = class Game {
     });
     window.addEventListener("mouseup", (e) => {
       if (e.button === 0) this.mouseFireHeld = false;
-      if (e.button === 2) this.mouseAimHeld = false;
       this.isDraggingMouse = false;
     });
     window.addEventListener("blur", () => { this.mouseFireHeld = false; this.mouseAimHeld = false; this.coaxFireHeld = false; this.isDraggingMouse = false; });
@@ -653,6 +667,7 @@ KK.Game = class Game {
       }
       // 2. ON-FOOT INVENTORY [E] | IN-CAR MANUAL GEAR UP [E]
       else if (code === "KeyE") {
+        if (this.boats && this.boats.activeBoat) { this.disembarkBoat(); return; }
         if (this.onFoot) { this.ui.openModal("inventory"); return; }
         if (this.vehicle.autoShift) { this.vehicle.autoShift = false; this.ui.toast("Switched to MANUAL Transmission (Q=Down, E=Up, [4]=Auto)"); }
         this.vehicle.gear = Math.min(this.vehicle.vState.tuning.gears.length, this.vehicle.gear + 1);
@@ -664,6 +679,11 @@ KK.Game = class Game {
       else if (code === "Tab") { e.preventDefault(); this.togglePhotoMode(); }
       else if (code === "F9" || code === "Digit9") { e.preventDefault(); this.captureScreenshot(); }
       else if (code === "KeyT") { if (!this.vehicle.winch.active) this.attachWinch(); }
+      else if (code === "KeyV") {
+        if (this.boats && this.boats.activeBoat) {
+          this.boats.toggleMountVehicle(this.boats.activeBoat, this.vehicle, this.ui);
+        }
+      }
       else if (code === "KeyY") {
         if (this.vehicle.winch.active) {
           this.vehicle.winch.active = false; this.vehicle.winch.targetPeerId = null;
@@ -821,7 +841,85 @@ KK.Game = class Game {
     return false;
   }
 
+  buyBoat(boatId) {
+    const b = KK.BOATS[boatId];
+    if (!b) return;
+    if (this.ownedBoats[boatId]) { this.ui.toast("You already own this boat!"); return; }
+    if (this.money < b.price) { this.ui.toast(`Need $${b.price.toLocaleString()} to unlock ${b.name}!`, true); return; }
+    this.money -= b.price;
+    this.ownedBoats[boatId] = true;
+    if (this.audio) this.audio.playCash();
+    this._saveProgress(true);
+    this.ui.renderHarbor();
+    this.ui.toast(`UNLOCKED ${b.name}! Click SUMMON TO WATER to launch it into the harbor!`);
+  }
+
+  summonAndOptionallyBoardBoat(boatId, autoBoard = false) {
+    if (!this.ownedBoats[boatId]) { this.ui.toast("Unlock this boat first!", true); return; }
+    const portInfo = this.activeHarborPort || (this.boats && this.boats.findNearbyPort(
+      this.onFoot ? this.playerFoot.x : this.vehicle.pos.x,
+      this.onFoot ? this.playerFoot.z : this.vehicle.pos.z, 90
+    ));
+    if (!portInfo || !portInfo.port) { this.ui.toast("You must be at an Ocean Port Boat Summon Pad!", true); return; }
+    const boat = this.boats.summonBoatAtPort(boatId, portInfo.port);
+    if (!boat) return;
+    this.ui.toast(`${boat.spec.name} launched into ${portInfo.port.name} water! Your vehicle remains parked safely.`);
+    if (autoBoard) {
+      this.ui.closeModal();
+      this.boardBoat(boat);
+    } else {
+      this.ui.renderHarbor();
+    }
+  }
+
+  mountCurrentCarOnBoat(boatId) {
+    const boat = this.boats && this.boats.spawnedBoats.find((x) => x.id === boatId);
+    if (!boat) { this.ui.toast("Summon the boat into the harbor first!", true); return; }
+    if (this.boats.toggleMountVehicle(boat, this.vehicle, this.ui)) {
+      this.ui.closeModal();
+      this.boardBoat(boat);
+    }
+  }
+
+  boardBoat(boat) {
+    if (!boat || !this.boats) return;
+    this.boats.activeBoat = boat;
+    this.onFoot = false;
+    this.mouseAimHeld = false;
+    if (this.localAvatar) this.localAvatar.visible = false;
+    this.ui.toast(`BOARDED ${boat.spec.name}! [W/S] Throttle, [A/D] Rudder, [Shift] Boost, [V] Load/Unload Car, [E] Disembark.`);
+  }
+
+  disembarkBoat() {
+    if (!this.boats || !this.boats.activeBoat) return;
+    const b = this.boats.activeBoat;
+    this.boats.activeBoat = null;
+    if (b.mountedCar) {
+      if (!this.boats.toggleMountVehicle(b, this.vehicle, this.ui)) {
+        this.boats.activeBoat = b;
+        return;
+      }
+    }
+    this.ui.toast(`Disembarked ${b.spec.name}! Returned to ${this.vehicle.spec.name}.`);
+  }
+
   handleContextInteract() {
+    if (this.boats && this.boats.activeBoat) {
+      this.disembarkBoat();
+      return true;
+    }
+    const ix = this.onFoot ? this.playerFoot.x : this.vehicle.pos.x;
+    const iz = this.onFoot ? this.playerFoot.z : this.vehicle.pos.z;
+    if (this.boats) {
+      const nearBoat = this.boats.findNearbyBoat(ix, iz, 28);
+      if (nearBoat) { this.boardBoat(nearBoat.boat); return true; }
+      const nearPort = this.boats.findNearbyPort(ix, iz, 44);
+      if (nearPort) {
+        this.activeHarborPort = nearPort;
+        this.ui.openModal("harbor");
+        return true;
+      }
+    }
     if (!this.onFoot) {
       const px = this.vehicle.pos.x, pz = this.vehicle.pos.z;
       if (this.clarksonFarm && this.clarksonFarm.isNearJeremy(px, pz)) { this.clarksonFarm.repairPlayerVehicle(this); return true; }
@@ -1003,7 +1101,7 @@ KK.Game = class Game {
       };
       this.network.send({ type: "winch_update", active: true, targetPeerId: bestPeer.rp.peerId, length: bestPeer.dist });
       this.audio.playWrench();
-      this.ui.toast(`WINCH [${sock.label}] -> ${bestPeer.rp.callsign} (${Math.round(bestPeer.dist)}m)! Hold [T] Reel, [Shift+T] Slack, [Y] Cut.`);
+      this.ui.toast(`RESCUE WINCH [${sock.label}] -> ${bestPeer.rp.callsign} (${Math.round(bestPeer.dist)}m)! Hold [T] to PULL THEM OUT (Hold [Space] to anchor brakes!) | [Y] Cut`);
       return;
     }
 
@@ -2932,7 +3030,18 @@ KK.Game = class Game {
         this.world.smashFence(ev.data.fenceId, ev.data.dirX, ev.data.dirZ);
         this.network.send({ type: "fence_break", fenceId: ev.data.fenceId, dirX: +ev.data.dirX.toFixed(2), dirZ: +ev.data.dirZ.toFixed(2) });
       }
-      else if (ev.kind === "tree_break") {
+      else if (ev.kind === "winch_pull_peer") {
+        const d = ev.data;
+        if (d && this._winchPullNetCd <= 0 && this.network && this.network.mode !== "offline") {
+          this._winchPullNetCd = 0.08;
+          this.network.send({
+            type: "winch_pull",
+            targetPeerId: d.targetPeerId,
+            px: +d.px.toFixed(2), py: +d.py.toFixed(2), pz: +d.pz.toFixed(2),
+            strength: +Math.min(6.5, (d.strength || 0.4) * 4.5).toFixed(2)
+          });
+        }
+      } else if (ev.kind === "tree_break") {
         this.audio.playWoodSnap();
         this.world.knockDownTree(ev.data.treeId, ev.data.dirX, ev.data.dirZ);
         this.network.send({ type: "tree_break", treeId: ev.data.treeId, dirX: +ev.data.dirX.toFixed(2), dirZ: +ev.data.dirZ.toFixed(2) });
@@ -3001,6 +3110,19 @@ KK.Game = class Game {
     this.world.updateChunks(focusGx, focusGz);
 
     this.world.updateFallingTrees(dt);
+    if (this._winchPullNetCd > 0) this._winchPullNetCd = Math.max(0, this._winchPullNetCd - dt);
+    if (this.entities && this.entities.updateWinchLine) {
+      this.entities.updateWinchLine(this.vehicle, this.network.remotePlayers);
+    }
+    if (this.boats) {
+      const boatIn = (this.boats.activeBoat && !this.ui.activeModal && !(this.startMenu && this.startMenu.isOpen)) ? {
+        throttle: (this.keys.KeyW || this.keys.ArrowUp) ? 1 : 0,
+        brake: (this.keys.KeyS || this.keys.ArrowDown) ? 1 : 0,
+        steer: (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) - (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0),
+        boost: !!(this.keys.ShiftLeft || this.keys.ShiftRight)
+      } : null;
+      this.boats.update(dt, boatIn, this.vehicle, this.particles, this.audio);
+    }
     if (this.world.updateTram) this.world.updateTram(dt, this.vehicle, this.audio);
 
     // v15.0.1 SITE-140 BLACK ROCK RADIOACTIVE EXCLUSION ZONE (Geiger Crackle + Slow Radiation Wear!)
@@ -3580,6 +3702,29 @@ KK.Game = class Game {
     const el = document.getElementById("context-prompt");
     if (!el) return;
     let prompt = "";
+    if (this.boats && this.boats.activeBoat) {
+      const b = this.boats.activeBoat;
+      const deckTxt = b.spec.maxCarMassKg > 0 ? (b.mountedCar ? " | [V] Unload Vehicle" : " | [V] Load Vehicle on Deck") : "";
+      el.textContent = `⚓ ${b.spec.name} (${Math.round(b.speedKmh)} km/h) • [W/S] Throttle • [A/D] Rudder • [Shift] Boost${deckTxt} • [E] Disembark`;
+      el.classList.remove("hidden");
+      return;
+    }
+    if (this.boats) {
+      const pxC = this.onFoot ? this.playerFoot.x : this.vehicle.pos.x;
+      const pzC = this.onFoot ? this.playerFoot.z : this.vehicle.pos.z;
+      const nb = this.boats.findNearbyBoat(pxC, pzC, 28);
+      if (nb) {
+        el.textContent = `[F] Board ${nb.boat.spec.name}`;
+        el.classList.remove("hidden");
+        return;
+      }
+      const np = this.boats.findNearbyPort(pxC, pzC, 44);
+      if (np) {
+        el.textContent = `[F] Open ${np.port.name} — Unlock & Summon Boats`;
+        el.classList.remove("hidden");
+        return;
+      }
+    }
     if (this.onFoot) {
       if (this.playerFoot.carryingCrate) {
         prompt = Math.hypot(this.playerFoot.x - this.vehicle.pos.x, this.playerFoot.z - this.vehicle.pos.z) < 5.5
@@ -3638,6 +3783,20 @@ KK.Game = class Game {
   }
 
   _updateCamera(dt, focusLocal) {
+    if (this.boats && this.boats.activeBoat) {
+      const b = this.boats.activeBoat;
+      const dist = (b.spec.len * 1.15 + 7.5) * this.camZoom;
+      const yaw = b.yaw + this.camOrbitYaw;
+      const h = (b.spec.len * 0.32 + 4.5) * this.camZoom;
+      const camPos = new THREE.Vector3(
+        focusLocal.x - Math.sin(yaw) * dist,
+        focusLocal.y + h + Math.sin(this.camOrbitPitch) * dist * 0.55,
+        focusLocal.z - Math.cos(yaw) * dist
+      );
+      this.camera.position.lerp(camPos, Math.min(1, dt * 7.5));
+      this.camera.lookAt(focusLocal.x, focusLocal.y + 1.8, focusLocal.z);
+      return;
+    }
     if (this.camMode !== 3 || this.onFoot || this.ridingWithPeerId) this.camera.up.set(0, 1, 0);
     if ((this.onFoot || this.ridingWithPeerId) && Math.abs(this.camera.fov - 62) > 0.15) {
       this.camera.fov += (62 - this.camera.fov) * Math.min(1, dt * 14);

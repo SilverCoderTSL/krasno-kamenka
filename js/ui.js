@@ -131,16 +131,18 @@ KK.UIManager = class UIManager {
     const titles = {
       garage: "GARAGE — DEALERSHIP, 2D CAR BLUEPRINT & DYNO TUNING",
       contracts: "KRASNO-KAMENKA DISPATCH & LAN CONVOYS",
-      map: "100KM × 100KM OBLAST GPS SATELLITE MAP",
+      map: "200KM × 200KM ARCHIPELAGO GPS SATELLITE MAP",
       field_repair: "UNDER-THE-HOOD ROADSIDE FIELD REPAIRS",
       env: "OPTIONS, CONTROLS & WORLD COMMAND [O]",
       account: "DRIVER ACCOUNT, PASSWORD & LEADERBOARD",
       coop_pit: "CO-OP PIT CREW & FIELD ASSISTANCE",
-      inventory: "ON-FOOT FIELD INVENTORY [E]"
+      inventory: "ON-FOOT FIELD INVENTORY [E]",
+      harbor: "OCEAN PORT — BOAT DOCK & HOVERCRAFT SUMMON"
     };
     document.getElementById("modal-title").textContent = titles[name] || "MENU";
     if (name === "garage") this.renderGarage();
     if (name === "contracts") this.renderContracts();
+    if (name === "harbor") this.renderHarbor();
     if (name === "map") { if (this.mapCtrl) this.mapCtrl.open(); else this.renderMap(); }
     if (name === "field_repair") this.renderFieldRepair();
     if (name === "coop_pit") this.renderCoopPitCrew();
@@ -619,6 +621,63 @@ KK.UIManager = class UIManager {
       { id: "james_beer_run", title: "Captain Slow's Craft Beer Run (To James May's Pub)", fromTown: 0, toTown: 0, toBar: true, cargoType: "beer", units: 3, reward: 7800, desc: "Haul 3 kegs of cold craft ale 1.3 km West from Kamenka HQ to James May's Pub! Smooth driving keeps the beer intact." },
       { id: "james_beer_long", title: "Alpine Oktoberfest Keg Convoy (Cherny Les -> James May's Pub)", fromTown: 4, toTown: 0, toBar: true, cargoType: "beer", units: 5, reward: 32500, desc: "Long-haul 25 km beer convoy across forests & bridges to resupply Captain Slow's Pub!" }
     ];
+  }
+
+  renderHarbor() {
+    const el = document.getElementById("harbor-content");
+    if (!el) return;
+    const g = this.game;
+    const portInfo = g.activeHarborPort || (g.boats && g.boats.findNearbyPort(
+      g.onFoot ? g.playerFoot.x : g.vehicle.pos.x,
+      g.onFoot ? g.playerFoot.z : g.vehicle.pos.z, 75
+    ));
+    const portName = portInfo && portInfo.port ? portInfo.port.name : "Ocean Port";
+    const owned = g.ownedBoats || {};
+    const curRig = g.vehicle ? g.vehicle.spec : null;
+
+    let cards = "";
+    for (const bid of ["patrol", "strela", "serna", "zubr"]) {
+      const b = KK.BOATS[bid];
+      if (!b) continue;
+      const isOwned = !!owned[bid];
+      const spawned = g.boats ? g.boats.spawnedBoats.find((x) => x.id === bid) : null;
+      const carCap = b.maxCarMassKg > 0
+        ? `Mounts Vehicles up to ${Math.round(b.maxCarMassKg / 1000)}t`
+        : "1 Person Only (No Vehicles)";
+      const amphTag = b.amphibious ? ' <span style="color:#2de08b;font-weight:800;">• AMPHIBIOUS</span>' : "";
+      cards += `
+        <div class="card" style="padding:12px;border:1px solid ${isOwned ? '#2de08b' : '#2b3e52'};margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div>
+              <b style="font-size:15px;color:#f0f6fc;">${b.name}</b>${amphTag}
+              <div class="small muted" style="margin-top:3px;">${b.desc}</div>
+              <div class="small" style="margin-top:5px;color:#80faff;">
+                Top Speed: <b>${b.topSpeedKmh} km/h</b> &nbsp;|&nbsp; Seats: <b>${b.seats}</b> &nbsp;|&nbsp; Deck: <b>${carCap}</b>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;min-width:175px;align-items:flex-end;">
+              ${isOwned
+                ? `<button class="btn primary small" onclick="window.__GAME__.summonAndOptionallyBoardBoat('${bid}', false)">SUMMON TO WATER</button>
+                   <button class="btn accent small" onclick="window.__GAME__.summonAndOptionallyBoardBoat('${bid}', true)">SUMMON &amp; BOARD</button>
+                   ${spawned && b.maxCarMassKg > 0 && curRig ? `<button class="btn small" onclick="window.__GAME__.mountCurrentCarOnBoat('${bid}')">LOAD ${curRig.name.split(' ')[0].toUpperCase()} ON DECK</button>` : ""}`
+                : `<button class="btn warn small" onclick="window.__GAME__.buyBoat('${bid}')">UNLOCK ($${b.price.toLocaleString()})</button>`}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div>
+          <b style="font-size:16px;color:#00e5ff;">⚓ ${portName.toUpperCase()}</b>
+          <div class="small muted">Summoned boats spawn floating in the harbor water beside the pier — your vehicle stays parked safely!</div>
+        </div>
+        <div style="font-family:monospace;font-size:15px;color:#2de08b;font-weight:800;">$${Math.floor(g.money).toLocaleString()}</div>
+      </div>
+      ${cards}
+      <div class="small muted" style="margin-top:6px;">
+        <b>Boat Controls:</b> [W/S] Throttle &nbsp;•&nbsp; [A/D] Rudder &nbsp;•&nbsp; [Shift] Full Ahead &nbsp;•&nbsp; [V] Load/Unload Vehicle on Deck &nbsp;•&nbsp; [E] or [F] Board / Disembark
+      </div>`;
   }
 
   renderContracts() {

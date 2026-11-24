@@ -8,6 +8,7 @@ KK.EntityManager = class EntityManager {
   constructor(scene, world) {
     this.scene = scene; this.world = world;
     this.deers = []; this.goats = []; this.camels = []; this.fishes = []; this.looseCrates = [];
+    this.zebras = []; this.giraffes = []; this.macaws = []; this.boars = []; this.polarBears = []; this.radWolves = [];
 
     // v14.4 THICK 3D HIGH-VISIBILITY WINCH CABLE (12-segment 3D cylinder rope + glowing hook!)
     this.winchGroup = new THREE.Group();
@@ -21,6 +22,7 @@ KK.EntityManager = class EntityManager {
     for (let s = 0; s < 12; s++) {
       const seg = new THREE.Mesh(ropeGeo, ropeMat);
       seg.castShadow = true;
+      seg.frustumCulled = false;
       this.winchGroup.add(seg);
       this.winchSegs.push(seg);
     }
@@ -28,6 +30,7 @@ KK.EntityManager = class EntityManager {
       new THREE.TorusGeometry(0.18, 0.055, 8, 14),
       new THREE.MeshStandardMaterial({ color: 0xff3b30, emissive: 0xff3b30, emissiveIntensity: 0.65, roughness: 0.35, metalness: 0.7 })
     );
+    this.winchHook.frustumCulled = false;
     this.winchGroup.add(this.winchHook);
     this.scene.add(this.winchGroup);
     this._winchYAxis = new THREE.Vector3(0, 1, 0);
@@ -44,6 +47,24 @@ KK.EntityManager = class EntityManager {
     this.matFishFin   = new THREE.MeshStandardMaterial({ color: 0xff9f1c, roughness: 0.50 });
 
     for (let i = 0; i < 16; i++) this._spawnDeer(i, 2400, 300);
+    // v15.0.2 Island-Specific Wildlife!
+    this.matZebraW = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, roughness: 0.88 });
+    this.matZebraB = new THREE.MeshStandardMaterial({ color: 0x181a1f, roughness: 0.90 });
+    this.matGiraffe = new THREE.MeshStandardMaterial({ color: 0xe6ae3a, roughness: 0.88 });
+    this.matGirSpot = new THREE.MeshStandardMaterial({ color: 0x6e4219, roughness: 0.90 });
+    this.matPolar   = new THREE.MeshStandardMaterial({ color: 0xeef6fc, roughness: 0.82 });
+    this.matBoar    = new THREE.MeshStandardMaterial({ color: 0x453226, roughness: 0.95 });
+    this.matMacawR  = new THREE.MeshStandardMaterial({ color: 0xe63946, roughness: 0.7 });
+    this.matMacawB  = new THREE.MeshStandardMaterial({ color: 0x00b4d8, roughness: 0.7 });
+    this.matRadWolf = new THREE.MeshStandardMaterial({ color: 0x2b3328, roughness: 0.95 });
+    this.matRadEye  = new THREE.MeshBasicMaterial({ color: 0x9eff2a });
+
+    for (let i = 0; i < 10; i++) this._spawnIslandAnimal("zebra", i, -68000, 61000);
+    for (let i = 0; i < 7;  i++) this._spawnIslandAnimal("giraffe", i, -68000, 61000);
+    for (let i = 0; i < 10; i++) this._spawnIslandAnimal("macaw", i, 69000, 62000);
+    for (let i = 0; i < 8;  i++) this._spawnIslandAnimal("boar", i, 69000, 62000);
+    for (let i = 0; i < 8;  i++) this._spawnIslandAnimal("polarBear", i, -65000, -67000);
+    for (let i = 0; i < 6;  i++) this._spawnIslandAnimal("radWolf", i, 68000, -68000);
     for (let i = 0; i < 12; i++) this._spawnGoat(i, -12000, -16000);
     for (let i = 0; i < 10; i++) this._spawnCamel(i, 2400, 6200);
     for (let i = 0; i < 20; i++) this._spawnFish(i);
@@ -132,6 +153,91 @@ KK.EntityManager = class EntityManager {
     const dorsal = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.16, 0.28), this.matFishFin);
     dorsal.position.set(0, 0.16, -0.05); grp.add(dorsal);
     return grp;
+  }
+
+  _spawnIslandAnimal(kind, idx, cx, cz) {
+    const grp = new THREE.Group();
+    const legs = [];
+    let wings = null;
+
+    if (kind === "zebra") {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.58, 1.48), this.matZebraW);
+      body.position.y = 1.08; body.castShadow = true; grp.add(body);
+      for (const sz of [-0.46, -0.16, 0.14, 0.44]) {
+        const st = new THREE.Mesh(new THREE.BoxGeometry(0.61, 0.56, 0.12), this.matZebraB);
+        st.position.set(0, 1.09, sz); grp.add(st);
+      }
+      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.58, 0.32), this.matZebraW);
+      neck.position.set(0, 1.44, 0.62); neck.rotation.x = 0.28; grp.add(neck);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.46), this.matZebraB);
+      head.position.set(0, 1.66, 0.84); grp.add(head);
+      for (const [lx, lz] of [[-0.20, 0.52], [0.20, 0.52], [-0.20, -0.52], [0.20, -0.52]]) {
+        const lg = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.84, 0.11), this.matZebraW);
+        lg.position.set(lx, 0.42, lz); grp.add(lg); legs.push(lg);
+      }
+      this.zebras.push({ id: idx, gx: cx, gy: 10, gz: cz, yaw: Math.random() * 6.28, state: "graze", timer: 2 + Math.random() * 4, phase: Math.random() * 6, mesh: grp, legs });
+    } else if (kind === "giraffe") {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.88, 1.85), this.matGiraffe);
+      body.position.y = 2.05; body.castShadow = true; grp.add(body);
+      for (const sz of [-0.45, 0.05, 0.48]) {
+        const sp = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.34, 0.28), this.matGirSpot);
+        sp.position.set(0, 2.08, sz); grp.add(sp);
+      }
+      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.35, 0.34), this.matGiraffe);
+      neck.position.set(0, 3.35, 0.78); neck.rotation.x = 0.16; grp.add(neck);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.54), this.matGiraffe);
+      head.position.set(0, 4.48, 1.05); grp.add(head);
+      for (const [lx, lz] of [[-0.28, 0.66], [0.28, 0.66], [-0.28, -0.66], [0.28, -0.66]]) {
+        const lg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.72, 0.14), this.matGiraffe);
+        lg.position.set(lx, 0.86, lz); grp.add(lg); legs.push(lg);
+      }
+      this.giraffes.push({ id: idx, gx: cx, gy: 10, gz: cz, yaw: Math.random() * 6.28, state: "wander", timer: 3 + Math.random() * 5, phase: Math.random() * 6, mesh: grp, legs });
+    } else if (kind === "macaw") {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.20, 0.58), this.matMacawR);
+      grp.add(body);
+      const wL = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.04, 0.28), this.matMacawB);
+      wL.position.set(-0.38, 0.04, 0); grp.add(wL);
+      const wR = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.04, 0.28), this.matMacawB);
+      wR.position.set(0.38, 0.04, 0); grp.add(wR);
+      wings = [wL, wR];
+      this.macaws.push({ id: idx, gx: cx, gy: 24, gz: cz, yaw: Math.random() * 6.28, altOff: 9 + Math.random() * 14, phase: Math.random() * 6, mesh: grp, wings });
+    } else if (kind === "boar") {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.52, 1.05), this.matBoar);
+      body.position.y = 0.58; body.castShadow = true; grp.add(body);
+      const snout = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.24, 0.34), this.matBoar);
+      snout.position.set(0, 0.56, 0.62); grp.add(snout);
+      for (const [lx, lz] of [[-0.20, 0.35], [0.20, 0.35], [-0.20, -0.35], [0.20, -0.35]]) {
+        const lg = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.42, 0.11), this.matBoar);
+        lg.position.set(lx, 0.21, lz); grp.add(lg); legs.push(lg);
+      }
+      this.boars.push({ id: idx, gx: cx, gy: 10, gz: cz, yaw: Math.random() * 6.28, state: "wander", timer: 2 + Math.random() * 4, phase: Math.random() * 6, mesh: grp, legs });
+    } else if (kind === "polarBear") {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.96, 2.05), this.matPolar);
+      body.position.y = 1.08; body.castShadow = true; grp.add(body);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.48, 0.66), this.matPolar);
+      head.position.set(0, 1.24, 1.24); grp.add(head);
+      for (const [lx, lz] of [[-0.36, 0.68], [0.36, 0.68], [-0.36, -0.68], [0.36, -0.68]]) {
+        const lg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.72, 0.24), this.matPolar);
+        lg.position.set(lx, 0.36, lz); grp.add(lg); legs.push(lg);
+      }
+      this.polarBears.push({ id: idx, gx: cx, gy: 10, gz: cz, yaw: Math.random() * 6.28, state: "wander", timer: 3 + Math.random() * 5, phase: Math.random() * 6, mesh: grp, legs });
+    } else if (kind === "radWolf") {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.48, 1.25), this.matRadWolf);
+      body.position.y = 0.78; grp.add(body);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.42), this.matRadWolf);
+      head.position.set(0, 0.92, 0.76); grp.add(head);
+      for (const ex of [-0.08, 0.08]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.038, 5, 5), this.matRadEye);
+        eye.position.set(ex, 0.96, 0.98); grp.add(eye);
+      }
+      for (const [lx, lz] of [[-0.16, 0.42], [0.16, 0.42], [-0.16, -0.42], [0.16, -0.42]]) {
+        const lg = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.62, 0.10), this.matRadWolf);
+        lg.position.set(lx, 0.31, lz); grp.add(lg); legs.push(lg);
+      }
+      this.radWolves.push({ id: idx, gx: cx, gy: 10, gz: cz, yaw: Math.random() * 6.28, state: "wander", timer: 2 + Math.random() * 4, phase: Math.random() * 6, mesh: grp, legs });
+    }
+    grp.visible = false;
+    this.scene.add(grp);
   }
 
   _spawnDeer(index, cx, cz) {
@@ -272,6 +378,65 @@ KK.EntityManager = class EntityManager {
       this.world.toLocal(c.gx, c.gy, c.gz, c.mesh.position); c.mesh.rotation.y = c.yaw; c.mesh.visible = dP < 310;
     }
 
+    // 3B. v15.0.2 ISLAND-SPECIFIC WILDLIFE (Savanna Zebras & Giraffes, Tropical Macaws & Boars, Arctic Polar Bears, Site-140 Rad-Wolves!)
+    const updateHerd = (list, activeFlag, biomeKey, fleeSpd, walkSpd) => {
+      for (const a of list) {
+        if (!activeFlag) { a.mesh.visible = false; continue; }
+        const dP = Math.hypot(a.gx - px, a.gz - pz);
+        if (dP > 360 || (this.world.getBiomeWeights(a.gx, a.gz)[biomeKey] || 0) < 0.25) {
+          const ang = Math.random() * 6.28, rad = 75 + Math.random() * 190;
+          const nx = px + Math.cos(ang) * rad, nz = pz + Math.sin(ang) * rad;
+          const inZCity = KK.ZOLOTOY_CITY && Math.abs(nx - KK.ZOLOTOY_CITY.cx) < (KK.ZOLOTOY_CITY.halfSpan + 40) && Math.abs(nz - KK.ZOLOTOY_CITY.cz) < (KK.ZOLOTOY_CITY.halfSpan + 40);
+          if (!inZCity && (this.world.getBiomeWeights(nx, nz)[biomeKey] || 0) > 0.28) {
+            a.gx = nx; a.gz = nz; a.state = "wander";
+          } else { a.mesh.visible = false; continue; }
+        }
+        a.timer -= dt;
+        if (dP < 42 && vehicle.speedKmh > 14) { a.state = "flee"; a.yaw = Math.atan2(a.gx - px, a.gz - pz); a.timer = 3.2; }
+        else if (a.timer <= 0) { a.state = Math.random() < 0.4 ? "graze" : "wander"; a.yaw += (Math.random() - 0.5) * 2.0; a.timer = 2.5 + Math.random() * 5; }
+        const spd = a.state === "flee" ? fleeSpd : (a.state === "wander" ? walkSpd : 0);
+        if (spd > 0) {
+          a.gx += Math.sin(a.yaw) * spd * dt; a.gz += Math.cos(a.yaw) * spd * dt;
+          a.phase += dt * (a.state === "flee" ? 12 : 5);
+          const sw = Math.sin(a.phase) * 0.55;
+          a.legs[0].rotation.x = sw; a.legs[1].rotation.x = -sw; a.legs[2].rotation.x = -sw; a.legs[3].rotation.x = sw;
+        }
+        const ti = this.world.getTerrainInfo(a.gx, a.gz, false);
+        a.gy = ti.height; this.world.toLocal(a.gx, a.gy, a.gz, a.mesh.position);
+        a.mesh.rotation.y = a.yaw; a.mesh.visible = dP < 310 && ti.waterDepth < 0.25;
+      }
+    };
+
+    const inSav = (playerBiomes.savanna || 0) > 0.30;
+    const inTrop = (playerBiomes.tropical || 0) > 0.30;
+    const inArc = (playerBiomes.arctic || 0) > 0.30;
+    const inRad = (playerBiomes.radioactive || 0) > 0.30;
+
+    updateHerd(this.zebras,     inSav,  "savanna",     13.5, 2.8);
+    updateHerd(this.giraffes,   inSav,  "savanna",      9.5, 2.2);
+    updateHerd(this.boars,      inTrop, "tropical",    10.5, 2.4);
+    updateHerd(this.polarBears, inArc,  "arctic",       9.0, 2.0);
+    updateHerd(this.radWolves,  inRad,  "radioactive", 14.5, 3.4);
+
+    for (const m of this.macaws) {
+      if (!inTrop) { m.mesh.visible = false; continue; }
+      const dP = Math.hypot(m.gx - px, m.gz - pz);
+      if (dP > 320) {
+        const ang = Math.random() * 6.28, rad = 40 + Math.random() * 140;
+        m.gx = px + Math.cos(ang) * rad; m.gz = pz + Math.sin(ang) * rad;
+      }
+      m.yaw += dt * 0.45;
+      m.gx += Math.sin(m.yaw) * 11.5 * dt;
+      m.gz += Math.cos(m.yaw) * 11.5 * dt;
+      m.phase += dt * 14.0;
+      const fl = Math.sin(m.phase) * 0.62;
+      m.wings[0].rotation.z = fl; m.wings[1].rotation.z = -fl;
+      const gh = this.world.getTerrainInfo(m.gx, m.gz, false).height;
+      m.gy = gh + m.altOff + Math.sin(m.phase * 0.12) * 2.2;
+      this.world.toLocal(m.gx, m.gy, m.gz, m.mesh.position);
+      m.mesh.rotation.y = m.yaw; m.mesh.visible = dP < 290;
+    }
+
     // 4. GREAT KRASNAYA RIVER FISH
     const rcP = this.world.getRiverChannel(px, pz);
     const nearRiver = rcP.seg && rcP.dist < 180;
@@ -347,7 +512,7 @@ KK.EntityManager = class EntityManager {
   setThermalMode(isFlir) {
     if (this._thermalOn === isFlir) return;
     this._thermalOn = isFlir;
-    const mats = [this.matDeerFur, this.matGoatWool, this.matCamelFur, this.matFish];
+    const mats = [this.matDeerFur, this.matGoatWool, this.matCamelFur, this.matFish, this.matZebraW, this.matGiraffe, this.matPolar, this.matBoar, this.matMacawR, this.matRadWolf];
     for (const m of mats) {
       if (!m || !m.emissive) continue;
       if (isFlir) { m.emissive.setHex(0xffffff); m.emissiveIntensity = 1.45; }

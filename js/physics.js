@@ -740,7 +740,26 @@ KK.VehiclePhysics = class VehiclePhysics {
         } else {
           if (this.winch.reeling < 0) this.winch.length = Math.max(2.5, this.winch.length - (upg.hdWinch ? 7.5 : 4.5) * dt);
           else if (this.winch.reeling > 0) this.winch.length = Math.min(maxReach, this.winch.length + 7.0 * dt);
-          if (dist > this.winch.length) {
+          const isComradeWinch = !!this.winch.targetPeerId;
+          if (isComradeWinch) {
+            // SMART COMRADE RECOVERY: Reeling [T] pulls your COMRADE toward YOU!
+            if (this.winch.reeling < 0 || dist > this.winch.length + 0.6) {
+              const pullDir = diff.clone().normalize();
+              const pullForce = upg.hdWinch ? 18.5 : 12.0;
+              this.emit("winch_pull_peer", {
+                targetPeerId: this.winch.targetPeerId,
+                px: this.pos.x, py: this.pos.y + 0.8, pz: this.pos.z,
+                strength: pullForce * dt
+              });
+              if (!handbrake && this.speedKmh < 8) {
+                this.vel.x *= Math.max(0.5, 1.0 - dt * 5.0);
+                this.vel.z *= Math.max(0.5, 1.0 - dt * 5.0);
+              } else if (!handbrake && dist > this.winch.length) {
+                const gentleSelf = pullDir.multiplyScalar(Math.min(6500, (dist - this.winch.length) * 2400));
+                totalForce.add(gentleSelf);
+              }
+            }
+          } else if (dist > this.winch.length) {
             const stretch = dist - this.winch.length;
             const pullStrength = upg.hdWinch ? 54000 : 26000;
             const fMag = Math.min(pullStrength, stretch * 14000 + (this.winch.reeling < 0 ? pullStrength * 0.45 : 0));

@@ -1,16 +1,16 @@
-# Krasno-Kamenka Oblast (v15.0.1 ONLINE — Island Personalities, Cities, Roads, Ports & Solid Buildings)
+# Krasno-Kamenka Oblast (v15.1 ONLINE — Naval Update: Boats, Zubr Hovercraft, Toggle Scope & Winch Overhaul)
 
-## What's New in Version 15.0.1 ONLINE
-1. **Universal Building & House Collisions (`js/world.js`, `js/physics.js`):**
-   - Every town hangar, cabin, Indonesian village house, Zolotoy skyscraper, Arctic bunker, port warehouse, and Site-140 Reactor wall is now 100% solid and collidable!
-2. **Ostrov Tropika — Indonesian Highland Nürburgring-from-Hell (`js/config.js`, `js/world.js`, `js/settlements.js`):**
-   - 3 outposts (**Palma Bay Port**, large highland village **Desa Kabut**, and **Danau Merah**), **2 volcanoes** (`Gunung Api` active glowing cone & `Gunung Danau` turquoise crater lake), jungle river, **extreme narrow switchback mountain roads**, and **2 iffy wooden/timber bridges** (`4,400 kg` & `4,800 kg` max). Light 4x4s dominate here!
-3. **Zolotoy Savanna — Modernized Crown Jewel + Working City Tram (`js/config.js`, `js/world.js`):**
-   - **Zolotoy City**: Massive 6×6 gridlike metropolis (`840 m × 840 m`) with 14m wide smooth asphalt avenues, 60+ collidable skyscrapers & towers, steel boulevard rails, and a **working animated 2-car Electric City Tram** with headlights, bell, and solid collision!
-   - 3 modern suburbs (**Solnechny Heights**, **Steppe Logistics Park**, **Savanna Marina Port**) connected by pristine 250+ km/h expressways and **indestructible reinforced concrete viaducts**.
-4. **Severnyy Proving Ground — Polar Naval & Weapons Testing (`js/config.js`, `js/world.js`):**
-   - 3 arctic outposts (**Borey Icebreaker Port**, **Poligon-9 Gunnery Range** with target tank hulks & blast wall, and **Kholodnyy Radar Peak** with severe cold soak) plus a glowing northern **Aurora Borealis** curtain.
-5. **Site-140 Black Rock — Radioactive Exclusion Zone (`js/config.js`, `js/world.js`, `js/audio.js`, `js/main.js`):**
-   - Rebuilt from volcanic into a bleak Chernobyl-style radioactive sea-fortress with dead blackened trees, a massive crumbling **Reactor Sarcophagus**, concrete helipad, live **Geiger counter crackle**, and slow electrical wear on unshielded rigs near the core.
-6. **9 Ocean Ports (`js/config.js`, `js/world.js`):**
-   - 4 Mainland coastal ports + 1 port per outer island (including **Coral Cay Smuggler Pier**), each with a concrete pier, drive-on boat launch ramp, warehouse, harbor crane, beacon, and glowing **Boat Summon Pad** ready for v15.1!
+## What's New in Version 15.1 ONLINE
+1. **Toggle Right-Click Aim/Scope (`js/main.js`):**
+   - Right-click **once** to enter gunner scope/aim mode, and right-click **again** (or press `Esc`) to exit—no more holding RMB!
+2. **Overhauled Visible & Smart-Recovery Winch (`js/main.js`, `js/physics.js`, `js/ai_entities.js`, `js/network.js`):**
+   - Fixed the missing `updateWinchLine()` loop call so your **thick glowing 3D winch cable & anchor hook** are now 100% visible every frame!
+   - **Smart Comrade Rescue Logic:** When winched to a **tree/rock/ground**, holding `[T]` pulls *your* vehicle toward the anchor. When winched to a **comrade**, holding `[T]` now sends a `winch_pull` rescue force that **pulls your comrade toward YOU** while auto-bracing your wheels (hold `[Space]` for 100% brake anchor) instead of dragging you into the river!
+3. **4 Unlockable Ocean Boats & Port Summoning (`js/boats.js`, `js/config.js`, `js/ui.js`, `js/main.js`):**
+   - Drive or walk to any of the **9 Ocean Ports**, find the glowing cyan **Boat Summon Pad**, and press **`[F]`** to open the **Harbor Boat Dock**.
+   - Summoned boats launch floating in the water beside the pier **without deleting your vehicle**!
+   - **Projekt 12322 "Zubr" LCAC Hovercraft ($165,000):** Amphibious assault hovercraft (`105 km/h`) with 3 spinning propulsor ducts—glides over ocean waves AND coastal beaches while carrying **ANY vehicle including the 68-ton PzKpfw 140A4 & T-72B**!
+   - **Projekt 11770 "Serna" Tank Landing Barge ($68,000):** Heavy steel landing craft (`68 km/h`) carrying **any truck or tank up to 75 tons**.
+   - **Krasnaya Utility Patrol Boat ($24,000):** Fast 4-seat harbor craft (`92 km/h`) that mounts **1 light 4x4 (`<= 3.6t`)** on the stern deck.
+   - **Strela-X1 Offshore Speedboat ($38,000):** Blistering **`155 km/h`** hydroplane racing boat (**strictly 1 person only, no vehicles**).
+   - **Controls:** `[F]` at Port Pad to summon / `[F]` near boat to board / `[W/S]` throttle / `[A/D]` rudder / `[Shift]` boost / `[V]` Load or Unload your vehicle on deck / `[E]` disembark.
