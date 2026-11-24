@@ -3,11 +3,30 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v14.4";
-KK.VERSION_FULL = "v14.4 ONLINE";
+KK.VERSION = "v15.0";
+KK.VERSION_FULL = "v15.0 ONLINE";
 
-KK.WORLD_SIZE = 100000;
-KK.HALF_WORLD = 50000;
+KK.WORLD_SIZE = 200000;
+KK.HALF_WORLD = 100000;
+KK.SEA_LEVEL = -32.0;
+
+// 6-ISLAND 200x200 KM ARCHIPELAGO (Island 1 = Original Mainland, 3 Medium Biome Isles, 2 Small Isles!)
+KK.ISLANDS = [
+  { id: 0, name: "Krasno-Kamenka Mainland", cx:      0, cz:      0, rx: 48500, rz: 46500, biome: "mainland",      peakH: 0,   labelColor: "#e6f0f8" },
+  { id: 1, name: "Ostrov Tropika",          cx:  69000, cz:  62000, rx: 16500, rz: 14500, biome: "tropical",      peakH: 155, labelColor: "#2de08b" },
+  { id: 2, name: "Zolotoy Savanna",         cx: -68000, cz:  61000, rx: 17500, rz: 15000, biome: "savanna",       peakH: 95,  labelColor: "#ffd166" },
+  { id: 3, name: "Severnyy Proving Ground", cx: -65000, cz: -67000, rx: 16500, rz: 15000, biome: "arctic",        peakH: 220, labelColor: "#8ecae6" },
+  { id: 4, name: "Coral Smuggler's Cay",    cx:  77000, cz:  -6000, rx:  4800, rz:  4200, biome: "tropical",      peakH: 38,  labelColor: "#48cae4" },
+  { id: 5, name: "Site-140 Black Rock",     cx:  68000, cz: -68000, rx:  4400, rz:  4100, biome: "volcanic_isle", peakH: 130, labelColor: "#ff5a5f" }
+];
+
+KK.AIRSTRIPS = [
+  { id: "hq_strip",       name: "Kamenka Mainland Airstrip",  x:   1950, z:  -1150, len: 520, width: 28, yaw: 0.0,  surface: "asphalt" },
+  { id: "tropika_strip",  name: "Tropika Jungle Airstrip",    x:  69800, z:  62400, len: 460, width: 26, yaw: 0.25, surface: "gravel"  },
+  { id: "savanna_strip",  name: "Zolotoy Savanna Runway",     x: -67100, z:  61300, len: 520, width: 28, yaw: -0.2, surface: "gravel"  },
+  { id: "arctic_strip",   name: "Severnyy Ice Runway",        x: -64100, z: -66600, len: 560, width: 30, yaw: 0.1,  surface: "asphalt" },
+  { id: "cay_strip",      name: "Coral Cay Bush Strip",       x:  77450, z:  -5900, len: 340, width: 22, yaw: 0.4,  surface: "gravel"  }
+];
 KK.CHUNK_SIZE = 180;
 KK.CHUNK_SEGMENTS = 45;      // Exact 4.0m crisp vertex spacing (180 / 45 = 4m)
 KK.CHUNK_RADIUS = 3;
@@ -22,7 +41,12 @@ KK.TOWNS = [
   { id: 6, name: "Severny Iron Quarry", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "High northern peaks • Rockfalls, icy grades & Kaiju territory", biome: "mountains", x: 18200, z: -31500, hasGarage: true, hasDock: true, desc: "Brutal mountain grades, snowy ridges & massive industrial payouts." },
   { id: 7, name: "Volchya Far-East Outpost", survivability: "LOW", survScore: 34, survColor: "#ff9f1c", survNote: "Remote far-east taiga frontier • Long haul back to HQ", biome: "taiga", x: 41200, z: -17600, hasGarage: true, hasDock: true, desc: "End-of-the-line 45km taiga expedition. Maximum cash, zero mercy." },
   { id: 8, name: "Buran Desert Radar", survivability: "LOW", survScore: 30, survColor: "#ff9f1c", survNote: "Remote southwest Red Sands canyon • Heavy Sandwyrm hunting grounds", biome: "desert", x: -38800, z: 34200, hasGarage: true, hasDock: true, desc: "Remote southwest Red Sands canyon station across rotten bridges." },
-  { id: 9, name: "Vulkan Geothermal Base", survivability: "EXTREME", survScore: 15, survColor: "#ff3b5c", survNote: "Active volcanic caldera • Lava bombs & 131 km/h Vulkan T-Rex", biome: "volcanic", x: -3600, z: 1100, hasGarage: true, hasDock: true, desc: "Obsidian badlands outpost at the foot of smoking Mt. Vulkan! Watch for the T-Rex — freeze motionless if it sees you!" }
+  { id: 9, name: "Vulkan Geothermal Base", survivability: "EXTREME", survScore: 15, survColor: "#ff3b5c", survNote: "Active volcanic caldera • Lava bombs & 131 km/h Vulkan T-Rex", biome: "volcanic", x: -3600, z: 1100, hasGarage: true, hasDock: true, desc: "Obsidian badlands outpost at the foot of smoking Mt. Vulkan! Watch for the T-Rex — freeze motionless if it sees you!" },
+  { id: 10, name: "Palma Bay Harbor (Tropika)", survivability: "MODERATE", survScore: 72, survColor: "#2de08b", survNote: "SE Tropical Jungle Isle • Dense palms, beaches & coastal airstrip", biome: "tropical", x: 69000, z: 62000, hasGarage: true, hasDock: true, isIsland: true, desc: "Lush emerald jungle island in the SE strait! Palms, golden beaches, volcanic ridge & bush airstrip." },
+  { id: 11, name: "Zolotoy Savanna Airfield", survivability: "MODERATE", survScore: 68, survColor: "#ffd166", survNote: "SW Golden Savanna Isle • Wide acacia plains, red clay & mesas", biome: "savanna", x: -68000, z: 61000, hasGarage: true, hasDock: true, isIsland: true, desc: "Sun-baked golden savanna steppe in the SW ocean. Flat-top acacias, fast dirt tracks & long-range airfield." },
+  { id: 12, name: "Severnyy Arctic Base", survivability: "LOW", survScore: 36, survColor: "#8ecae6", survNote: "NW Arctic Glacier Isle • Frozen proving ground & ice runway", biome: "arctic", x: -65000, z: -67000, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen arctic military proving ground in the NW sea. Ice flats, glacier spires & heavy-duty ice runway." },
+  { id: 13, name: "Coral Cay Smuggler Pier", survivability: "HIGH", survScore: 84, survColor: "#48cae4", survNote: "Small Eastern Tropical Atoll • Turquoise lagoon & bush strip", biome: "tropical", x: 77000, z: -6000, hasGarage: true, hasDock: true, isIsland: true, desc: "Tiny sun-drenched coral atoll in the eastern sea. Palm grove, fuel dock & dirt smuggler strip." },
+  { id: 14, name: "Site-140 Black Rock", survivability: "EXTREME", survScore: 20, survColor: "#ff5a5f", survNote: "Small NE Volcanic Fortress Isle • Basalt cliffs & concrete helipad", biome: "volcanic_isle", x: 68000, z: -68000, hasGarage: true, hasDock: true, isIsland: true, desc: "Isolated volcanic basalt sea-fortress in the far NE ocean. High-stakes bunker pad & glowing obsidian fissures." }
 ];
 
 KK.ROAD_LINKS = [

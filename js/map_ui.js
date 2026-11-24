@@ -11,7 +11,7 @@ KK.MapController = class MapController {
 
     this.panX = 0;
     this.panZ = 0;
-    this.zoom = 1.6;
+    this.zoom = 1.05;
     this.dragging = false;
     this.dragMoved = false;
     this.lastMouseX = 0;
@@ -57,19 +57,36 @@ KK.MapController = class MapController {
         const gx = -halfW + (px + 0.5) * step;
         const b = world.getBiomeWeights(gx, gz);
         const h = world._computeNaturalGroundHeight(gx, gz);
-        const hE = world._computeNaturalGroundHeight(gx + step * 0.6, gz);
-        const hS = world._computeNaturalGroundHeight(gx, gz + step * 0.6);
-        const shade = Math.max(0.68, Math.min(1.28, 1.0 - (hE - h) * 0.008 - (hS - h) * 0.008));
+        const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
 
-        let r = 46 * b.rust + 24 * b.taiga + 136 * b.desert + 66 * b.mountains + 34 * b.volcanic;
-        let g = 60 * b.rust + 58 * b.taiga + 102 * b.desert + 74 * b.mountains + 28 * b.volcanic;
-        let bl = 42 * b.rust + 38 * b.taiga + 58 * b.desert + 82 * b.mountains + 32 * b.volcanic;
+        let r, g, bl, shade = 1.0;
+        if (h < seaL) {
+          // Open Ocean & Turquoise Coastal Shallows!
+          const depth = Math.min(1.0, (seaL - h) / 22.0);
+          r  = 28 * (1 - depth) + 10 * depth;
+          g  = 112 * (1 - depth) + 34 * depth;
+          bl = 142 * (1 - depth) + 64 * depth;
+        } else {
+          const hE = world._computeNaturalGroundHeight(gx + step * 0.6, gz);
+          const hS = world._computeNaturalGroundHeight(gx, gz + step * 0.6);
+          shade = Math.max(0.68, Math.min(1.28, 1.0 - (hE - h) * 0.008 - (hS - h) * 0.008));
 
-        if (h > 155) {
-          const snowF = Math.min(1, (h - 155) / 110);
-          r = r * (1 - snowF) + 198 * snowF;
-          g = g * (1 - snowF) + 214 * snowF;
-          bl = bl * (1 - snowF) + 226 * snowF;
+          r = 46 * b.rust + 24 * b.taiga + 136 * b.desert + 66 * b.mountains + 34 * b.volcanic
+            + 32 * (b.tropical || 0) + 178 * (b.savanna || 0) + 188 * (b.arctic || 0);
+          g = 60 * b.rust + 58 * b.taiga + 102 * b.desert + 74 * b.mountains + 28 * b.volcanic
+            + 128 * (b.tropical || 0) + 148 * (b.savanna || 0) + 212 * (b.arctic || 0);
+          bl = 42 * b.rust + 38 * b.taiga + 58 * b.desert + 82 * b.mountains + 32 * b.volcanic
+            + 52 * (b.tropical || 0) + 62 * (b.savanna || 0) + 232 * (b.arctic || 0);
+
+          // Sandy coastal beach ribbon
+          if (h < seaL + 4.5 && (b.arctic || 0) < 0.4 && b.volcanic < 0.4) {
+            r = 186; g = 166; bl = 114;
+          } else if (h > 155) {
+            const snowF = Math.min(1, (h - 155) / 110);
+            r = r * (1 - snowF) + 198 * snowF;
+            g = g * (1 - snowF) + 214 * snowF;
+            bl = bl * (1 - snowF) + 226 * snowF;
+          }
         }
         if (b.volcanic > 0.45 && Math.hypot(gx + 4550, gz - 1350) < 620) {
           r = 185; g = 62; bl = 22;

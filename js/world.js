@@ -48,6 +48,7 @@ KK.World = class World {
     this._buildRivers();
     this._buildLandmarks();
     this._buildTarmacDetails();
+    this._buildOceanAndFarIslands();
     this.updateChunks(0, 0, true);
   }
 
@@ -83,7 +84,93 @@ KK.World = class World {
   }
 
   // 4 Rich Biomes: Razorback Mountains (NW/N), Black Timber Taiga (E), Red Sands Desert (S/SE), Rust Basin (Center)
+  // v15.0: 6-ISLAND 200x200 KM ARCHIPELAGO MASK (Island 1 Mainland untouched inside r < 0.84!)
+  getIslandInfo(gx, gz) {
+    const islands = KK.ISLANDS || [];
+    let bestMask = 0, bestIsl = null;
+    for (let i = 0; i < islands.length; i++) {
+      const isl = islands[i];
+      const dx = (gx - isl.cx) / isl.rx;
+      const dz = (gz - isl.cz) / isl.rz;
+      const rSq = dx * dx + dz * dz;
+      if (rSq > 1.38) continue;
+      const r = Math.sqrt(rSq);
+      // Organic scalloped coastline noise
+      const ang = Math.atan2(dz, dx);
+      const coastNoise = (Math.sin(ang * 5.0 + isl.id * 1.7) * 0.055 + Math.cos(ang * 9.0 - isl.id * 2.3) * 0.032 +
+        (this.fbm(gx * 0.00018 + isl.id * 3.1, gz * 0.00018 - isl.id * 1.9, 2) - 0.5) * 0.14);
+      const effR = r + coastNoise;
+      const innerR = (isl.id === 0) ? 0.86 : 0.72;
+      const outerR = 1.04;
+      let mask = 0;
+      if (effR <= innerR) mask = 1.0;
+      else if (effR < outerR) {
+        const u = 1.0 - (effR - innerR) / (outerR - innerR);
+        mask = u * u * (3 - 2 * u);
+      }
+      if (mask > bestMask) {
+        bestMask = mask;
+        bestIsl = isl;
+      }
+    }
+    return { mask: bestMask, island: bestIsl };
+  }
+
+  getAirstripInfo(gx, gz) {
+    if (!KK.AIRSTRIPS) return null;
+    for (let i = 0; i < KK.AIRSTRIPS.length; i++) {
+      const a = KK.AIRSTRIPS[i];
+      const dx = gx - a.x, dz = gz - a.z;
+      const lim = a.len * 0.65;
+      if (Math.abs(dx) > lim || Math.abs(dz) > lim) continue;
+      const c = Math.cos(-a.yaw), s = Math.sin(-a.yaw);
+      const lx = dx * c - dz * s;
+      const lz = dx * s + dz * c;
+      const halfW = a.width * 0.5, halfL = a.len * 0.5;
+      if (Math.abs(lx) < halfW + 24 && Math.abs(lz) < halfL + 28) {
+        const bx = Math.abs(lx) <= halfW ? 1.0 : Math.max(0, 1.0 - (Math.abs(lx) - halfW) / 24);
+        const bz = Math.abs(lz) <= halfL ? 1.0 : Math.max(0, 1.0 - (Math.abs(lz) - halfL) / 28);
+        const b = bx * bz;
+        const blend = b * b * (3 - 2 * b);
+        const onRunway = (Math.abs(lx) <= halfW && Math.abs(lz) <= halfL);
+        const isCenterDash = onRunway && Math.abs(lx) < 0.75 && ((Math.floor((lz + halfL) / 18) % 2) === 0);
+        const isEdgeLine = onRunway && Math.abs(Math.abs(lx) - (halfW - 1.1)) < 0.45;
+        return { strip: a, blend, onRunway, isLine: isCenterDash || isEdgeLine, targetY: a._baseH };
+      }
+    }
+    return null;
+  }
+
   getBiomeWeights(gx, gz) {
+    const islInfo = this.getIslandInfo(gx, gz);
+    const isl = islInfo.island;
+
+    // Outer Islands (Tropical Jungle, Golden Savanna, Arctic Glacier, Black Rock Volcanic Fortress)
+    if (isl && isl.id !== 0 && islInfo.mask > 0.02) {
+      const m = islInfo.mask;
+      const isTrop = isl.biome === "tropical" ? m : 0;
+      const isSav  = isl.biome === "savanna" ? m : 0;
+      const isArc  = isl.biome === "arctic" ? m : 0;
+      const isVolc = isl.biome === "volcanic_isle" ? m : 0;
+      return {
+        mountains: isArc * 0.55,
+        taiga: 0,
+        desert: 0,
+        volcanic: isVolc,
+        rust: 0,
+        tropical: isTrop,
+        savanna: isSav,
+        arctic: isArc,
+        ocean: 1.0 - m
+      };
+    }
+
+    // Open Ocean outside all islands
+    if (!isl || islInfo.mask <= 0.02) {
+      return { mountains: 0, taiga: 0, desert: 0, volcanic: 0, rust: 0, tropical: 0, savanna: 0, arctic: 0, ocean: 1.0 };
+    }
+
+    // Island 1: Classic Krasno-Kamenka Mainland (100% original biome math preserved!)
     const mtn = Math.max(0, Math.min(1, (-gz - 2200) / 14000)) * 0.78 +
                 Math.max(0, Math.min(1, (-gx - 3000) / 16000)) * 0.35;
     const nearMtnD = Math.hypot(gx + 1450, gz + 1350);
@@ -91,13 +178,11 @@ KK.World = class World {
 
     const taiga = Math.max(0, Math.min(1, (gx - 900) / 8500)) * (gz < 2400 ? 1.0 : Math.max(0, 1 - (gz - 2400) / 4000));
 
-    // Red Sands Desert in the South + accessible desert dune tongue around (2000, 2900) for Sandworm & Temple!
     const farDesert = Math.max(0, Math.min(1, (gz - 4800) / 8500));
     const nearDesertD = Math.hypot(gx - 2100, gz - 3000);
     const nearDesert = Math.max(0, 1 - nearDesertD / 1750);
     const desert = Math.min(1, Math.max(farDesert, nearDesert));
 
-    // 5th Biome: Mt. Vulkan Caldera (Volcanic Badlands around (-4400, 1300) + far West!)
     const nearVolcD = Math.hypot(gx + 4350, gz - 1300);
     const nearVolc = Math.max(0, 1 - nearVolcD / 2300);
     const farVolc = Math.max(0, Math.min(1, (-gx - 15000) / 14000)) * Math.max(0, 1 - Math.abs(gz - 2000) / 16000);
@@ -105,12 +190,24 @@ KK.World = class World {
 
     const mountains = Math.min(1, Math.max(mtn, nearMtn)) * (1 - volcanic * 0.8);
     const rust = Math.max(0.08, 1.0 - Math.max(mountains, taiga, desert, volcanic));
-    return { mountains, taiga, desert, volcanic, rust };
+    return { mountains, taiga, desert, volcanic, rust, tropical: 0, savanna: 0, arctic: 0, ocean: 1.0 - islInfo.mask };
   }
 
   getBiomeName(gx, gz) {
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const h = this._computeNaturalGroundHeight(gx, gz);
+    if (h < seaL) return "Krasno-Kamenka Open Sea";
     const b = this.getBiomeWeights(gx, gz);
-    if (b.volcanic > 0.40) return "Mt. Vulkan Caldera (Volcanic)";
+    if (b.tropical > 0.35) {
+      const isl = this.getIslandInfo(gx, gz).island;
+      return (isl && isl.id === 4) ? "Coral Smuggler's Cay (Tropical)" : "Ostrov Tropika (Tropical Jungle)";
+    }
+    if (b.savanna > 0.35) return "Zolotoy Steppe (Golden Savanna)";
+    if (b.arctic > 0.35) return "Severnyy Arctic Glacier";
+    if (b.volcanic > 0.40) {
+      const isl = this.getIslandInfo(gx, gz).island;
+      return (isl && isl.id === 5) ? "Site-140 Black Rock (Volcanic Isle)" : "Mt. Vulkan Caldera (Volcanic)";
+    }
     if (b.mountains > 0.45) return "Razorback Switchbacks";
     if (b.desert > 0.46) return "Krasny Red Sands Desert";
     if (b.taiga > 0.46) return "Black Timber Taiga";
@@ -275,6 +372,36 @@ KK.World = class World {
   }
 
   // ZERO-LEAK SHARED GEOMETRIES & MATERIALS (Reused across every streamed chunk!)
+  // v15.0 INFINITE OCEAN PLANE + FAR-HORIZON ARCHIPELAGO SILHOUETTES + COASTAL AIRSTRIP MARKERS!
+  _buildOceanAndFarIslands() {
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const oceanMat = new THREE.MeshStandardMaterial({
+      color: 0x0d4f73, emissive: 0x041d2e, roughness: 0.22, metalness: 0.35,
+      transparent: true, opacity: 0.88
+    });
+    this.oceanMesh = new THREE.Mesh(new THREE.PlaneGeometry(42000, 42000, 1, 1), oceanMat);
+    this.oceanMesh.rotation.x = -Math.PI / 2;
+    this.oceanMesh.position.set(0, seaL, 0);
+    this.rootGroup.add(this.oceanMesh);
+
+    // Far-horizon low-poly silhouettes for outer islands so you can spot them across the strait!
+    this.farIslandsGroup = new THREE.Group();
+    if (KK.ISLANDS) {
+      for (const isl of KK.ISLANDS) {
+        if (isl.id === 0) continue;
+        const silCol = isl.biome === "tropical" ? 0x1e5c34
+          : (isl.biome === "savanna" ? 0x8f7438
+          : (isl.biome === "arctic" ? 0xbcd6e8 : 0x2c2426));
+        const silMat = new THREE.MeshLambertMaterial({ color: silCol });
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(1.0, Math.max(45, isl.peakH * 0.85), 14), silMat);
+        cone.scale.set(isl.rx * 0.72, 1.0, isl.rz * 0.72);
+        cone.position.set(isl.cx, seaL + Math.max(20, isl.peakH * 0.32), isl.cz);
+        this.farIslandsGroup.add(cone);
+      }
+    }
+    this.rootGroup.add(this.farIslandsGroup);
+  }
+
   _initSharedAssets() {
     this.matTerrain = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.04 });
     this.matWood = new THREE.MeshStandardMaterial({ color: 0x6b4c30, roughness: 0.92 });
@@ -291,6 +418,16 @@ KK.World = class World {
     this.matRock = new THREE.MeshStandardMaterial({ color: 0x5c5d5a, roughness: 0.92 });
     this.matSandRock = new THREE.MeshStandardMaterial({ color: 0x9c6e46, roughness: 0.92 });
     this.matObsidian = new THREE.MeshStandardMaterial({ color: 0x222026, emissive: 0x2a0802, roughness: 0.65, metalness: 0.25 });
+    // v15.0 New Biome Materials (Tropical Palm, Golden Savanna Acacia, Arctic Glacier Spire!)
+    this.matPalmTrunk = new THREE.MeshStandardMaterial({ color: 0x7a5c3e, roughness: 0.94 });
+    this.matPalmLeaf  = new THREE.MeshStandardMaterial({ color: 0x1e8a3c, roughness: 0.78, side: THREE.DoubleSide });
+    this.matAcaciaLeaf = new THREE.MeshStandardMaterial({ color: 0x6f7d2c, roughness: 0.88 });
+    this.matAcaciaBark = new THREE.MeshStandardMaterial({ color: 0x5c4732, roughness: 0.96 });
+    this.matGlacierIce = new THREE.MeshStandardMaterial({ color: 0xbce6ff, emissive: 0x123854, roughness: 0.28, metalness: 0.15 });
+    this.geoPalmSeg = new THREE.CylinderGeometry(0.18, 0.26, 2.8, 6);
+    this.geoPalmFrond = new THREE.BoxGeometry(0.62, 0.06, 3.6);
+    this.geoAcaciaCanopy = new THREE.CylinderGeometry(3.8, 2.2, 0.95, 8);
+    this.geoIceSpire = new THREE.ConeGeometry(1.1, 7.8, 6);
     this.matWater = new THREE.MeshStandardMaterial({ color: 0x1b6278, roughness: 0.18, metalness: 0.22, transparent: true, opacity: 0.76, side: THREE.DoubleSide });
 
     // Shared reusable geometries (zero GPU leaks!)
@@ -321,6 +458,46 @@ KK.World = class World {
 
   // Pure procedural ground height BEFORE town/landmark/tarmac flattening
   _computeNaturalGroundHeight(gx, gz) {
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const seaFloor = seaL - 28.0; // -60m deep ocean bed
+    const islInfo = this.getIslandInfo(gx, gz);
+    const mask = islInfo.mask;
+    const isl = islInfo.island;
+
+    if (!isl || mask <= 0.001) {
+      return seaFloor + (this.fbm(gx * 0.0004, gz * 0.0004, 2) - 0.5) * 6.0;
+    }
+
+    // OUTER ISLANDS (Tropical Jungle, Golden Savanna, Arctic Glacier, Coral Cay, Black Rock!)
+    if (isl.id !== 0) {
+      const macro = (this.fbm(gx * 0.00035, gz * 0.00035, 3) - 0.5) * 28;
+      const detail = (this.fbm(gx * 0.0024, gz * 0.0024, 3) - 0.5) * 7.5;
+      const ridge = 1.0 - Math.abs(this.fbm(gx * 0.00055 + isl.id * 4.1, gz * 0.00055 - isl.id * 2.7, 4) * 2 - 1);
+      let landH = seaL + 8.0 + macro + detail;
+
+      if (isl.biome === "tropical") {
+        // Lush emerald jungle ridges & volcanic emerald spine + gentle sandy beaches!
+        landH += Math.pow(ridge, 1.55) * (isl.peakH || 140) * mask;
+      } else if (isl.biome === "savanna") {
+        // Wide golden rolling grasslands + flat-top mesa plateaus!
+        const mesaRaw = Math.pow(ridge, 1.35) * (isl.peakH || 90);
+        const mesaFlat = Math.min(mesaRaw, 58) + Math.max(0, mesaRaw - 58) * 0.18;
+        landH += mesaFlat * mask;
+      } else if (isl.biome === "arctic") {
+        // Dramatic jagged alpine glacier peaks + frozen coastal ice shelf!
+        landH += Math.pow(ridge, 1.65) * (isl.peakH || 210) * mask + 14 * mask;
+      } else if (isl.biome === "volcanic_isle") {
+        // Sheer obsidian sea-cliffs & caldera peak on Site-140 Black Rock!
+        landH += Math.pow(ridge, 1.25) * (isl.peakH || 130) * mask + 18 * mask;
+      }
+
+      // Smooth coastal beach drop-off into ocean floor
+      const coastBlend = Math.min(1.0, mask * 1.45);
+      const cb = coastBlend * coastBlend * (3 - 2 * coastBlend);
+      return seaFloor * (1 - cb) + landH * cb;
+    }
+
+    // ISLAND 1: CLASSIC KRASNO-KAMENKA MAINLAND (100% untouched interior!)
     const b = this.getBiomeWeights(gx, gz);
     const macro = (this.fbm(gx * 0.00028, gz * 0.00028, 3) - 0.5) * 42;
     const detail = (this.fbm(gx * 0.0022, gz * 0.0022, 3) - 0.5) * 8.5;
@@ -334,7 +511,9 @@ KK.World = class World {
     const tougeNoise = 1.0 - Math.abs(this.fbm(gx * 0.00062 - 3.4, gz * 0.00062 + 7.1, 4) * 2 - 1);
     const southTougeH = Math.pow(tougeNoise, 1.45) * 195 * southTougeEnv + Math.pow(tougeNoise, 1.35) * 92 * centralRidgeEnv;
 
-    return macro + detail + mtnHeight + desertDunes + taigaHill + southTougeH;
+    const rawMain = macro + detail + mtnHeight + desertDunes + taigaHill + southTougeH;
+    if (mask >= 0.999) return rawMain;
+    return seaFloor * (1 - mask) + rawMain * mask;
   }
 
   // Pre-compute EVERY town, landmark & smooth tarmac pad's elevation from the exact average of surrounding terrain!
@@ -384,6 +563,11 @@ KK.World = class World {
       const rcB = this.getRiverChannel(jb.x, jb.z);
       if (rcB.seg && rcB.dist < jb.radius + 80) bH = Math.max(bH, rcB.waterY + 2.6);
       jb._baseH = bH;
+    }
+    if (KK.AIRSTRIPS) {
+      for (const a of KK.AIRSTRIPS) {
+        a._baseH = Math.max((KK.SEA_LEVEL || -32) + 4.0, sampleRingAvg(a.x, a.z, 38));
+      }
     }
     if (KK.HAMMOND_MESA) {
       const hm = KK.HAMMOND_MESA;
@@ -483,6 +667,10 @@ KK.World = class World {
     }
 
     // Glass-smooth Krasny-Ring Tarmac Proving Grounds flattening
+    const airInfo = this.getAirstripInfo(gx, gz);
+    if (airInfo && airInfo.blend > 0.001 && airInfo.targetY !== undefined) {
+      h = h * (1 - airInfo.blend) + airInfo.targetY * airInfo.blend;
+    }
     const tzInfo = this.getSmoothTarmacInfo(gx, gz);
     if (tzInfo && tzInfo.blend > 0.001) {
       h = h * (1 - tzInfo.blend) + tzInfo.targetY * tzInfo.blend;
@@ -724,7 +912,12 @@ KK.World = class World {
   getTerrainInfo(gx, gz, forVehicle = true, refY = Infinity) {
     const b = this.getBiomeWeights(gx, gz);
     let h = this.getBaseHeight(gx, gz);
-    let surface = b.volcanic > 0.42 ? "volcanic" : (b.desert > 0.45 ? "sand" : "grass");
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    let surface = b.volcanic > 0.42 ? "volcanic"
+      : (b.arctic > 0.42 ? "snow"
+      : (b.desert > 0.45 ? "sand"
+      : (b.savanna > 0.42 ? "gravel"
+      : (b.tropical > 0.42 ? "grass" : "grass"))));
     let potholeDepth = 0, mudDepth = 0;
     let waterSurfaceY = -9999, waterDepth = 0, onBridge = false, bridgeHit = null;
 
@@ -899,6 +1092,22 @@ KK.World = class World {
       if (rampY !== null && rampY > h) {
         h = rampY;
         surface = "asphalt";
+      }
+    }
+
+    const airInfo = this.getAirstripInfo(gx, gz);
+    if (airInfo && airInfo.onRunway) {
+      surface = airInfo.isLine ? "tarmac_line" : (airInfo.strip.surface === "asphalt" ? "race_tarmac" : "gravel");
+    }
+
+    // Coastal Sandy Beaches & Open Ocean Water Depth!
+    if (!onBridge) {
+      if (h < seaL) {
+        waterSurfaceY = Math.max(waterSurfaceY, seaL);
+        waterDepth = Math.max(waterDepth, seaL - h);
+        surface = (b.volcanic > 0.4) ? "volcanic" : "sand";
+      } else if (h < seaL + 4.8 && (b.arctic || 0) < 0.45 && b.volcanic < 0.45 && surface !== "asphalt" && surface !== "race_tarmac" && surface !== "tarmac_line") {
+        surface = "sand";
       }
     }
 
@@ -1682,6 +1891,17 @@ KK.World = class World {
   updateChunks(playerGx, playerGz, force = false) {
     const pcx = Math.floor(playerGx / KK.CHUNK_SIZE);
     const pcz = Math.floor(playerGz / KK.CHUNK_SIZE);
+    if (this.oceanMesh) {
+      this.oceanMesh.position.set(playerGx, KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0, playerGz);
+    }
+    if (this.farIslandsGroup && KK.ISLANDS) {
+      let cIdx = 0;
+      for (const isl of KK.ISLANDS) {
+        if (isl.id === 0) continue;
+        const m = this.farIslandsGroup.children[cIdx++];
+        if (m) m.visible = (Math.hypot(playerGx - isl.cx, playerGz - isl.cz) > Math.max(isl.rx, isl.rz) * 1.12);
+      }
+    }
     if (!force && pcx === this._lastCcx && pcz === this._lastCcz) return;
     this._lastCcx = pcx; this._lastCcz = pcz;
 
@@ -1764,11 +1984,22 @@ KK.World = class World {
         const v = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
         col.setRGB(0.24 + v, 0.48 + v, 0.18 + v);
       } else {
-        const r = 0.28 * b.rust + 0.16 * b.taiga + 0.72 * b.desert + 0.36 * b.mountains;
-        const g = 0.33 * b.rust + 0.28 * b.taiga + 0.52 * b.desert + 0.34 * b.mountains;
-        const bl = 0.18 * b.rust + 0.15 * b.taiga + 0.28 * b.desert + 0.32 * b.mountains;
-        const v = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
-        col.setRGB(Math.max(0.05, r + v), Math.max(0.05, g + v), Math.max(0.05, bl + v));
+        if (info.surface === "snow" || (b.arctic || 0) > 0.42) {
+          const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.04;
+          col.setRGB(0.84 + sv, 0.90 + sv, 0.96 + sv);
+        } else if ((b.tropical || 0) > 0.35) {
+          const tv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
+          col.setRGB(0.11 + tv * 0.5, 0.44 + tv, 0.15 + tv * 0.5);
+        } else if ((b.savanna || 0) > 0.35) {
+          const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
+          col.setRGB(0.68 + sv, 0.56 + sv * 0.8, 0.22 + sv * 0.4);
+        } else {
+          const r = 0.28 * b.rust + 0.16 * b.taiga + 0.72 * b.desert + 0.36 * b.mountains;
+          const g = 0.33 * b.rust + 0.28 * b.taiga + 0.52 * b.desert + 0.34 * b.mountains;
+          const bl = 0.18 * b.rust + 0.15 * b.taiga + 0.28 * b.desert + 0.32 * b.mountains;
+          const v = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
+          col.setRGB(Math.max(0.05, r + v), Math.max(0.05, g + v), Math.max(0.05, bl + v));
+        }
       }
       if (this.craters.length > 0) {
         const sc = this.getCraterOffset(gx, gz).scorch;
@@ -1795,7 +2026,11 @@ KK.World = class World {
     const bCenter = this.getBiomeWeights(startX + size * 0.5, startZ + size * 0.5);
     const isDesertChunk = bCenter.desert > 0.55;
     const isVolcChunk = bCenter.volcanic > 0.45;
-    const treeCount = isVolcChunk ? 3 : (isDesertChunk ? 5 : Math.floor(8 + bCenter.taiga * 15 + bCenter.rust * 4));
+    const isTropChunk = (bCenter.tropical || 0) > 0.40;
+    const isSavChunk  = (bCenter.savanna || 0) > 0.40;
+    const isArcChunk  = (bCenter.arctic || 0) > 0.40;
+    const isOceanChunk = (bCenter.ocean || 0) > 0.88;
+    const treeCount = isOceanChunk ? 0 : (isTropChunk ? 18 : (isSavChunk ? 7 : (isArcChunk ? 6 : (isVolcChunk ? 3 : (isDesertChunk ? 5 : Math.floor(8 + bCenter.taiga * 15 + bCenter.rust * 4))))));
     const chunkKey = cx + "," + cz;
 
     for (let t = 0; t < treeCount; t++) {
@@ -1805,7 +2040,8 @@ KK.World = class World {
       const rz = (this.hash2(cx * 13, cz * 29 + t) - 0.5) * (size - 10);
       const gx = startX + size * 0.5 + rx, gz = startZ + size * 0.5 + rz;
       const info = this.getTerrainInfo(gx, gz, false);
-      if (info.roadDist < 12 || info.waterDepth > 0.1 || info.height > 290 || info.surface === "race_tarmac" || info.surface === "kerb" || info.surface === "tarmac_line") continue;
+      const aChk = this.getAirstripInfo(gx, gz);
+      if (info.roadDist < 12 || info.waterDepth > 0.1 || info.height > 290 || info.surface === "race_tarmac" || info.surface === "kerb" || info.surface === "tarmac_line" || (aChk && aChk.blend > 0.1)) continue;
 
       let blocked = false;
       for (const tw of KK.TOWNS) { if (Math.hypot(gx - tw.x, gz - tw.z) < 96) { blocked = true; break; } }
@@ -1820,7 +2056,59 @@ KK.World = class World {
 
       const scale = 0.95 + this.hash2(cx + t * 5, cz - t * 3) * 0.90;
       const tGrp = new THREE.Group();
-      if (isDesertChunk) {
+      if (isTropChunk) {
+        // Curved Tropical Jungle Palm Tree with 6 splayed emerald fronds!
+        const lean = 0.14 + this.hash2(cx + t, cz - t) * 0.16;
+        const p1 = new THREE.Mesh(this.geoPalmSeg, this.matPalmTrunk);
+        p1.position.set(0, 1.35, 0); p1.rotation.z = lean * 0.5; tGrp.add(p1);
+        const p2 = new THREE.Mesh(this.geoPalmSeg, this.matPalmTrunk);
+        p2.position.set(-lean * 1.4, 4.0, 0); p2.rotation.z = lean; tGrp.add(p2);
+        const p3 = new THREE.Mesh(this.geoPalmSeg, this.matPalmTrunk);
+        p3.position.set(-lean * 3.8, 6.5, 0); p3.rotation.z = lean * 1.2; tGrp.add(p3);
+        const crownX = -lean * 5.2, crownY = 7.9;
+        for (let f = 0; f < 6; f++) {
+          const fa = (f / 6) * Math.PI * 2;
+          const fr = new THREE.Mesh(this.geoPalmFrond, this.matPalmLeaf);
+          fr.position.set(crownX + Math.sin(fa) * 1.5, crownY - 0.15, Math.cos(fa) * 1.5);
+          fr.rotation.y = fa; fr.rotation.x = 0.34;
+          tGrp.add(fr);
+        }
+        tGrp.rotation.y = this.hash2(t * 7, cx + cz) * Math.PI * 2;
+        tGrp.scale.set(scale * 1.05, scale * 1.15, scale * 1.05);
+        tGrp.position.set(rx, info.height - 0.15, rz);
+        group.add(tGrp);
+        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.42 * scale, h: 9.0 * scale, kind: "tree", mesh: tGrp, broken: false });
+      } else if (isSavChunk) {
+        // Wide Flat-Topped African Savanna Acacia Tree!
+        const trk = new THREE.Mesh(this.geoPalmSeg, this.matAcaciaBark);
+        trk.scale.set(1.25, 1.55, 1.25); trk.position.set(0, 2.1, 0); tGrp.add(trk);
+        const can1 = new THREE.Mesh(this.geoAcaciaCanopy, this.matAcaciaLeaf);
+        can1.position.set(0, 4.4, 0); tGrp.add(can1);
+        const can2 = new THREE.Mesh(this.geoAcaciaCanopy, this.matAcaciaLeaf);
+        can2.scale.set(0.68, 0.75, 0.68); can2.position.set(1.1, 5.0, 0.6); tGrp.add(can2);
+        tGrp.rotation.y = this.hash2(t * 11, cx - cz) * Math.PI * 2;
+        tGrp.scale.set(scale * 1.1, scale * 1.0, scale * 1.1);
+        tGrp.position.set(rx, info.height - 0.15, rz);
+        group.add(tGrp);
+        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.55 * scale, h: 6.2 * scale, kind: "tree", mesh: tGrp, broken: false });
+      } else if (isArcChunk) {
+        // Arctic Glacier Ice Spire / Frost-Laden Pine!
+        if (t % 2 === 0) {
+          const spire = new THREE.Mesh(this.geoIceSpire, this.matGlacierIce);
+          spire.position.set(0, 3.6, 0); tGrp.add(spire);
+        } else {
+          tGrp.add(new THREE.Mesh(this.geoTrunk, this.matTrunk));
+          tGrp.add(new THREE.Mesh(this.geoPine1, this.matSnowPine));
+          tGrp.add(new THREE.Mesh(this.geoPine2, this.matSnowPine));
+        }
+        tGrp.scale.set(scale, scale, scale);
+        tGrp.position.set(rx, info.height - 0.15, rz);
+        group.add(tGrp);
+        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.60 * scale, h: 8.5 * scale, kind: "tree", mesh: tGrp, broken: false });
+      } else if (isDesertChunk) {
         const cMesh = new THREE.Mesh(this.geoCactus, this.matCactus);
         tGrp.add(cMesh);
         tGrp.scale.set(scale, scale, scale);

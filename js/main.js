@@ -327,7 +327,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v14.4 ONLINE! Thick 3D Winch Cable, Destructible Trees by Gunfire, Synced Tank Gun Pitch, Red-Hot Glowing Barrels & 2-Axis T-72B Roof MG!');
+      this.ui.toast('Welcome to v15.0 ONLINE! 200x200 km 6-Island Archipelago — Tropical Jungle, Golden Savanna, Arctic Glacier, Coral Cay, Black Rock & Open Ocean!');
     }, 650);
   }
 

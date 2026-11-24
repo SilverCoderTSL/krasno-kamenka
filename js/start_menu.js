@@ -1,5 +1,5 @@
 // ============================================================================
-// js/start_menu.js (v14.4 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
+// js/start_menu.js (v15.0 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
 // Clean Spawn Map (Roads, Rivers & Settlements Only + Survivability Ratings) &
 // Account Password Management
 // ============================================================================
@@ -166,13 +166,40 @@ KK.StartMenu = class StartMenu {
     if (!cv) return;
     const ctx = cv.getContext("2d");
     const W = cv.width, H = cv.height;
-    const minX = -46000, maxX = 48000, minZ = -38000, maxZ = 40000;
+    const minX = -96000, maxX = 96000, minZ = -94000, maxZ = 94000;
     const toPx = (gx, gz) => [
-      ((gx - minX) / (maxX - minX)) * (W - 44) + 22,
-      ((gz - minZ) / (maxZ - minZ)) * (H - 44) + 22
+      ((gx - minX) / (maxX - minX)) * (W - 36) + 18,
+      ((gz - minZ) / (maxZ - minZ)) * (H - 36) + 18
     ];
 
-    ctx.fillStyle = "#0b131c"; ctx.fillRect(0, 0, W, H);
+    // Deep Archipelago Ocean Background
+    ctx.fillStyle = "#081c2e"; ctx.fillRect(0, 0, W, H);
+
+    // Draw all 6 Archipelago Island silhouettes on Spawn Map!
+    if (KK.ISLANDS) {
+      for (const isl of KK.ISLANDS) {
+        const [ix, iy] = toPx(isl.cx, isl.cz);
+        const rxPx = (isl.rx / (maxX - minX)) * (W - 36);
+        const ryPx = (isl.rz / (maxZ - minZ)) * (H - 36);
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(ix, iy, rxPx, ryPx, 0, 0, Math.PI * 2);
+        const fillCol = isl.biome === "tropical" ? "rgba(38, 138, 72, 0.42)"
+          : (isl.biome === "savanna" ? "rgba(186, 148, 56, 0.40)"
+          : (isl.biome === "arctic" ? "rgba(165, 208, 232, 0.38)"
+          : (isl.biome === "volcanic_isle" ? "rgba(95, 42, 46, 0.48)" : "rgba(58, 76, 62, 0.42)")));
+        ctx.fillStyle = fillCol;
+        ctx.fill();
+        ctx.strokeStyle = "rgba(120, 200, 225, 0.42)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.fillStyle = isl.labelColor || "#cfe3f2";
+        ctx.font = "bold 9px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(isl.name.toUpperCase(), ix, iy - ryPx - 4);
+        ctx.restore();
+      }
+    }
     ctx.strokeStyle = "rgba(90, 130, 165, 0.10)"; ctx.lineWidth = 1;
     for (let x = 22; x < W; x += 48) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     for (let y = 22; y < H; y += 48) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
@@ -379,7 +406,7 @@ KK.StartMenu = class StartMenu {
             </div>
           </div>
           <div class="sm-acc-box small" style="line-height:1.5;">
-            <label class="sm-lbl">v14.4 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
+            <label class="sm-lbl">v15.0 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
             <b>[F]</b> Universal Interact / Enter-Exit (Front/Rear for Hood • <b>Shift+F</b> Force Exit)<br/>
             <b>[E]</b> On-Foot Inventory • <b>[Q/E]</b> Manual Gears (in car) • <b>[4]</b> Auto/Manual<br/>
             <b>[LMB/RMB/MMB]</b> Fire Primary / Turret Scope / Lock Turret<br/>
