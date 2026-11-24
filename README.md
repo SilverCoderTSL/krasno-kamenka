@@ -1,16 +1,13 @@
-# Krasno-Kamenka Oblast (v15.1 ONLINE — Naval Update: Boats, Zubr Hovercraft, Toggle Scope & Winch Overhaul)
+# Krasno-Kamenka Oblast (v15.1.1 ONLINE — True Shoreline Ports, Coastal Roads & Full-Island Spread)
 
-## What's New in Version 15.1 ONLINE
-1. **Toggle Right-Click Aim/Scope (`js/main.js`):**
-   - Right-click **once** to enter gunner scope/aim mode, and right-click **again** (or press `Esc`) to exit—no more holding RMB!
-2. **Overhauled Visible & Smart-Recovery Winch (`js/main.js`, `js/physics.js`, `js/ai_entities.js`, `js/network.js`):**
-   - Fixed the missing `updateWinchLine()` loop call so your **thick glowing 3D winch cable & anchor hook** are now 100% visible every frame!
-   - **Smart Comrade Rescue Logic:** When winched to a **tree/rock/ground**, holding `[T]` pulls *your* vehicle toward the anchor. When winched to a **comrade**, holding `[T]` now sends a `winch_pull` rescue force that **pulls your comrade toward YOU** while auto-bracing your wheels (hold `[Space]` for 100% brake anchor) instead of dragging you into the river!
-3. **4 Unlockable Ocean Boats & Port Summoning (`js/boats.js`, `js/config.js`, `js/ui.js`, `js/main.js`):**
-   - Drive or walk to any of the **9 Ocean Ports**, find the glowing cyan **Boat Summon Pad**, and press **`[F]`** to open the **Harbor Boat Dock**.
-   - Summoned boats launch floating in the water beside the pier **without deleting your vehicle**!
-   - **Projekt 12322 "Zubr" LCAC Hovercraft ($165,000):** Amphibious assault hovercraft (`105 km/h`) with 3 spinning propulsor ducts—glides over ocean waves AND coastal beaches while carrying **ANY vehicle including the 68-ton PzKpfw 140A4 & T-72B**!
-   - **Projekt 11770 "Serna" Tank Landing Barge ($68,000):** Heavy steel landing craft (`68 km/h`) carrying **any truck or tank up to 75 tons**.
-   - **Krasnaya Utility Patrol Boat ($24,000):** Fast 4-seat harbor craft (`92 km/h`) that mounts **1 light 4x4 (`<= 3.6t`)** on the stern deck.
-   - **Strela-X1 Offshore Speedboat ($38,000):** Blistering **`155 km/h`** hydroplane racing boat (**strictly 1 person only, no vehicles**).
-   - **Controls:** `[F]` at Port Pad to summon / `[F]` near boat to board / `[W/S]` throttle / `[A/D]` rudder / `[Shift]` boost / `[V]` Load or Unload your vehicle on deck / `[E]` disembark.
+## What's New in Version 15.1.1 ONLINE
+1. **True Shoreline Ocean Ports (`js/world.js`, `js/config.js`):**
+   - Added `_snapPortsToRealShorelines()` which raymarches from each island's center to the exact `SEA_LEVEL` crossing so all **9 Ocean Ports** sit right on the real ocean shoreline facing open water—zero buried inland piers!
+   - Smoothly grades a driveable beach approach behind every port and snaps outer-island port towns right behind their harbors.
+2. **Coastal Port Spur Roads & Full-Island Town Spread (`js/config.js`, `js/world.js`):**
+   - Spread outer-island suburbs/villages out to `~68–80%` of each island's radius so roads sweep across the entire island instead of huddling in the center.
+   - Added automatic **coastal spur roads** linking all 4 Mainland ports and all 5 outer-island ports straight into the highway network.
+3. **Visible & Spawnable Ports on Both Maps (`js/map_ui.js`, `js/start_menu.js`):**
+   - All 9 Ocean Ports now appear as bright cyan **`⚓`** icons on both the **`[M]` GPS Map** (with tooltips & clickable GPS waypoints) and the **Intro Spawn Map** (click any `⚓` port to deploy straight to the pier and summon boats immediately!).
+4. **Outer-Ring Island Landmarks (`js/world.js`):**
+   - Populated outer island rings with spinning Savanna wind turbines, Tropika coastal fishing shacks/warungs, Arctic polar watchtowers, and Site-140 radiation warning pylons.

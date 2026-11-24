@@ -287,6 +287,18 @@ KK.MapController = class MapController {
         list.push({ type: "town", priority: 100, x: tw.x, z: tw.z, name: tw.name, sub: tw.desc, color: "#2de08b", icon: "●", pinX: tw.dockX, pinZ: tw.dockZ });
       }
     }
+    if (this.layers.towns && KK.PORTS) {
+      for (const pt of KK.PORTS) {
+        list.push({
+          type: "port", priority: 98, x: pt.x, z: pt.z,
+          name: "⚓ " + pt.name,
+          sub: "Ocean Port • Drive to glowing cyan pier pad & press [F] to unlock & summon boats (Zubr, Serna, Patrol, Strela-X1)!",
+          color: "#00e5ff", icon: "⚓",
+          pinX: pt.approachX !== undefined ? pt.approachX : pt.x,
+          pinZ: pt.approachZ !== undefined ? pt.approachZ : pt.z
+        });
+      }
+    }
     if (this.layers.zones) {
       if (KK.CLARKSON_FARM) {
         list.push({ type: "zone", priority: 95, x: KK.CLARKSON_FARM.x, z: KK.CLARKSON_FARM.z, name: "Clarkson's Farm (Safe)", sub: "Free Repairs & Lambo Tractor — Mind the Sheep!", color: "#80ed99", icon: "🐑", r: KK.CLARKSON_FARM.radius });

@@ -1,5 +1,5 @@
 // ============================================================================
-// js/start_menu.js (v15.1 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
+// js/start_menu.js (v15.1.1 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
 // Clean Spawn Map (Roads, Rivers & Settlements Only + Survivability Ratings) &
 // Account Password Management
 // ============================================================================
@@ -12,6 +12,7 @@ KK.StartMenu = class StartMenu {
     this.activeTab = "deploy"; // deploy | account | settings
     this.deployStep = "rig";   // rig | map
     this.selectedTownId = 0;
+    this.selectedPortId = null;
     this.mapZoom = 1.0;
     this.mapPanX = 0;
     this.mapPanZ = 0;
@@ -117,14 +118,19 @@ KK.StartMenu = class StartMenu {
       g.switchVehicle(this.selectedVehicleId, true);
     }
 
+    const selPort = this.selectedPortId ? (KK.PORTS || []).find((p) => p.id === this.selectedPortId) : null;
     const tw = KK.TOWNS[this.selectedTownId] || KK.TOWNS[0];
+    const destName = selPort ? ("⚓ " + selPort.name) : tw.name;
+    const destX = selPort ? (selPort.approachX !== undefined ? selPort.approachX : selPort.x) : tw.x;
+    const destZ = selPort ? (selPort.approachZ !== undefined ? selPort.approachZ : selPort.z) : (tw.z + 18);
+
     if (!this._hasDeployedOnce || this._spawnTownChanged) {
-      const sy = g.world.getTerrainInfo(tw.x, tw.z + 18, true).height;
-      g.vehicle.pos.set(tw.x, sy + 1.35, tw.z + 18);
+      const sy = g.world.getTerrainInfo(destX, destZ, true).height;
+      g.vehicle.pos.set(destX, sy + 1.35, destZ);
       g.vehicle.vel.set(0, 0, 0);
       g.vehicle.angVel.set(0, 0, 0);
       g.vehicle.quat.set(0, 0, 0, 1);
-      g.world.updateChunks(tw.x, tw.z + 18, true);
+      g.world.updateChunks(destX, destZ, true);
       this._hasDeployedOnce = true;
       this._spawnTownChanged = false;
     }
@@ -134,7 +140,7 @@ KK.StartMenu = class StartMenu {
     document.body.classList.remove("start-menu-open");
     if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
     g.audio.init();
-    g.ui.toast(`Deployed to ${tw.name} in ${KK.VEHICLES[g.activeVehicleId].name}!`);
+    g.ui.toast(`Deployed to ${destName} in ${KK.VEHICLES[g.activeVehicleId].name}!`);
   }
 
   selectStartRig(vid) {
@@ -153,8 +159,19 @@ KK.StartMenu = class StartMenu {
   _updateSpawnTownCard() {
     const card = document.getElementById("sm-spawn-town-card");
     if (!card) return;
-    const tw = KK.TOWNS[this.selectedTownId] || KK.TOWNS[0];
     const rig = KK.VEHICLES[this.selectedVehicleId] || KK.VEHICLES.uaz452;
+    const selPort = this.selectedPortId ? (KK.PORTS || []).find((p) => p.id === this.selectedPortId) : null;
+    if (selPort) {
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <b style="font-size:15px;color:#00e5ff;">⚓ ${selPort.name}</b>
+          <span style="padding:2px 8px;border-radius:4px;font-family:monospace;font-size:11px;font-weight:800;color:#081016;background:#00e5ff;">OCEAN PORT • BOAT SUMMON</span>
+        </div>
+        <div class="small muted" style="margin-top:5px;">Deploys directly at the coastal pier entrance! Drive onto the glowing cyan pad &amp; press [F] to unlock &amp; summon the Zubr Hovercraft, Serna Barge, Patrol Boat, or Strela-X1 Speedboat.</div>
+        <div class="small" style="margin-top:6px;color:#80faff;"><b>Selected Rig:</b> ${rig.name}</div>`;
+      return;
+    }
+    const tw = KK.TOWNS[this.selectedTownId] || KK.TOWNS[0];
     const score = tw.survScore || 50;
     const col = tw.survColor || "#ffd166";
     card.innerHTML = `
@@ -298,6 +315,34 @@ KK.StartMenu = class StartMenu {
       }
     }
 
+    // Draw all 9 Ocean Ports (Clickable cyan anchor markers!)
+    if (KK.PORTS) {
+      for (const pt of KK.PORTS) {
+        const [px, py] = toPx(pt.x, pt.z);
+        const sel = (this.selectedPortId === pt.id);
+        this._spawnPts.push({ portId: pt.id, px, py });
+        if (px < -20 || px > W + 20 || py < -20 || py > H + 20) continue;
+        if (sel) {
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(px, py, 12, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.fillStyle = "#00e5ff";
+        ctx.beginPath(); ctx.arc(px, py, sel ? 7.0 : 5.2, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#041624"; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.fillStyle = "#041624"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+        ctx.fillText("⚓", px, py + 3);
+        if (sel || this.mapZoom >= 1.5) {
+          const lbl = "⚓ " + pt.name.split(" (")[0];
+          ctx.font = sel ? "bold 10.5px monospace" : "bold 9px monospace";
+          const twW = ctx.measureText(lbl).width + 8;
+          ctx.fillStyle = "rgba(4, 22, 36, 0.85)";
+          ctx.fillRect(px - twW * 0.5, py + 9, twW, 13);
+          ctx.fillStyle = "#80faff";
+          ctx.fillText(lbl, px, py + 19);
+        }
+      }
+    }
+
     ctx.fillStyle = "rgba(8, 16, 24, 0.72)";
     ctx.fillRect(W - 210, H - 22, 204, 18);
     ctx.fillStyle = "#9ab8cf";
@@ -362,13 +407,19 @@ KK.StartMenu = class StartMenu {
       const rect = cv.getBoundingClientRect();
       const mx = (e.clientX - rect.left) * (cv.width / rect.width);
       const my = (e.clientY - rect.top) * (cv.height / rect.height);
-      let bestId = this.selectedTownId, bestD = 30;
+      let bestPt = null, bestD = 30;
       for (const pt of (this._spawnPts || [])) {
         const d = Math.hypot(pt.px - mx, pt.py - my);
-        if (d < bestD) { bestD = d; bestId = pt.id; }
+        if (d < bestD) { bestD = d; bestPt = pt; }
       }
-      if (bestId !== this.selectedTownId) {
-        this.selectedTownId = bestId;
+      if (bestPt) {
+        if (bestPt.portId) {
+          this.selectedPortId = bestPt.portId;
+        } else {
+          this.selectedPortId = null;
+          this.selectedTownId = bestPt.id;
+        }
+        this._spawnTownChanged = true;
         this._drawSpawnMap();
         this._updateSpawnTownCard();
       }
@@ -527,7 +578,7 @@ KK.StartMenu = class StartMenu {
             </div>
           </div>
           <div class="sm-acc-box small" style="line-height:1.5;">
-            <label class="sm-lbl">v15.1 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
+            <label class="sm-lbl">v15.1.1 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
             <b>[F]</b> Universal Interact / Enter-Exit (Front/Rear for Hood • <b>Shift+F</b> Force Exit)<br/>
             <b>[E]</b> On-Foot Inventory • <b>[Q/E]</b> Manual Gears (in car) • <b>[4]</b> Auto/Manual<br/>
             <b>[LMB/RMB/MMB]</b> Fire Primary / Turret Scope / Lock Turret<br/>

@@ -41,6 +41,7 @@ KK.World = class World {
     this.secretPads = {};   // { t72, bm21, shilka } -> { x, z, baseH, radius }
     this.craters = [];      // Permanent blast craters: { x, z, r, d }         // Active breakable fence colliders!
 
+    this._snapPortsToRealShorelines();
     this._buildRoadNetwork();
     this._buildRiverNetwork();
     this._computeTownAndLandmarkElevations();
@@ -222,6 +223,58 @@ KK.World = class World {
     return "The Rust Basin";
   }
 
+  // v15.1.1 AUTO-SNAP EVERY OCEAN PORT TO EXACT SHORELINE (Zero buried inland piers!)
+  _snapPortsToRealShorelines() {
+    if (!KK.PORTS || !KK.ISLANDS) return;
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+
+    for (const pt of KK.PORTS) {
+      const isl = KK.ISLANDS.find((x) => x.id === pt.islandId);
+      if (!isl) continue;
+      const ang = pt.dirAng !== undefined ? pt.dirAng : Math.atan2(pt.z - isl.cz, pt.x - isl.cx);
+      const ux = Math.cos(ang), uz = Math.sin(ang);
+      const maxR = Math.max(isl.rx, isl.rz) * 1.18;
+      const startR = isl.id === 0 ? Math.min(isl.rx, isl.rz) * 0.72 : Math.min(isl.rx, isl.rz) * 0.35;
+
+      // Coarse march outward from land into sea until height crosses SEA_LEVEL
+      let shoreR = startR;
+      let prevAbove = true;
+      for (let r = startR; r <= maxR; r += 80) {
+        const h = this._computeNaturalGroundHeight(isl.cx + ux * r, isl.cz + uz * r);
+        if (prevAbove && h <= seaL + 0.5) {
+          // Binary search to within 4m of the exact shoreline!
+          let lo = Math.max(startR, r - 80), hi = r;
+          for (let it = 0; it < 6; it++) {
+            const mid = (lo + hi) * 0.5;
+            if (this._computeNaturalGroundHeight(isl.cx + ux * mid, isl.cz + uz * mid) > seaL + 0.5) lo = mid;
+            else hi = mid;
+          }
+          shoreR = lo;
+          break;
+        }
+        prevAbove = (h > seaL + 0.5);
+      }
+
+      // Anchor port slightly landward of exact water's edge so pier deck & boat ramp jut straight into deep water!
+      const pierR = Math.max(startR, shoreR - 14);
+      pt.x = Math.round(isl.cx + ux * pierR);
+      pt.z = Math.round(isl.cz + uz * pierR);
+      pt.ux = ux; pt.uz = uz;
+      // Three.js +Z rotated by yaw points along (sin(yaw), cos(yaw)) -> yaw = atan2(ux, uz) faces straight out to sea!
+      pt.yaw = Math.atan2(ux, uz);
+      pt.approachX = Math.round(pt.x - ux * 58);
+      pt.approachZ = Math.round(pt.z - uz * 58);
+
+      // Snap outer-island coastal port towns cleanly ~190m inland behind their real harbor!
+      if (pt.portTownId !== null && pt.portTownId !== undefined && KK.TOWNS[pt.portTownId]) {
+        const tw = KK.TOWNS[pt.portTownId];
+        const inlandDist = (isl.rx < 7000) ? 165 : 220;
+        tw.x = Math.round(pt.x - ux * inlandDist);
+        tw.z = Math.round(pt.z - uz * inlandDist);
+      }
+    }
+  }
+
   _buildRoadNetwork() {
     this.roadSegments = [];
     for (const [ia, ib] of KK.ROAD_LINKS) {
@@ -294,6 +347,41 @@ KK.World = class World {
           minX: zc.cx - hs - 28, maxX: zc.cx + hs + 28, minZ: zc.cz + off - 28, maxZ: zc.cz + off + 28,
           isMountain: false, isModernHwy: true, isCityGrid: true, width: w
         });
+      }
+    }
+
+    // v15.1.1 COASTAL SPUR ROADS CONNECTING EVERY OCEAN PORT TO ITS NEAREST TOWN!
+    if (KK.PORTS) {
+      for (const pt of KK.PORTS) {
+        const tw = (pt.nearTownId !== undefined && KK.TOWNS[pt.nearTownId]) ? KK.TOWNS[pt.nearTownId] : null;
+        if (!tw) continue;
+        const ax = pt.approachX !== undefined ? pt.approachX : pt.x;
+        const az = pt.approachZ !== undefined ? pt.approachZ : pt.z;
+        const dist = Math.hypot(ax - tw.x, az - tw.z);
+        if (dist < 25) continue;
+        const isSav = (tw.biome === "savanna");
+        const isTrop = (tw.biome === "tropical");
+        const steps = Math.max(4, Math.min(36, Math.floor(dist / 700)));
+        let prevX = tw.x, prevZ = tw.z;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          let px = tw.x + (ax - tw.x) * t;
+          let pz = tw.z + (az - tw.z) * t;
+          const env = Math.sin(t * Math.PI);
+          if (env > 0.05 && dist > 1200) {
+            const nx = -(az - tw.z) / dist, nz = (ax - tw.x) / dist;
+            const wob = Math.sin(t * Math.PI * (isTrop ? 5.0 : 2.0)) * Math.min(320, dist * 0.025) * env;
+            px += nx * wob; pz += nz * wob;
+          }
+          this.roadSegments.push({
+            x0: prevX, z0: prevZ, x1: px, z1: pz,
+            minX: Math.min(prevX, px) - 40, maxX: Math.max(prevX, px) + 40,
+            minZ: Math.min(prevZ, pz) - 40, maxZ: Math.max(prevZ, pz) + 40,
+            isMountain: false, isTropikaHell: isTrop, isModernHwy: isSav,
+            width: isSav ? 9.6 : (isTrop ? 5.6 : 7.4)
+          });
+          prevX = px; prevZ = pz;
+        }
       }
     }
   }
@@ -550,6 +638,107 @@ KK.World = class World {
       gx: zc.cx + R, gy: baseY, gz: zc.cz, yaw: 0, bellCd: 0
     };
 
+    // v15.0.2 ZOLOTOY CITY LIFE: Boulevard Streetlamps, Traffic Lights, Planter Trees,
+    // 12 Moving NPC City Cars & 28 Walking Sidewalk Pedestrians!
+    const matPole = new THREE.MeshStandardMaterial({ color: 0x3a424c, metalness: 0.65, roughness: 0.4 });
+    const matLamp = new THREE.MeshBasicMaterial({ color: 0xfff0b3 });
+    const matRedL = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
+    const matGrnL = new THREE.MeshBasicMaterial({ color: 0x2de08b });
+    const matLeaf = new THREE.MeshStandardMaterial({ color: 0x2f7d38, roughness: 0.85 });
+    const matTrk  = new THREE.MeshStandardMaterial({ color: 0x5c432d, roughness: 0.95 });
+    const matBillboard = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+
+    // Streetlamps, traffic lights & green boulevard trees at major grid intersections!
+    for (let ix = -360; ix <= 360; ix += 120) {
+      for (let iz = -360; iz <= 360; iz += 120) {
+        if (Math.hypot(ix, iz) < 70) continue;
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.14, 6.2, 6), matPole);
+        pole.position.set(ix + 9.5, 3.1, iz + 9.5); grp.add(pole);
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), matLamp);
+        lamp.position.set(ix + 9.5, 6.3, iz + 9.5); grp.add(lamp);
+
+        // Traffic signal box at downtown intersections
+        if (Math.abs(ix) <= 240 && Math.abs(iz) <= 240) {
+          const sig = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.05, 0.38), matDark);
+          sig.position.set(ix - 9.2, 4.6, iz - 9.2); grp.add(sig);
+          const sPole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 4.6, 6), matPole);
+          sPole.position.set(ix - 9.2, 2.3, iz - 9.2); grp.add(sPole);
+          const dot = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6), ((ix + iz) % 240 === 0) ? matGrnL : matRedL);
+          dot.position.set(ix - 9.2, 4.85, iz - 9.0); grp.add(dot);
+        }
+        // Roadside shade tree on opposite corner
+        const tStem = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 2.8, 6), matTrk);
+        tStem.position.set(ix + 11.5, 1.4, iz - 11.5); grp.add(tStem);
+        const tTop = new THREE.Mesh(new THREE.SphereGeometry(1.75, 7, 6), matLeaf);
+        tTop.position.set(ix + 11.5, 3.4, iz - 11.5); grp.add(tTop);
+      }
+    }
+
+    // Glowing downtown rooftop billboards
+    for (const [bx, bz, bh] of [[-180, -180, 44], [180, -180, 48], [-180, 180, 42], [180, 180, 50]]) {
+      const bb = new THREE.Mesh(new THREE.BoxGeometry(16, 4.5, 0.6), matBillboard);
+      bb.position.set(bx, bh, bz); grp.add(bb);
+    }
+
+    // 12 ANIMATED NPC CITY TRAFFIC CARS (Sedans, Taxis & Vans cruising Zolotoy avenues!)
+    this.cityTraffic = [];
+    const carColors = [0xffbe0b, 0xe63946, 0x3a86ff, 0xf1faee, 0x2a9d8f, 0x8338ec, 0xfb5607, 0xadb5bd];
+    const aveCoords = [-360, -240, -120, 120, 240, 360];
+    for (let c = 0; c < 12; c++) {
+      const carGrp = new THREE.Group();
+      const cMat = new THREE.MeshStandardMaterial({ color: carColors[c % carColors.length], roughness: 0.42, metalness: 0.35 });
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.72, 4.35), cMat);
+      body.position.y = 0.68; body.castShadow = true; carGrp.add(body);
+      const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.62, 2.2), cMat);
+      cabin.position.set(0, 1.32, -0.15); carGrp.add(cabin);
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.22, 0.1), matLamp);
+      hl.position.set(0, 0.72, 2.18); carGrp.add(hl);
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.20, 0.1), matRedL);
+      tl.position.set(0, 0.72, -2.18); carGrp.add(tl);
+      grp.add(carGrp);
+
+      const isNS = (c % 2 === 0);
+      const lane = aveCoords[c % aveCoords.length];
+      const dir = (c % 4 < 2) ? 1 : -1;
+      const laneOff = dir * 3.4;
+      this.cityTraffic.push({
+        mesh: carGrp, isNS, lane, dir, laneOff,
+        pos: -380 + (c * 67) % 760,
+        speed: 11.5 + (c % 4) * 2.8,
+        gx: zc.cx, gz: zc.cz
+      });
+    }
+
+    // 28 ANIMATED WALKING CITY PEDESTRIANS ON ZOLOTOY SIDEWALKS!
+    this.cityPeds = [];
+    const shirtCols = [0x3a86ff, 0xff006e, 0xffbe0b, 0x2ec4b6, 0xf1faee, 0xfb5607, 0x8ecae6];
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xe6b89c, roughness: 0.85 });
+    const pantMat = new THREE.MeshStandardMaterial({ color: 0x222831, roughness: 0.9 });
+    for (let p = 0; p < 28; p++) {
+      const ped = new THREE.Group();
+      const sMat = new THREE.MeshStandardMaterial({ color: shirtCols[p % shirtCols.length], roughness: 0.8 });
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.62, 0.28), sMat);
+      torso.position.y = 1.12; ped.add(torso);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.30, 0.30), skinMat);
+      head.position.y = 1.62; ped.add(head);
+      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.72, 0.18), pantMat);
+      legL.position.set(-0.12, 0.40, 0); ped.add(legL);
+      const legR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.72, 0.18), pantMat);
+      legR.position.set(0.12, 0.40, 0); ped.add(legR);
+      grp.add(ped);
+
+      const isNS = (p % 2 === 0);
+      const lane = aveCoords[p % aveCoords.length];
+      const side = (p % 4 < 2) ? 9.2 : -9.2;
+      this.cityPeds.push({
+        mesh: ped, legL, legR, isNS, lane, side,
+        dir: (p % 3 === 0) ? -1 : 1,
+        pos: -350 + (p * 37) % 700,
+        speed: 1.45 + (p % 3) * 0.35,
+        phase: p * 0.9
+      });
+    }
+
     this.rootGroup.add(grp);
     this.zolotoyCityGroup = grp;
   }
@@ -600,6 +789,43 @@ KK.World = class World {
           vehicle.pos.x += wx * pen; vehicle.pos.z += wz * pen;
           vehicle.applyExternalImpulse(wx * 14, 3.2, wz * 14, pushDir * 2.5);
           if (audio) audio.playImpact(0.85);
+        }
+      }
+    }
+
+    // Animate Zolotoy City NPC Traffic Cars & Walking Pedestrians when player is near Zolotoy City!
+    if (vehicle && Math.hypot(vehicle.pos.x - tr.cx, vehicle.pos.z - tr.cz) < 1300) {
+      if (this.cityTraffic) {
+        for (const car of this.cityTraffic) {
+          car.pos += car.dir * car.speed * dt;
+          if (car.pos > 400) car.pos = -400;
+          else if (car.pos < -400) car.pos = 400;
+          const lx = car.isNS ? (car.lane + car.laneOff) : car.pos;
+          const lz = car.isNS ? car.pos : (car.lane - car.laneOff);
+          car.mesh.position.set(lx, 0, lz);
+          car.mesh.rotation.y = car.isNS ? (car.dir > 0 ? 0 : Math.PI) : (car.dir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
+          car.gx = tr.cx + lx; car.gz = tr.cz + lz;
+          // Gentle bump if player slams into an NPC city car!
+          const dc = Math.hypot(vehicle.pos.x - car.gx, vehicle.pos.z - car.gz);
+          if (dc < 3.6 && Math.abs(vehicle.pos.y - tr.baseY) < 2.8) {
+            const ang = Math.atan2(vehicle.pos.x - car.gx, vehicle.pos.z - car.gz);
+            vehicle.applyExternalImpulse(Math.sin(ang) * 6.5, 1.2, Math.cos(ang) * 6.5, 0.8);
+            if (audio) audio.playImpact(0.55);
+          }
+        }
+      }
+      if (this.cityPeds) {
+        for (const ped of this.cityPeds) {
+          ped.pos += ped.dir * ped.speed * dt;
+          if (ped.pos > 390) ped.dir = -1;
+          else if (ped.pos < -390) ped.dir = 1;
+          const lx = ped.isNS ? (ped.lane + ped.side) : ped.pos;
+          const lz = ped.isNS ? ped.pos : (ped.lane + ped.side);
+          ped.mesh.position.set(lx, 0, lz);
+          ped.mesh.rotation.y = ped.isNS ? (ped.dir > 0 ? 0 : Math.PI) : (ped.dir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5);
+          ped.phase += dt * 7.5;
+          const sw = Math.sin(ped.phase) * 0.52;
+          ped.legL.rotation.x = sw; ped.legR.rotation.x = -sw;
         }
       }
     }
@@ -713,6 +939,69 @@ KK.World = class World {
       minZ: rz - 48 - 19.5, maxZ: rz - 48 + 19.5,
       yMin: ry - 2, yMax: ry + 26, label: "Site-140 Reactor Sarcophagus"
     });
+
+    // 4. v15.1.1 OUTER-RING ISLAND LANDMARKS & COASTAL LIFE!
+    const matTurbine = new THREE.MeshStandardMaterial({ color: 0xf0f4f8, roughness: 0.42 });
+    const matShackW  = new THREE.MeshStandardMaterial({ color: 0x7d5838, roughness: 0.92 });
+    const matShackR  = new THREE.MeshStandardMaterial({ color: 0xb53c28, roughness: 0.72 });
+    const matPylon   = new THREE.MeshStandardMaterial({ color: 0xd9a016, roughness: 0.65 });
+
+    // Zolotoy Savanna: 10 Modern Wind Turbines along the outer savanna mesas & highways!
+    for (let w = 0; w < 10; w++) {
+      const a = (w / 10) * Math.PI * 2 + 0.3;
+      const wx = -68000 + Math.cos(a) * 11800, wz = 61000 + Math.sin(a) * 10200;
+      const wy = this.getBaseHeight(wx, wz);
+      if (wy < (KK.SEA_LEVEL || -32) + 3) continue;
+      const tGrp = new THREE.Group(); tGrp.position.set(wx, wy, wz);
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.95, 28, 8), matTurbine);
+      tower.position.y = 14; tGrp.add(tower);
+      const rotor = new THREE.Group(); rotor.position.set(0, 28, 1.1);
+      for (let b = 0; b < 3; b++) {
+        const bl = new THREE.Mesh(new THREE.BoxGeometry(0.55, 11.5, 0.16), matTurbine);
+        bl.position.y = 5.5;
+        const arm = new THREE.Group(); arm.rotation.z = (b / 3) * Math.PI * 2; arm.add(bl);
+        rotor.add(arm);
+      }
+      tGrp.add(rotor);
+      this.settlementAnims.push({ type: "turbine", mesh: rotor, speed: 1.4 + (w % 3) * 0.35 });
+      this.rootGroup.add(tGrp);
+    }
+
+    // Ostrov Tropika: 10 Coastal Fishing Shacks & Highland Warungs scattered around outer ring!
+    for (let f = 0; f < 10; f++) {
+      const a = (f / 10) * Math.PI * 2 + 0.15;
+      const fx = 69000 + Math.cos(a) * 10800, fz = 62000 + Math.sin(a) * 9400;
+      const fy = this.getBaseHeight(fx, fz);
+      if (fy < (KK.SEA_LEVEL || -32) + 2) continue;
+      const sh = new THREE.Mesh(new THREE.BoxGeometry(6.5, 3.2, 5.2), matShackW);
+      sh.position.set(fx, fy + 1.6, fz); sh.rotation.y = a; this.rootGroup.add(sh);
+      const rf = new THREE.Mesh(new THREE.ConeGeometry(5.2, 2.0, 4), matShackR);
+      rf.position.set(fx, fy + 4.1, fz); rf.rotation.y = a + Math.PI * 0.25; this.rootGroup.add(rf);
+      this.buildingColliders.push({ minX: fx - 3.6, maxX: fx + 3.6, minZ: fz - 3.6, maxZ: fz + 3.6, yMin: fy - 1, yMax: fy + 5, label: "Coastal Warung" });
+    }
+
+    // Severnyy Arctic: 8 Polar Radar Watchtowers around the outer ice shelf!
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + 0.4;
+      const ax = -65000 + Math.cos(a) * 11200, az = -67000 + Math.sin(a) * 10100;
+      const ay = this.getBaseHeight(ax, az);
+      if (ay < (KK.SEA_LEVEL || -32) + 2) continue;
+      const twr = new THREE.Mesh(new THREE.BoxGeometry(4.2, 11.5, 4.2), matWall);
+      twr.position.set(ax, ay + 5.75, az); this.rootGroup.add(twr);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(2.8, 10, 8), matTurbine);
+      cap.position.set(ax, ay + 12.6, az); this.rootGroup.add(cap);
+      this.buildingColliders.push({ minX: ax - 2.3, maxX: ax + 2.3, minZ: az - 2.3, maxZ: az + 2.3, yMin: ay - 1, yMax: ay + 14, label: "Arctic Watchtower" });
+    }
+
+    // Site-140: 6 Yellow Radiation Warning Pylons ringing the exclusion coast!
+    for (let p = 0; p < 6; p++) {
+      const a = (p / 6) * Math.PI * 2;
+      const px = 68000 + Math.cos(a) * 2600, pz = -68000 + Math.sin(a) * 2400;
+      const py = this.getBaseHeight(px, pz);
+      if (py < (KK.SEA_LEVEL || -32) + 1) continue;
+      const pyl = new THREE.Mesh(new THREE.BoxGeometry(1.4, 7.5, 1.4), matPylon);
+      pyl.position.set(px, py + 3.75, pz); this.rootGroup.add(pyl);
+    }
   }
 
   _extractBuildingColliders() {
@@ -767,6 +1056,12 @@ KK.World = class World {
     this.geoPalmFrond = new THREE.BoxGeometry(0.62, 0.06, 3.6);
     this.geoAcaciaCanopy = new THREE.CylinderGeometry(3.8, 2.2, 0.95, 8);
     this.geoIceSpire = new THREE.ConeGeometry(1.1, 7.8, 6);
+    // v15.0.2 Savanna Golden Tall Grass Tufts & Red-Clay Termite Mounds!
+    this.matSavGrass  = new THREE.MeshStandardMaterial({ color: 0xd9b842, roughness: 0.92, side: THREE.DoubleSide });
+    this.matSavGrass2 = new THREE.MeshStandardMaterial({ color: 0xb8962e, roughness: 0.94, side: THREE.DoubleSide });
+    this.matTermite   = new THREE.MeshStandardMaterial({ color: 0x9c5a34, roughness: 0.96 });
+    this.geoSavGrass  = new THREE.ConeGeometry(0.68, 1.45, 5);
+    this.geoTermite   = new THREE.ConeGeometry(1.15, 2.8, 7);
     this.matWater = new THREE.MeshStandardMaterial({ color: 0x1b6278, roughness: 0.18, metalness: 0.22, transparent: true, opacity: 0.76, side: THREE.DoubleSide });
 
     // Shared reusable geometries (zero GPU leaks!)
@@ -1032,6 +1327,21 @@ KK.World = class World {
         const bC = maxD < zc.halfSpan + 22 ? 1.0 : Math.max(0, 1.0 - (maxD - (zc.halfSpan + 22)) / 88);
         const sC = bC * bC * (3 - 2 * bC);
         h = h * (1 - sC) + zc._baseH * sC;
+      }
+    }
+    if (KK.PORTS) {
+      const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+      const targetPortY = seaL + 2.15;
+      for (let i = 0; i < KK.PORTS.length; i++) {
+        const pt = KK.PORTS[i];
+        const ax = pt.approachX !== undefined ? pt.approachX : pt.x;
+        const az = pt.approachZ !== undefined ? pt.approachZ : pt.z;
+        const dP = Math.hypot(gx - ax, gz - az);
+        if (dP < 95) {
+          const u = dP < 36 ? 1.0 : Math.max(0, 1.0 - (dP - 36) / 59);
+          const s = u * u * (3 - 2 * u);
+          h = h * (1 - s) + targetPortY * s;
+        }
       }
     }
     const airInfo = this.getAirstripInfo(gx, gz);
@@ -2413,6 +2723,31 @@ KK.World = class World {
     const isOceanChunk = (bCenter.ocean || 0) > 0.88;
     const treeCount = isOceanChunk ? 0 : (isTropChunk ? 18 : (isSavChunk ? 7 : (isArcChunk ? 6 : (isVolcChunk ? 3 : (isDesertChunk ? 5 : Math.floor(8 + bCenter.taiga * 15 + bCenter.rust * 4))))));
     const chunkKey = cx + "," + cz;
+
+    // v15.0.2 LUSH GOLDEN SAVANNA TALL GRASS TUFTS & RED-CLAY TERMITE MOUNDS!
+    if (isSavChunk && !isOceanChunk) {
+      for (let g = 0; g < 34; g++) {
+        const grx = (this.hash2(cx * 47 + g * 3, cz * 23 - g) - 0.5) * (size - 8);
+        const grz = (this.hash2(cx * 19 - g, cz * 53 + g * 5) - 0.5) * (size - 8);
+        const ggx = startX + size * 0.5 + grx, ggz = startZ + size * 0.5 + grz;
+        if (KK.ZOLOTOY_CITY && Math.abs(ggx - KK.ZOLOTOY_CITY.cx) < (KK.ZOLOTOY_CITY.halfSpan + 24) && Math.abs(ggz - KK.ZOLOTOY_CITY.cz) < (KK.ZOLOTOY_CITY.halfSpan + 24)) continue;
+        const gInfo = this.getTerrainInfo(ggx, ggz, false);
+        if (gInfo.roadDist < 8 || gInfo.waterDepth > 0.05 || gInfo.surface === "race_tarmac" || gInfo.surface === "tarmac_line") continue;
+        const gs = 0.75 + this.hash2(g * 7 + cx, cz - g * 3) * 1.15;
+        if (g < 3) {
+          const mound = new THREE.Mesh(this.geoTermite, this.matTermite);
+          mound.scale.set(gs * 0.9, gs * 1.0, gs * 0.9);
+          mound.position.set(grx, gInfo.height + 1.1 * gs, grz);
+          group.add(mound);
+        } else {
+          const tuft = new THREE.Mesh(this.geoSavGrass, (g % 2 === 0) ? this.matSavGrass : this.matSavGrass2);
+          tuft.scale.set(gs * 1.4, gs * 0.85, gs * 1.4);
+          tuft.position.set(grx, gInfo.height + 0.52 * gs, grz);
+          tuft.rotation.y = g * 1.1;
+          group.add(tuft);
+        }
+      }
+    }
 
     for (let t = 0; t < treeCount; t++) {
       const treeId = `${cx}_${cz}_${t}`;

@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.1";
-KK.VERSION_FULL = "v15.1 ONLINE";
+KK.VERSION = "v15.1.1";
+KK.VERSION_FULL = "v15.1.1 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -43,17 +43,17 @@ KK.ZOLOTOY_CITY = {
   tramRadius: 240   // Working electric tram runs a 480m x 480m square loop along the main boulevard!
 };
 
-// 9 OCEAN PORTS (4 Mainland Coastal Ports + 1 Port per Outer Island, ready for v15.1 boats & barges!)
+// 9 OCEAN PORTS (Auto-snapped to exact ocean shoreline at boot + connected by coastal spur roads!)
 KK.PORTS = [
-  { id: "port_main_e",   name: "Vostochny Mainland Port",    x:  44500, z:   2800, yaw:  Math.PI * 0.5, islandId: 0 },
-  { id: "port_main_w",   name: "Zapadny Mainland Port",      x: -44200, z:   3200, yaw: -Math.PI * 0.5, islandId: 0 },
-  { id: "port_main_s",   name: "Yuzhny Desert Harbor",       x:   2400, z:  42600, yaw:  0.0,           islandId: 0 },
-  { id: "port_main_n",   name: "Severny Coastal Dock",       x:  -3200, z: -42400, yaw:  Math.PI,       islandId: 0 },
-  { id: "port_tropika",  name: "Palma Bay Port (Tropika)",   x:  62400, z:  55200, yaw: -Math.PI * 0.75, islandId: 1 },
-  { id: "port_savanna",  name: "Savanna Marina Port",        x: -63200, z:  68800, yaw:  Math.PI * 0.25, islandId: 2 },
-  { id: "port_arctic",   name: "Borey Icebreaker Port",      x: -56800, z: -61800, yaw:  Math.PI * 0.25, islandId: 3 },
-  { id: "port_cay",      name: "Coral Cay Smuggler Pier",    x:  75400, z:  -5200, yaw: -Math.PI * 0.5,  islandId: 4 },
-  { id: "port_site140",  name: "Site-140 Quarantine Pier",   x:  65600, z: -66200, yaw: -Math.PI * 0.75, islandId: 5 }
+  { id: "port_main_e",   name: "Vostochny Mainland Port",    x:  44500, z:   2800, dirAng:  0.08, islandId: 0, nearTownId: 4,  portTownId: null },
+  { id: "port_main_w",   name: "Zapadny Mainland Port",      x: -44200, z:   3200, dirAng:  3.06, islandId: 0, nearTownId: 9,  portTownId: null },
+  { id: "port_main_s",   name: "Yuzhny Desert Harbor",       x:   2400, z:  42600, dirAng:  1.52, islandId: 0, nearTownId: 3,  portTownId: null },
+  { id: "port_main_n",   name: "Severny Coastal Dock",       x:  -3200, z: -42400, dirAng: -1.65, islandId: 0, nearTownId: 6,  portTownId: null },
+  { id: "port_tropika",  name: "Palma Bay Port (Tropika)",   x:  58200, z:  52800, dirAng: -2.42, islandId: 1, nearTownId: 10, portTownId: 10   },
+  { id: "port_savanna",  name: "Savanna Marina Port",        x: -55800, z:  70400, dirAng:  0.65, islandId: 2, nearTownId: 19, portTownId: 19   },
+  { id: "port_arctic",   name: "Borey Icebreaker Port",      x: -52400, z: -58200, dirAng:  0.62, islandId: 3, nearTownId: 12, portTownId: 12   },
+  { id: "port_cay",      name: "Coral Cay Smuggler Pier",    x:  72800, z:  -5600, dirAng:  3.05, islandId: 4, nearTownId: 13, portTownId: 13   },
+  { id: "port_site140",  name: "Site-140 Quarantine Pier",   x:  64800, z: -65200, dirAng:  2.42, islandId: 5, nearTownId: 14, portTownId: 14   }
 ];
 
 // v15.1 UNLOCKABLE OCEAN BOATS & HOVERCRAFT (Summon at any of the 9 Ports!)
@@ -105,12 +105,12 @@ KK.TOWNS = [
   { id: 13, name: "Coral Cay Smuggler Pier", survivability: "HIGH", survScore: 84, survColor: "#48cae4", survNote: "Small Eastern Tropical Atoll • Turquoise lagoon, pier & bush strip", biome: "tropical", x: 77000, z: -6000, hasGarage: true, hasDock: true, isIsland: true, desc: "Tiny sun-drenched coral atoll in the eastern sea. Palm grove, upgraded boat pier & dirt smuggler strip." },
   { id: 14, name: "Site-140 Exclusion Zone", survivability: "EXTREME", survScore: 10, survColor: "#b8ff3b", survNote: "RADIOACTIVE WASTELAND • Reactor Sarcophagus • Geiger alerts & EMP wear", biome: "radioactive", x: 68000, z: -68000, hasGarage: true, hasDock: true, isIsland: true, desc: "Quarantined sea-fortress & crumbling Reactor Sarcophagus. Intense radiation — EMP-shielded tanks advised. Something worse than Godzilla sleeps beneath..." },
   { id: 15, name: "Desa Kabut (Highland Village)", survivability: "MODERATE", survScore: 62, survColor: "#2de08b", survNote: "Large Indonesian terraced village between twin volcanoes", biome: "tropical", x: 69200, z: 62200, hasGarage: true, hasDock: true, isIsland: true, desc: "Bustling highland village packed with stilt houses, warung stalls & tight winding switchbacks between Gunung Api & Gunung Danau." },
-  { id: 16, name: "Danau Merah (Crater Lake)", survivability: "LOW", survScore: 48, survColor: "#ff9f1c", survNote: "Volcanic crater lake village & dirt jungle airstrip", biome: "tropical", x: 73400, z: 65800, hasGarage: true, hasDock: true, isIsland: true, desc: "Misty highland village overlooking the volcanic crater lake. Iffy bridges & narrow hairpins — heavy trucks beware!" },
-  { id: 17, name: "Solnechny Heights (Suburb)", survivability: "HIGH", survScore: 90, survColor: "#ffd166", survNote: "Modern elevated mesa suburb overlooking the golden savanna", biome: "savanna", x: -62500, z: 56800, hasGarage: true, hasDock: true, isIsland: true, desc: "Clean suburban avenue perched on a golden mesa overlooking Zolotoy City." },
-  { id: 18, name: "Steppe Logistics Park", survivability: "HIGH", survScore: 88, survColor: "#ffd166", survNote: "Modern refinery & heavy freight suburb • Concrete viaducts", biome: "savanna", x: -73200, z: 58200, hasGarage: true, hasDock: true, isIsland: true, desc: "High-capacity industrial park built for heavy KamAZ & MAZ-537 highway freight." },
+  { id: 16, name: "Danau Merah (Crater Lake)", survivability: "LOW", survScore: 48, survColor: "#ff9f1c", survNote: "Volcanic crater lake village & dirt jungle airstrip", biome: "tropical", x: 78600, z: 69400, hasGarage: true, hasDock: true, isIsland: true, desc: "Misty highland village overlooking the volcanic crater lake. Iffy bridges & narrow hairpins — heavy trucks beware!" },
+  { id: 17, name: "Solnechny Heights (Suburb)", survivability: "HIGH", survScore: 90, survColor: "#ffd166", survNote: "Modern elevated mesa suburb overlooking the golden savanna", biome: "savanna", x: -57200, z: 53400, hasGarage: true, hasDock: true, isIsland: true, desc: "Clean suburban avenue perched on a golden mesa overlooking Zolotoy City." },
+  { id: 18, name: "Steppe Logistics Park", survivability: "HIGH", survScore: 88, survColor: "#ffd166", survNote: "Modern refinery & heavy freight suburb • Concrete viaducts", biome: "savanna", x: -79600, z: 56200, hasGarage: true, hasDock: true, isIsland: true, desc: "High-capacity industrial park built for heavy KamAZ & MAZ-537 highway freight." },
   { id: 19, name: "Savanna Marina Port", survivability: "HIGH", survScore: 92, survColor: "#ffd166", survNote: "Modern waterfront suburb & deep-water container port", biome: "savanna", x: -64800, z: 67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Sleek coastal marina suburb with paved boat ramps and highway access to Zolotoy City." },
   { id: 20, name: "Poligon-9 Gunnery Range", survivability: "LOW", survScore: 34, survColor: "#8ecae6", survNote: "Frozen tank proving ground • Target hulks & heavy ice runway", biome: "arctic", x: -65200, z: -67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Wide open arctic weapons testing range with target tank hulks, concrete blast walls & ice runway." },
-  { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -70800, z: -71400, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" }
+  { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -74600, z: -74800, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" }
 ];
 
 KK.ROAD_LINKS = [

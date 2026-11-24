@@ -340,7 +340,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1 ONLINE! Toggle Right-Click Scope, Visible Smart-Recovery Winch Rope & 4 Unlockable Ocean Boats (Zubr Hovercraft, Serna Barge, Patrol Boat & Strela-X1 Speedboat)!');
+      this.ui.toast('Welcome to v15.1.1 ONLINE! True Shoreline Ocean Ports, Coastal Spur Roads, Map Anchor Icons, Spawnable Ports & Full-Island Spread!');
     }, 650);
   }
 
