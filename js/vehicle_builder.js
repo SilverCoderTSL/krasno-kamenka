@@ -291,15 +291,19 @@ KK.VehicleBuilder = {
       s.quadraticCurveTo(2.08, 1.68, 1.82, 1.90);
       s.quadraticCurveTo(0.0, 2.04, -1.96, 1.90);
       s.quadraticCurveTo(-2.16, 1.72, -2.14, 1.15); s.closePath();
-      chassis.add(this._extrudeSideProfile(s, 1.88, matPaint, 0.08, 0.10, cockpitCfg));
+      chassis.add(this._extrudeSideProfile(s, 1.88, matPaint, 0.025, 0.03, cockpitCfg));
 
-      // Lower rubber rocker skirt, stamped side beltline trim & roof rain-gutter molding
+      // Lower rubber rocker skirt + EXTERIOR-ONLY side beltline & rain-gutter rails (zero interior cabin clipping!)
       const skirt = new THREE.Mesh(new THREE.BoxGeometry(1.90, 0.26, 4.24), matRubber);
       skirt.position.set(0, 0.47, -0.02); chassis.add(skirt);
-      const molding = new THREE.Mesh(new THREE.BoxGeometry(1.97, 0.055, 4.18), matTrim);
-      molding.position.set(0, 1.14, -0.02); chassis.add(molding);
-      const gutter = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.04, 3.88), matTrim);
-      gutter.position.set(0, 1.90, -0.06); chassis.add(gutter);
+      for (const sx of [-1, 1]) {
+        const sideMold = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.055, 4.16), matTrim);
+        sideMold.position.set(sx * 0.96, 1.14, -0.02); chassis.add(sideMold);
+        const sideGutter = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 3.88), matTrim);
+        sideGutter.position.set(sx * 0.90, 1.90, -0.06); chassis.add(sideGutter);
+      }
+      const frontMold = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.055, 0.04), matTrim);
+      frontMold.position.set(0, 1.14, 2.13); chassis.add(frontMold);
 
       // NO opaque black outer windshield or front cab windows — CockpitBuilder provides the clear hollow
       // split windshield & A-pillars so First-Person POV is 100% unobstructed!

@@ -23,7 +23,7 @@ KK.CockpitBuilder = {
     jeep_wrangler: { arch: "overland", rhd: false, beltY: 1.10, roofY: 1.78, seatZ:  0.02, yFloor: 0.70, cabW: 1.56, windZ: 0.68, windY: 1.44, windTilt: -0.28, special: "rollbar" },
 
     // --- SOVIET METAL & HEAVY TRUCK ARCHETYPE (LHD: driver on +X!) ---
-    uaz452:        { arch: "soviet",   rhd: false, beltY: 1.18, roofY: 1.98, seatZ:  1.25, yFloor: 0.82, cabW: 1.68, windZ: 2.04, windY: 1.52, windTilt: -0.14, splitWind: true },
+    uaz452:        { arch: "soviet",   rhd: false, beltY: 1.18, roofY: 1.98, seatZ:  1.12, yFloor: 0.82, cabW: 1.68, windZ: 2.04, windY: 1.52, windTilt: -0.14, splitWind: true },
     delica:        { arch: "soviet",   rhd: true,  beltY: 1.12, roofY: 1.94, seatZ:  1.08, yFloor: 0.78, cabW: 1.56, windZ: 1.94, windY: 1.40, windTilt: -0.46 },
     kamaz:         { arch: "soviet",   rhd: false, beltY: 1.56, roofY: 2.48, seatZ:  2.25, yFloor: 1.32, cabW: 2.18, windZ: 3.35, windY: 1.96, windTilt: -0.14, splitWind: true },
     maz537:        { arch: "soviet",   rhd: false, beltY: 1.90, roofY: 2.78, seatZ:  3.18, yFloor: 1.56, cabW: 2.48, windZ: 4.38, windY: 2.30, windTilt: -0.05, splitWind: true },

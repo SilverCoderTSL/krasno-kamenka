@@ -537,53 +537,90 @@ KK.AudioEngine = class AudioEngine {
   // UVB-76 "THE BUZZER" — Faint Soviet Military Shortwave Numbers-Station Signal (< 3,000 m of Secret Camp!)
   // Mostly masked by a running engine; kill ignition [I] to triangulate hot/cold by ear!
   // ICONIC SOVIET BM-21 "GRAD" / KATYUSHA SCREECHING 122mm ROCKET LAUNCH!
+  // v14.3.2 LOUD, SCARY, NATURAL BM-21 GRAD 122mm ROCKET LAUNCH ("Stalin's Organ" Tearing Roar + Tube Ignition!)
   playKatyushaRocket() {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;
-    // Signature screeching howling rocket motor ignition!
-    const howl = this.ctx.createOscillator(); howl.type = "sawtooth";
-    howl.frequency.setValueAtTime(640 + Math.random() * 90, t);
-    howl.frequency.exponentialRampToValueAtTime(1420 + Math.random() * 140, t + 0.22);
-    howl.frequency.exponentialRampToValueAtTime(480, t + 0.95);
-    const hf = this.ctx.createBiquadFilter(); hf.type = "bandpass"; hf.frequency.value = 1050; hf.Q.value = 2.6;
-    const hg = this.ctx.createGain();
-    hg.gain.setValueAtTime(0.01, t);
-    hg.gain.linearRampToValueAtTime(0.26, t + 0.06);
-    hg.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
-    howl.connect(hf); hf.connect(hg); hg.connect(this.master);
-    howl.start(t); howl.stop(t + 1.02);
+    const jit = (Math.random() - 0.5) * 0.14;
 
-    // Fiery rocket propellant whoosh!
-    const whoosh = this.ctx.createBufferSource(); whoosh.buffer = this.noiseBuf;
-    const wf = this.ctx.createBiquadFilter(); wf.type = "bandpass"; wf.frequency.value = 920; wf.Q.value = 1.1;
-    const wg = this.ctx.createGain();
-    wg.gain.setValueAtTime(0.01, t);
-    wg.gain.linearRampToValueAtTime(0.42, t + 0.05);
-    wg.gain.exponentialRampToValueAtTime(0.001, t + 0.88);
-    whoosh.connect(wf); wf.connect(wg); wg.connect(this.master);
-    whoosh.start(t); whoosh.stop(t + 0.92);
+    // 1. Violent steel launch-tube ignition pressure THUMP!
+    const thump = this.ctx.createOscillator(); thump.type = "sine";
+    thump.frequency.setValueAtTime(112 * (1 + jit), t);
+    thump.frequency.exponentialRampToValueAtTime(24, t + 0.24);
+    const tg = this.ctx.createGain();
+    tg.gain.setValueAtTime(0.85, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    thump.connect(tg); tg.connect(this.master); thump.start(t); thump.stop(t + 0.30);
+
+    // 2. Massive tearing solid-fuel rocket exhaust roar (heavy saturated noise sweeping through metallic tube resonance!)
+    const roar = this.ctx.createBufferSource(); roar.buffer = this.noiseBuf; roar.loop = true;
+    const rShaper = this.ctx.createWaveShaper(); rShaper.curve = this._makeWarmSaturation(10);
+    const rBand = this.ctx.createBiquadFilter(); rBand.type = "bandpass"; rBand.Q.value = 0.72;
+    rBand.frequency.setValueAtTime(420, t);
+    rBand.frequency.exponentialRampToValueAtTime(1850 * (1 + jit), t + 0.16);
+    rBand.frequency.exponentialRampToValueAtTime(340, t + 1.55);
+    const rg = this.ctx.createGain();
+    rg.gain.setValueAtTime(0.02, t);
+    rg.gain.linearRampToValueAtTime(0.95, t + 0.045);
+    rg.gain.setValueAtTime(0.82, t + 0.38);
+    rg.gain.exponentialRampToValueAtTime(0.001, t + 1.62);
+    roar.connect(rBand); rBand.connect(rShaper); rShaper.connect(rg); rg.connect(this.master);
+    roar.start(t); roar.stop(t + 1.68);
+
+    // 3. Signature eerie BM-21 / Katyusha metallic rail-shriek (organic dual-formant air scream, NOT a laser!)
+    const scream = this.ctx.createBufferSource(); scream.buffer = this.noiseBuf; scream.loop = true;
+    const sBP = this.ctx.createBiquadFilter(); sBP.type = "bandpass"; sBP.Q.value = 5.2;
+    sBP.frequency.setValueAtTime(780 * (1 + jit), t);
+    sBP.frequency.exponentialRampToValueAtTime(1380 * (1 + jit), t + 0.20);
+    sBP.frequency.exponentialRampToValueAtTime(520, t + 1.25);
+    const sg = this.ctx.createGain();
+    sg.gain.setValueAtTime(0.01, t);
+    sg.gain.linearRampToValueAtTime(0.62, t + 0.07);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + 1.32);
+    scream.connect(sBP); sBP.connect(sg); sg.connect(this.master);
+    scream.start(t); scream.stop(t + 1.36);
+
+    // 4. Low supersonic air-rip body wave
+    const lowAir = this.ctx.createBufferSource(); lowAir.buffer = this.noiseBuf; lowAir.loop = true;
+    const lLP = this.ctx.createBiquadFilter(); lLP.type = "lowpass"; lLP.frequency.value = 260;
+    const lg = this.ctx.createGain();
+    lg.gain.setValueAtTime(0.74, t); lg.gain.exponentialRampToValueAtTime(0.001, t + 1.45);
+    lowAir.connect(lLP); lLP.connect(lg); lg.connect(this.master);
+    lowAir.start(t); lowAir.stop(t + 1.50);
   }
 
-  // HEAVY 122mm ARTILLERY CRATER IMPACT EXPLOSION!
+  // v14.3.2 DEVASTATING 122mm GRAD ARTILLERY DETONATION + ROLLING VALLEY THUNDER ECHO!
   playArtilleryExplosion(distFactor = 1.0) {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;
-    const v = Math.max(0.08, Math.min(1.0, distFactor));
-    const sub = this.ctx.createOscillator(); sub.type = "sine";
-    sub.frequency.setValueAtTime(84, t); sub.frequency.exponentialRampToValueAtTime(19, t + 0.95);
-    const sg = this.ctx.createGain();
-    sg.gain.setValueAtTime(0.68 * v, t); sg.gain.exponentialRampToValueAtTime(0.001, t + 1.05);
-    sub.connect(sg); sg.connect(this.master); sub.start(t); sub.stop(t + 1.1);
+    const v = Math.max(0.14, Math.min(1.0, distFactor));
 
-    const boom = this.ctx.createBufferSource(); boom.buffer = this.noiseBuf;
-    const bf = this.ctx.createBiquadFilter(); bf.type = "lowpass";
-    bf.frequency.setValueAtTime(1450 * v + 220, t); bf.frequency.exponentialRampToValueAtTime(140, t + 1.25);
-    const bg = this.ctx.createGain();
-    bg.gain.setValueAtTime(0.62 * v, t); bg.gain.exponentialRampToValueAtTime(0.001, t + 1.35);
-    boom.connect(bf); bf.connect(bg); bg.connect(this.master); boom.start(t); boom.stop(t + 1.4);
+    // Supersonic detonation whip-crack
+    const cr = this.ctx.createBufferSource(); cr.buffer = this.noiseBuf;
+    const cf = this.ctx.createBiquadFilter(); cf.type = "highpass"; cf.frequency.value = 1100;
+    const cg = this.ctx.createGain();
+    cg.gain.setValueAtTime(0.85 * v, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    cr.connect(cf); cf.connect(cg); cg.connect(this.master); cr.start(t); cr.stop(t + 0.18);
+
+    // Tectonic 122mm HE sub-bass shockwave
+    const sub = this.ctx.createOscillator(); sub.type = "sine";
+    sub.frequency.setValueAtTime(88, t); sub.frequency.exponentialRampToValueAtTime(15, t + 1.35);
+    const sg = this.ctx.createGain();
+    sg.gain.setValueAtTime(0.96 * v, t); sg.gain.exponentialRampToValueAtTime(0.001, t + 1.55);
+    sub.connect(sg); sg.connect(this.master); sub.start(t); sub.stop(t + 1.60);
+
+    // Primary blast roar + delayed rolling mountain echo
+    for (const [del, f0, f1, dur, vol] of [[0.0, 2200, 120, 1.95, 0.92 * v], [0.42, 620, 80, 2.25, 0.42 * v]]) {
+      const st = t + del;
+      const roar = this.ctx.createBufferSource(); roar.buffer = this.noiseBuf;
+      const rf = this.ctx.createBiquadFilter(); rf.type = "lowpass";
+      rf.frequency.setValueAtTime(f0, st); rf.frequency.exponentialRampToValueAtTime(f1, st + dur);
+      const rg = this.ctx.createGain();
+      rg.gain.setValueAtTime(0.01, st); rg.gain.linearRampToValueAtTime(vol, st + 0.03);
+      rg.gain.exponentialRampToValueAtTime(0.001, st + dur + 0.08);
+      roar.connect(rf); rf.connect(rg); rg.connect(this.master); roar.start(st); roar.stop(st + dur + 0.12);
+    }
   }
 
-  // ZSU-23-4 "SHILKA" QUAD-23mm AUTOCANNON THUMP (Snappy high-cadence rotary buzz!)
   playShilka23mm() {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;

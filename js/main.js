@@ -2209,7 +2209,7 @@ KK.Game = class Game {
 
     // APFSDS has ZERO blast radius — strictly single-point direct hit only!
     if (isAp && fromSelf) return;
-    const maxRad = isAp ? 2.8 : (isTherm ? 32.0 : (isHe ? 19.0 : (shell === "auto40" ? 5.5 : 3.4)));
+    const maxRad = isAp ? 2.8 : (isTherm ? 32.0 : (shell === "rocket122" ? 30.0 : (isHe ? 19.0 : (shell === "auto40" ? 5.5 : 3.4))));
     if (dist > maxRad || dy > (isAp ? 3.2 : 12.0)) return;
 
     const falloff = isAp ? 1.0 : Math.max(0.18, 1.0 - (dist / maxRad));
@@ -3262,15 +3262,16 @@ KK.Game = class Game {
       if (Math.random() < 0.65) this.particles.emitCrashBurst(rk.gx, rk.gy, rk.gz, 0.25, "rock", this.weather.weather);
 
       const gh = this.world.getTerrainInfo(rk.gx, rk.gz, false).height;
-      const cHit = rk.isOwner ? this.cryptids.applyCannonHit(rk.gx, rk.gy, rk.gz, "he", this.audio) : { hit: false };
+      const cHit = rk.isOwner ? this.cryptids.applyCannonHit(rk.gx, rk.gy, rk.gz, "rocket122", this.audio, 122) : { hit: false };
       if (rk.gy <= gh || cHit.hit || rk.life <= 0) {
         const hitY = Math.max(gh, rk.gy);
         const dPlayer = Math.hypot(rk.gx - this.vehicle.pos.x, rk.gz - this.vehicle.pos.z);
-        this.particles.emitCrashBurst(rk.gx, hitY + 1.4, rk.gz, 2.6, "rock", this.weather.weather);
-        if (rk.isOwner && this.gasStations) this.gasStations.checkProjectileHit(rk.gx, hitY, rk.gz, 8.0, this, false);
-        if (dPlayer < 750) {
-          this.audio.playArtilleryExplosion(Math.max(0.12, 1.0 - dPlayer / 750));
-          this.cameraShake = Math.max(this.cameraShake, Math.max(0, 1.0 - dPlayer / 240) * 0.65);
+        this.particles.emitCrashBurst(rk.gx, hitY + 1.8, rk.gz, 4.2, "rock", this.weather.weather);
+        this.particles.emitCrashBurst(rk.gx, hitY + 4.5, rk.gz, 3.2, "sand", this.weather.weather);
+        if (rk.isOwner && this.gasStations) this.gasStations.checkProjectileHit(rk.gx, hitY, rk.gz, 16.0, this, false);
+        if (dPlayer < 950) {
+          this.audio.playArtilleryExplosion(Math.max(0.16, 1.0 - dPlayer / 950));
+          this.cameraShake = Math.max(this.cameraShake, Math.max(0, 1.0 - dPlayer / 360) * 1.15);
         }
         if (rk.isOwner) {
           if (!cHit.hit) {

@@ -103,7 +103,7 @@ KK.CryptidManager = class CryptidManager {
     const cal = caliberMm || ((shellType === "ap140" || shellType === "hesh140" || shellType === "therm140" || shellType === "rlg140") ? 140 : (shellType === "rocket122" ? 122 : 125));
 
     // v14.2: APFSDS IS A SINGLE PINPOINT DART (ZERO BLAST RADIUS!) — HE/HESH/Thermobaric have wide blast shockwaves!
-    const blastRad = isAp ? 0.0 : (isTherm ? 46.0 : (isRlg ? 30.0 : (isHe ? 26.0 : 22.0)));
+    const blastRad = isAp ? 0.0 : (isTherm ? 46.0 : (shellType === "rocket122" ? 42.0 : (isRlg ? 30.0 : (isHe ? 26.0 : 22.0))));
 
     const swm = this.sandworm;
     if ((isHe || isTherm) && this.world.getBiomeWeights(gx, gz).desert > 0.36 && swm.state === "submerged" && Math.hypot(swm.gx - gx, swm.gz - gz) < 460) {
