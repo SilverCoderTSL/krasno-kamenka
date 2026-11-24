@@ -326,7 +326,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v14.2 ONLINE! Click HOST to create a PeerJS room & share your KK-XXXX code with friends anywhere!');
+      this.ui.toast('Welcome to v14.3 ONLINE! Revamped Bukhanka Starter Van, Screenshot Version Stamp, Fixed James May Beer Run & Online WSS Multiplayer!');
     }, 650);
   }
 
@@ -838,7 +838,7 @@ KK.Game = class Game {
           this.pickupContractCargo(); return true;
         }
         const loaded = this.vehicle.cargoCount + (this.trailer && this.trailer.hitched ? this.trailer.cargoCount : 0);
-        if (this.activeContract && this.activeContract.pickedUp && near.town.id === this.activeContract.toTown && loaded > 0) {
+        if (this.activeContract && this.activeContract.pickedUp && !this.activeContract.toBar && near.town.id === this.activeContract.toTown && loaded > 0) {
           this.completeDelivery(); return true;
         }
         this.ui.openModal("contracts");
@@ -905,7 +905,7 @@ KK.Game = class Game {
       if (this.activeContract && !this.activeContract.pickedUp && nearTown.town.id === this.activeContract.fromTown) {
         this.pickupContractCargo(); return true;
       }
-      if (this.activeContract && this.activeContract.pickedUp && nearTown.town.id === this.activeContract.toTown && this.vehicle.cargoCount > 0) {
+      if (this.activeContract && this.activeContract.pickedUp && !this.activeContract.toBar && nearTown.town.id === this.activeContract.toTown && this.vehicle.cargoCount > 0) {
         this.completeDelivery(); return true;
       }
       this.ui.openModal("contracts"); return true;
@@ -1506,7 +1506,7 @@ KK.Game = class Game {
     if (asLanConvoy) {
       const cid = "CONV-" + Math.floor(1000 + Math.random() * 9000);
       this.activeConvoyId = cid;
-      this.network.send({ type: "convoy_create", convoyId: cid, title: c.title, fromTown: c.fromTown, toTown: c.toTown, reward: c.reward, cargoType: c.cargoType });
+      this.network.send({ type: "convoy_create", convoyId: cid, title: c.title, fromTown: c.fromTown, toTown: c.toTown, toBar: !!c.toBar, reward: c.reward, cargoType: c.cargoType });
       this.ui.addChatLine("DISPATCH", `Created LAN Convoy "${c.title}" — Meet at ${orig.name} dock!`, true);
     }
     this.ui.closeModal();
@@ -1553,7 +1553,9 @@ KK.Game = class Game {
       if (this.trailer) { this.trailer.cargoCount = 0; this.trailerRig.setCargoVisual(0, c.cargoType, true); }
     }
 
-    const dest = KK.TOWNS[c.toTown] || KK.TOWNS[1];
+    const dest = c.toBar
+      ? { name: KK.JAMES_MAY_BAR.name, x: KK.JAMES_MAY_BAR.dockX, z: KK.JAMES_MAY_BAR.dockZ }
+      : (KK.TOWNS[c.toTown] || KK.TOWNS[1]);
     this.setWaypoint(dest.x, dest.z, dest.name);
     this.audio.playImpact(0.35);
     this.ui.toast(`CARGO LOADED at ${orig.name}! Haul it safely to ${dest.name} & press [F] at the dock!`);
@@ -1564,7 +1566,7 @@ KK.Game = class Game {
     if (!cv) return;
     this.network.send({ type: "convoy_join", convoyId });
     this.activeConvoyId = convoyId;
-    this.activeContract = { id: cv.id, title: cv.title, fromTown: cv.fromTown, toTown: cv.toTown, cargoType: cv.cargoType, units: Math.min(4, this.vehicle.spec.cargoSlots), reward: cv.reward, pickedUp: false };
+    this.activeContract = { id: cv.id, title: cv.title, fromTown: cv.fromTown, toTown: cv.toTown, toBar: !!cv.toBar, cargoType: cv.cargoType, units: Math.min(4, this.vehicle.spec.cargoSlots), reward: cv.reward, pickedUp: false };
     const orig = KK.TOWNS[cv.fromTown] || KK.TOWNS[0];
     this.setWaypoint(orig.x, orig.z, "PICKUP: " + orig.name);
     this.ui.closeModal();
@@ -3438,15 +3440,44 @@ KK.Game = class Game {
     if (this.pendingScreenshot) {
       this.pendingScreenshot = false;
       try {
-        const dataUrl = this.canvas.toDataURL("image/png");
+        const outCv = document.createElement("canvas");
+        outCv.width = this.canvas.width;
+        outCv.height = this.canvas.height;
+        const ctx2 = outCv.getContext("2d");
+        ctx2.drawImage(this.canvas, 0, 0);
+
+        // Stamp clean version watermark in bottom-right corner of every screenshot!
+        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v14.3"}`;
+        const fontSize = Math.max(14, Math.round(outCv.height * 0.020));
+        ctx2.font = `bold ${fontSize}px monospace`;
+        const padX = Math.round(fontSize * 0.72);
+        const padY = Math.round(fontSize * 0.42);
+        const tw = ctx2.measureText(verStr).width;
+        const boxW = tw + padX * 2;
+        const boxH = fontSize + padY * 2;
+        const margin = Math.max(14, Math.round(outCv.height * 0.022));
+        const bx = outCv.width - boxW - margin;
+        const by = outCv.height - boxH - margin;
+
+        ctx2.fillStyle = "rgba(8, 13, 20, 0.72)";
+        ctx2.fillRect(bx, by, boxW, boxH);
+        ctx2.strokeStyle = "rgba(255, 190, 60, 0.65)";
+        ctx2.lineWidth = Math.max(1.5, fontSize * 0.09);
+        ctx2.strokeRect(bx, by, boxW, boxH);
+        ctx2.fillStyle = "#eef6ff";
+        ctx2.textAlign = "right";
+        ctx2.textBaseline = "middle";
+        ctx2.fillText(verStr, bx + boxW - padX, by + boxH * 0.52);
+
+        const dataUrl = outCv.toDataURL("image/png");
         const a = document.createElement("a");
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         a.href = dataUrl;
-        a.download = `krasno_kamenka_${ts}.png`;
+        a.download = `krasno_kamenka_${KK.VERSION || "v14.3"}_${ts}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        if (!this.photoMode) this.ui.toast(`Screenshot saved: krasno_kamenka_${ts}.png!`);
+        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v14.3"})!`);
       } catch (err) {
         this.ui.toast("Screenshot failed: " + err.message, true);
       }
@@ -3503,7 +3534,7 @@ KK.Game = class Game {
           const loadedCntP = this.vehicle.cargoCount + (this.trailer && this.trailer.hitched ? this.trailer.cargoCount : 0);
           if (this.activeContract && !this.activeContract.pickedUp && near.town.id === this.activeContract.fromTown) {
             prompt = `[F] LOAD CONTRACT CARGO AT ${near.town.name.toUpperCase()} DOCK!`;
-          } else if (this.activeContract && this.activeContract.pickedUp && near.town.id === this.activeContract.toTown && loadedCntP > 0) {
+          } else if (this.activeContract && this.activeContract.pickedUp && !this.activeContract.toBar && near.town.id === this.activeContract.toTown && loadedCntP > 0) {
             prompt = `[F] COMPLETE DELIVERY AT ${near.town.name.toUpperCase()} DOCK!`;
           } else {
             prompt = `[F] or [J] Open Delivery Contracts (${near.town.name})`;

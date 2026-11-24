@@ -582,7 +582,7 @@ KK.LanNetwork = class LanNetwork {
       const cid = String(msg.convoyId || ("CONV-" + Math.floor(1000 + Math.random() * 9000)));
       ws.convoys[cid] = {
         id: cid, title: String(msg.title || "Convoy Haul").slice(0, 60),
-        fromTown: msg.fromTown || 0, toTown: msg.toTown || 2,
+        fromTown: msg.fromTown || 0, toTown: msg.toTown || 2, toBar: !!msg.toBar,
         reward: Math.round(Number(msg.reward) || 8500),
         cargoType: msg.cargoType || "standard",
         hostPeer: pid, participants: [pid], completedBy: []

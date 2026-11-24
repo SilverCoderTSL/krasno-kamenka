@@ -279,6 +279,10 @@ KK.VehicleBuilder = {
     // ========================================================================
     if (vehicleId === "uaz452") {
       plateText = "UAZ-452"; roundHL = true; hlY = 0.84; hlZ = 2.18; hlSpread = 0.64;
+      const matAmber   = new THREE.MeshStandardMaterial({ color: 0xe88b14, emissive: 0x4a2500, roughness: 0.35 });
+      const matCabGlass = new THREE.MeshStandardMaterial({ color: 0x89a8be, roughness: 0.12, metalness: 0.2, transparent: true, opacity: 0.28, side: THREE.DoubleSide });
+
+      // Classic Rounded Bukhanka ("Loaf") Body Extrusion — Hollowed for Clean First-Person Cockpit!
       const s = new THREE.Shape();
       s.moveTo(-2.12, 0.40); s.lineTo(2.08, 0.40);
       s.quadraticCurveTo(2.20, 0.65, 2.15, 1.15);
@@ -287,32 +291,82 @@ KK.VehicleBuilder = {
       s.quadraticCurveTo(-2.16, 1.72, -2.14, 1.15); s.closePath();
       chassis.add(this._extrudeSideProfile(s, 1.88, matPaint, 0.08, 0.10, cockpitCfg));
 
-      const skirt = new THREE.Mesh(new THREE.BoxGeometry(1.90, 0.28, 4.24), matRubber);
-      skirt.position.set(0, 0.48, -0.02); chassis.add(skirt);
-      const molding = new THREE.Mesh(new THREE.BoxGeometry(1.98, 0.06, 4.18), matTrim);
+      // Lower rubber rocker skirt, stamped side beltline trim & roof rain-gutter molding
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(1.90, 0.26, 4.24), matRubber);
+      skirt.position.set(0, 0.47, -0.02); chassis.add(skirt);
+      const molding = new THREE.Mesh(new THREE.BoxGeometry(1.97, 0.055, 4.18), matTrim);
       molding.position.set(0, 1.14, -0.02); chassis.add(molding);
+      const gutter = new THREE.Mesh(new THREE.BoxGeometry(1.82, 0.04, 3.88), matTrim);
+      gutter.position.set(0, 1.90, -0.06); chassis.add(gutter);
 
-      for (const sx of [-0.42, 0.42]) {
-        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.48, 0.06), matRubber);
-        frame.position.set(sx, 1.50, 2.09); frame.rotation.x = -0.14; chassis.add(frame);
-        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.40, 0.08), matGlass);
-        pane.position.set(sx, 1.50, 2.10); pane.rotation.x = -0.14; chassis.add(pane);
-      }
-      for (let z = -1.45; z <= 1.25; z += 0.90) {
+      // NO opaque black outer windshield or front cab windows — CockpitBuilder provides the clear hollow
+      // split windshield & A-pillars so First-Person POV is 100% unobstructed!
+      // Hollow rear cargo side window trim frames (top/bottom/pillars) + light see-through glass!
+      for (const wz of [0.22, -0.68, -1.52]) {
         for (const sx of [-1, 1]) {
-          const wf = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.44, 0.74), matRubber);
-          wf.position.set(sx * 0.94, 1.50, z); chassis.add(wf);
-          const wg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.38, 0.66), matGlass);
-          wg.position.set(sx * 0.945, 1.50, z); chassis.add(wg);
+          const wx = sx * 0.945;
+          const topBar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.68), matRubber);
+          topBar.position.set(wx, 1.70, wz); chassis.add(topBar);
+          const botBar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.68), matRubber);
+          botBar.position.set(wx, 1.32, wz); chassis.add(botBar);
+          for (const dz of [-0.32, 0.32]) {
+            const pBar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.42, 0.04), matRubber);
+            pBar.position.set(wx, 1.51, wz + dz); chassis.add(pBar);
+          }
+          const wg = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.34, 0.60), matCabGlass);
+          wg.position.set(sx * 0.935, 1.51, wz); chassis.add(wg);
         }
       }
-      const grilleOval = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.78, 14), matRubber);
-      grilleOval.rotation.z = Math.PI / 2; grilleOval.scale.set(0.65, 1.0, 0.32); grilleOval.position.set(0, 0.86, 2.20); chassis.add(grilleOval);
+
+      // Classic Front Fascia: Recessed Round Headlight Bezels, Amber Turn Signals, Twin Pill Grille & Chrome UAZ Emblem!
+      for (const sx of [-1, 1]) {
+        const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.145, 0.022, 8, 16), matChrome);
+        bezel.position.set(sx * 0.64, 0.84, 2.18); chassis.add(bezel);
+        const turnSig = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.065, 0.05), matAmber);
+        turnSig.position.set(sx * 0.64, 0.65, 2.17); chassis.add(turnSig);
+        // Front cab door handles & rear rubber mudflaps
+        const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.16), matChrome);
+        handle.position.set(sx * 0.96, 1.06, 0.92); chassis.add(handle);
+        const flap = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.03), matRubber);
+        flap.position.set(sx * 0.84, 0.26, -1.78); chassis.add(flap);
+      }
+      for (const gy of [0.92, 0.78]) {
+        const slot = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.085, 0.06), matRubber);
+        slot.position.set(0, gy, 2.18); chassis.add(slot);
+      }
+      const uazBadge = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.06, 0.04), matChrome);
+      uazBadge.position.set(0, 1.05, 2.17); chassis.add(uazBadge);
+
+      // Heavy Steel Front & Rear Bumpers w/ Front Tow Hooks
       const fBump = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.16, 0.18), matMetal);
-      fBump.position.set(0, 0.46, 2.26); chassis.add(fBump);
-      const rBump = fBump.clone(); rBump.position.z = -2.24; chassis.add(rBump);
-      const rackFloor = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.05, 2.55), matMetal);
-      rackFloor.position.set(0, 2.06, -0.35); chassis.add(rackFloor);
+      fBump.position.set(0, 0.46, 2.26); fBump.castShadow = true; chassis.add(fBump);
+      for (const tx of [-0.52, 0.52]) {
+        const hook = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.018, 6, 10), matMetal);
+        hook.position.set(tx, 0.46, 2.38); chassis.add(hook);
+      }
+      const rBump = new THREE.Mesh(new THREE.BoxGeometry(2.00, 0.16, 0.18), matMetal);
+      rBump.position.set(0, 0.46, -2.24); chassis.add(rBump);
+
+      // Rear Twin-Door Center Seam + Rear-Mounted Full-Size Spare Tire!
+      const rSeam = new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.28, 0.04), matRubber);
+      rSeam.position.set(0, 1.18, -2.14); chassis.add(rSeam);
+      const spTire = new THREE.Mesh(new THREE.CylinderGeometry(0.39, 0.39, 0.24, 16), matTire);
+      spTire.rotation.x = Math.PI / 2; spTire.position.set(0.42, 1.06, -2.28); spTire.castShadow = true; chassis.add(spTire);
+      const spRim = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.20, 0.26, 10), matRim);
+      spRim.rotation.x = Math.PI / 2; spRim.position.set(0.42, 1.06, -2.28); chassis.add(spRim);
+
+      // Soviet Tubular Expedition Roof Rack (Floor slats + raised side perimeter rails!)
+      const rackFloor = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.04, 2.48), matMetal);
+      rackFloor.position.set(0, 2.04, -0.35); chassis.add(rackFloor);
+      for (const sx of [-0.72, 0.72]) {
+        const rSide = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.12, 2.48), matMetal);
+        rSide.position.set(sx, 2.10, -0.35); chassis.add(rSide);
+      }
+      for (const rz of [0.88, -1.58]) {
+        const rEnd = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.12, 0.04), matMetal);
+        rEnd.position.set(0, 2.10, rz); chassis.add(rEnd);
+      }
+
       hoodPivot.position.set(0, 1.14, 2.16);
       const nose = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.36, 0.08), matPaint);
       nose.position.set(0, -0.18, 0.04); hoodPivot.add(nose);

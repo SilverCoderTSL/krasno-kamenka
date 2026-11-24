@@ -1,22 +1,12 @@
-# Krasno-Kamenka Oblast (v14.2 ONLINE — GitHub Pages + PeerJS Edition)
+# Krasno-Kamenka Oblast (v14.3 ONLINE — GitHub Pages Edition)
 
-100% static frontend build with **PeerJS WebRTC online multiplayer** and browser `localStorage` accounts—no Python backend required!
+100% static frontend build with **WSS Relay Online Multiplayer** (works on GitHub Pages, UAE ISPs, CGNAT, and multi-tab!) and browser `localStorage` accounts.
 
-## Deploy Free to GitHub Pages (4 Commands)
-1. Create a **Public** GitHub repository named `krasno-kamenka` at https://github.com/new.
-2. Extract `krasno_kamenka_oblast_v14_2_ONLINE.zip`, `cd krasno_kamenka_oblast`, and run:
-   ```bash
-   git init
-   git add index.html css/ js/ README.md
-   git commit -m "Deploy Krasno-Kamenka Oblast v14.2 ONLINE"
-   git branch -M main
-   git remote add origin https://github.com/<YOUR_GITHUB_USERNAME>/krasno-kamenka.git
-   git push -u origin main
-   ```
-3. In your repo, go to **Settings → Pages → Build and deployment**, set Branch to **`main`** (`/root`), and click **Save**.
-4. Open `https://<YOUR_GITHUB_USERNAME>.github.io/krasno-kamenka/`!
-
-## How to Play Online With Friends
-* **Host:** Click **HOST** (on the Start Menu or top-right HUD) to spin up a live `KK-XXXX` room. Click the green **`HOSTING: KK-XXXX (COPY)`** pill to copy a one-click invite link (`?room=KK-XXXX`) and send it to friends!
-* **Join:** Click your friend's invite link (auto-joins!) or type their `KK-XXXX` room code and click **JOIN**.
-* **Accounts & Dev Access:** Profiles save locally in each player's browser (`kk_accounts_v14`). Dev verification for `"Silver"` uses a salted SHA-256 hash so your secret key is never exposed in the public repository.
+## What's New in Version 14.3
+1. **Screenshot Version Watermark (`js/main.js`):** Every captured PNG (`[F9]` or Photo Mode Snap) now stamps `KRASNO-KAMENKA OBLAST • v14.3` cleanly in the bottom-right corner.
+2. **Main Menu Version Display (`index.html`, `css/style.css`):** Clear `v14.3 ONLINE` badge displayed right on the Start Menu title bar.
+3. **Starter Van (`UAZ-452 Bukhanka`) Revamp (`js/vehicle_builder.js`):**
+   - Removed the old opaque black outer window boxes that blocked First-Person Cockpit POV—driving from inside the cab is now 100% clear!
+   - Added tasteful Soviet Bukhanka details: recessed round chrome headlight bezels, amber turn signals, twin horizontal intake grille slots, chrome UAZ nose badge, hollow rear side windows with light translucent glass, roof rain gutter, tubular-railed expedition roof rack, side door handles, rear twin-door seam, rear spare tire & rubber mudflaps.
+4. **Subtle `[O] OPTIONS` Button Gleam (`css/style.css`, `index.html`):** Gentle light sweep once every 11 seconds so new players notice Options & Controls exist without being distracting.
+5. **Fixed James May Beer Delivery Bug (`js/main.js`, `js/network.js`):** Picking up Captain Slow's beer contracts at HQ (or Cherny Les) now properly routes GPS to **James May's Pub** and no longer accidentally deposits at Kamenka-Central HQ!
