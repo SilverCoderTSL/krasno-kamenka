@@ -41,7 +41,11 @@ KK.CockpitBuilder = {
 
     // --- SPECIALS ARCHETYPE ---
     lambo_tractor: { arch: "special",  rhd: false, beltY: 1.68, roofY: 3.12, seatZ: -0.95, yFloor: 1.56, cabW: 1.80, windZ: -0.05, windY: 2.38, windTilt: -0.08, special: "tractor" },
-    dacia_sandero: { arch: "special",  rhd: false, beltY: 0.94, roofY: 1.50, seatZ:  0.00, yFloor: 0.56, cabW: 1.52, windZ: 0.60, windY: 1.22, windTilt: -0.76, special: "sandero" }
+    dacia_sandero: { arch: "special",  rhd: false, beltY: 0.94, roofY: 1.50, seatZ:  0.00, yFloor: 0.56, cabW: 1.52, windZ: 0.60, windY: 1.22, windTilt: -0.76, special: "sandero" },
+    komodo_std:    { arch: "military", rhd: true,  beltY: 1.38, roofY: 2.08, seatZ:  0.35, yFloor: 0.96, cabW: 1.92, windZ: 1.15, windY: 1.66, windTilt: -0.45 },
+    komodo_recon:  { arch: "military", rhd: true,  beltY: 1.40, roofY: 2.12, seatZ:  0.32, yFloor: 0.98, cabW: 1.94, windZ: 1.10, windY: 1.68, windTilt: -0.45 },
+    komodo_turret: { arch: "military", rhd: true,  beltY: 1.38, roofY: 2.08, seatZ:  0.35, yFloor: 0.96, cabW: 1.92, windZ: 1.15, windY: 1.66, windTilt: -0.45 },
+    harimau:       { arch: "military", rhd: false, beltY: 1.48, roofY: 1.94, seatZ:  2.10, yFloor: 0.96, cabW: 1.72, windZ: 2.85, windY: 1.62, windTilt: -0.22, special: "t72_periscope" }
   },
 
   getConfig(vehicleId) {

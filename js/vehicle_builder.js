@@ -2625,6 +2625,217 @@ KK.VehicleBuilder = {
     }
 
     // ========================================================================
+    // v15.1.2 PT PINDAD KOMODO 4x4 (STANDARD APC / RECON / CPWS 30mm TURRET)
+    // Exact Dimensions: 5.65m x 2.25m x 2.15m (Recon: 5.50m x 2.30m x 2.20m)
+    // ========================================================================
+    else if (vehicleId === "komodo_std" || vehicleId === "komodo_recon" || vehicleId === "komodo_turret") {
+      plateText = vehicleId === "komodo_recon" ? "KMD-RCN" : (vehicleId === "komodo_turret" ? "KMD-30" : "KOMODO");
+      roundHL = false; hlY = 1.12; hlZ = spec.bodyLen * 0.49; hlSpread = 0.78;
+      const matArmorDk = new THREE.MeshStandardMaterial({ color: 0x222620, roughness: 0.78, metalness: 0.42 });
+      const matSteel   = new THREE.MeshStandardMaterial({ color: 0x3b4248, roughness: 0.46, metalness: 0.72 });
+      const matLens    = new THREE.MeshStandardMaterial({ color: 0x162e40, emissive: 0x0c3448, roughness: 0.16, metalness: 0.75 });
+      const matGlass   = new THREE.MeshStandardMaterial({ color: 0x6f8fa6, roughness: 0.14, metalness: 0.25, transparent: true, opacity: 0.32, side: THREE.DoubleSide });
+
+      const hl = spec.bodyLen * 0.5, hw = spec.bodyWidth * 0.5;
+      // Angular V-bottom armored tactical hull
+      const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(spec.bodyWidth * 0.92, 0.62, spec.bodyLen * 0.92), matArmorDk);
+      lowerHull.position.set(0, 0.78, 0); lowerHull.castShadow = true; chassis.add(lowerHull);
+
+      // Sloped armored engine hood (front nose)
+      const hood = new THREE.Mesh(new THREE.BoxGeometry(spec.bodyWidth * 0.86, 0.52, 1.85), matPaint);
+      hood.position.set(0, 1.24, hl - 1.05); hood.rotation.x = 0.12; hood.castShadow = true; chassis.add(hood);
+      const grille = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.38, 0.10), matArmorDk);
+      grille.position.set(0, 1.14, hl - 0.12); chassis.add(grille);
+
+      // Heavy angled steel front & rear tactical bumpers + tow shackles
+      const fBump = new THREE.Mesh(new THREE.BoxGeometry(spec.bodyWidth * 0.96, 0.32, 0.36), matArmorDk);
+      fBump.position.set(0, 0.84, hl - 0.04); fBump.castShadow = true; chassis.add(fBump);
+      const rBump = new THREE.Mesh(new THREE.BoxGeometry(spec.bodyWidth * 0.96, 0.30, 0.28), matArmorDk);
+      rBump.position.set(0, 0.84, -hl + 0.06); chassis.add(rBump);
+
+      // Main armored troop/crew cabin (hollowed with sloped bulletproof windshield & side viewports)
+      const cabRear = new THREE.Mesh(new THREE.BoxGeometry(spec.bodyWidth * 0.94, 0.96, spec.bodyLen * 0.62), matPaint);
+      cabRear.position.set(0, 1.62, -0.62); cabRear.castShadow = true; cabRear.receiveShadow = true; chassis.add(cabRear);
+      const windFrame = new THREE.Mesh(new THREE.BoxGeometry(spec.bodyWidth * 0.88, 0.62, 0.08), matGlass);
+      windFrame.position.set(0, 1.72, 1.12); windFrame.rotation.x = -0.38; chassis.add(windFrame);
+
+      // Armored wheel arches / fenders & side armored glass vision slits
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matArmorDk, 0.18);
+      for (const sx of [-1, 1]) {
+        for (const wz of [0.35, -0.55, -1.45]) {
+          const slit = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.26, 0.56), matGlass);
+          slit.position.set(sx * (hw - 0.04), 1.74, wz); chassis.add(slit);
+        }
+        const step = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 2.2), matArmorDk);
+        step.position.set(sx * (hw + 0.04), 0.58, 0.0); chassis.add(step);
+      }
+
+      // Rear-mounted spare tire + roof stowage rack
+      const spT = new THREE.Mesh(new THREE.CylinderGeometry(0.50, 0.50, 0.32, 14), matRubber);
+      spT.rotation.x = Math.PI / 2; spT.position.set(0.42, 1.38, -hl - 0.10); chassis.add(spT);
+
+      if (vehicleId === "komodo_std") {
+        // Standard APC: Armored roof commander cupola + pintle 12.7mm shield
+        const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.52, 0.24, 10), matArmorDk);
+        cup.position.set(0, 2.20, -0.10); chassis.add(cup);
+        const shield = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.52, 0.08), matPaint);
+        shield.position.set(0, 2.48, 0.28); chassis.add(shield);
+      } else if (vehicleId === "komodo_recon") {
+        // Recon Variant: Telescoping Thermal/EO Surveillance Mast + Dual VHF/HF Whip Antennas!
+        const mastBase = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.45, 10), matArmorDk);
+        mastBase.position.set(0, 2.30, -1.25); chassis.add(mastBase);
+        const mastPole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.10, 1.45, 8), matSteel);
+        mastPole.position.set(0, 3.05, -1.25); chassis.add(mastPole);
+        const eoHead = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.36, 0.44), matArmorDk);
+        eoHead.position.set(0, 3.82, -1.25); chassis.add(eoHead);
+        const eoLens = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), matLens);
+        eoLens.rotation.x = Math.PI / 2; eoLens.position.set(0, 3.82, -1.02); chassis.add(eoLens);
+        for (const ax of [-0.88, 0.88]) {
+          const whip = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.022, 2.4, 5), matArmorDk);
+          whip.position.set(ax, 3.15, -2.15); chassis.add(whip);
+        }
+      } else if (vehicleId === "komodo_turret") {
+        // Turreted Variant: John Cockerill CPWS 30mm Remote Autocannon Turret (Rotates & Elevates + Red-Hot Glow!)
+        btrTurretPivot = new THREE.Group();
+        btrTurretPivot.position.set(0, 2.12, -0.35);
+        chassis.add(btrTurretPivot);
+
+        const cpwsBase = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.44, 1.42), matPaint);
+        cpwsBase.position.set(0, 0.22, -0.06); cpwsBase.castShadow = true; btrTurretPivot.add(cpwsBase);
+        const cpwsSight = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.34), matArmorDk);
+        cpwsSight.position.set(0.46, 0.48, 0.28); btrTurretPivot.add(cpwsSight);
+        const cpwsLens = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.16, 0.06), matLens);
+        cpwsLens.position.set(0.46, 0.48, 0.46); btrTurretPivot.add(cpwsLens);
+
+        btrGunGroup = new THREE.Group();
+        btrGunGroup.visible = true; // Always armed out of the box!
+        btrGunGroup.position.set(0, 0.32, 0.55);
+        btrTurretPivot.add(btrGunGroup);
+
+        const mantlet = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.32, 0.46), matArmorDk);
+        btrGunGroup.add(mantlet);
+        matAutoBarrelHot = matSteel.clone();
+        const barrel30 = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.062, 2.45, 10), matAutoBarrelHot);
+        barrel30.rotation.x = Math.PI / 2; barrel30.position.set(0, 0.02, 1.32); barrel30.castShadow = true; btrGunGroup.add(barrel30);
+        const mBrake = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.056, 0.26, 8), matArmorDk);
+        mBrake.rotation.x = Math.PI / 2; mBrake.position.set(0, 0.02, 2.58); btrGunGroup.add(mBrake);
+        btrMuzzleFlash = new THREE.Mesh(
+          new THREE.ConeGeometry(0.26, 1.05, 7),
+          new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.94 })
+        );
+        btrMuzzleFlash.rotation.x = Math.PI / 2; btrMuzzleFlash.position.set(0, 0.02, 3.15); btrMuzzleFlash.visible = false;
+        btrGunGroup.add(btrMuzzleFlash);
+      }
+
+      cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, false) : null;
+      this._addMirrors(chassis, hw + 0.06, 1.68, 1.15, matArmorDk, matRubber, 0.24);
+    }
+
+    // ========================================================================
+    // v15.1.2 PT PINDAD HARIMAU (KAPLAN MT) — 31.5t TROPICAL MEDIUM TANK!
+    // Exact Hull: 7.0m x 3.2m x 2.9m, Cockerill 3105 Turret & 105mm Rifled Gun
+    // ========================================================================
+    else if (vehicleId === "harimau") {
+      plateText = "HARIMAU"; roundHL = false; hlY = 1.24; hlZ = 3.42; hlSpread = 1.18;
+      const matArmorDk = new THREE.MeshStandardMaterial({ color: 0x252c20, roughness: 0.80, metalness: 0.42 });
+      const matSteel   = new THREE.MeshStandardMaterial({ color: 0x434a50, roughness: 0.45, metalness: 0.72 });
+      const matLens    = new THREE.MeshStandardMaterial({ color: 0x16384a, emissive: 0x0b3a4f, roughness: 0.16, metalness: 0.75 });
+
+      // 6-Roadwheel Torsion-Bar Flexing Tracks!
+      trackSys = this._buildTankTracks(chassis, spec, matSteel, matArmorDk);
+
+      // Sloped STANAG Level 4 Composite V-Hull (7.0m x 3.2m)
+      const hullCore = new THREE.Mesh(new THREE.BoxGeometry(2.42, 0.82, 6.25), matPaint);
+      hullCore.position.set(0, 1.06, -0.05); hullCore.castShadow = true; hullCore.receiveShadow = true; chassis.add(hullCore);
+      const upperGlacis = new THREE.Mesh(new THREE.BoxGeometry(2.40, 0.28, 1.55), matPaint);
+      upperGlacis.position.set(0, 1.26, 2.75); upperGlacis.rotation.x = 0.36; upperGlacis.castShadow = true; chassis.add(upperGlacis);
+      const lowerGlacis = new THREE.Mesh(new THREE.BoxGeometry(2.38, 0.48, 0.78), matArmorDk);
+      lowerGlacis.position.set(0, 0.82, 3.22); lowerGlacis.rotation.x = -0.45; chassis.add(lowerGlacis);
+
+      // Modular side armor track skirts (3.20m total width!)
+      for (const sx of [-1, 1]) {
+        const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.62, 6.55), matPaint);
+        skirt.position.set(sx * 1.56, 1.08, 0.0); skirt.castShadow = true; chassis.add(skirt);
+        const spons = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.28, 6.45), matPaint);
+        spons.position.set(sx * 1.32, 1.46, 0.0); chassis.add(spons);
+      }
+
+      // Rear Caterpillar C13 711 HP engine louver deck
+      const engDeck = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.12, 2.10), matArmorDk);
+      engDeck.position.set(0, 1.52, -2.05); chassis.add(engDeck);
+
+      // COCKERILL 3105 ANGULAR LOW-PROFILE TURRET + 12-ROUND BUSTLE AUTOLOADER!
+      tankTurretPivot = new THREE.Group();
+      tankTurretPivot.position.set(0, 1.54, 0.12);
+      chassis.add(tankTurretPivot);
+
+      const turMain = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.76, 2.48), matPaint);
+      turMain.position.set(0, 0.42, 0.0); turMain.castShadow = true; turMain.receiveShadow = true; tankTurretPivot.add(turMain);
+      const turCheek = new THREE.Mesh(new THREE.BoxGeometry(2.10, 0.64, 0.95), matPaint);
+      turCheek.position.set(0, 0.38, 1.38); turCheek.rotation.x = 0.26; tankTurretPivot.add(turCheek);
+      // Rear 12-round bustle autoloader magazine
+      const bustle = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.66, 1.45), matPaint);
+      bustle.position.set(0, 0.44, -1.85); bustle.castShadow = true; tankTurretPivot.add(bustle);
+      // Hunter-Killer Commander Panoramic Thermal Sight + Smoke Dischargers
+      const hkSight = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.42, 10), matArmorDk);
+      hkSight.position.set(-0.62, 0.98, 0.48); tankTurretPivot.add(hkSight);
+      const hkLens = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.10), matLens);
+      hkLens.position.set(-0.62, 1.02, 0.70); tankTurretPivot.add(hkLens);
+      for (const sx of [-1, 1]) {
+        const smkPod = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.42), matArmorDk);
+        smkPod.position.set(sx * 1.18, 0.56, 0.72); smkPod.rotation.x = -0.35; tankTurretPivot.add(smkPod);
+      }
+
+      // Independent 2-Axis Roof 7.62mm MG on Commander Cupola!
+      matAutoBarrelHot = matSteel.clone();
+      p140RwsPivot = new THREE.Group();
+      p140RwsPivot.position.set(0.64, 0.86, -0.12);
+      tankTurretPivot.add(p140RwsPivot);
+      p140RwsGunPitch = new THREE.Group();
+      p140RwsGunPitch.position.set(0, 0.24, 0.06);
+      p140RwsPivot.add(p140RwsGunPitch);
+      const mgRec = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.48), matArmorDk);
+      p140RwsGunPitch.add(mgRec);
+      const mgBar = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.032, 1.25, 8), matAutoBarrelHot);
+      mgBar.rotation.x = Math.PI / 2; mgBar.position.set(0, 0.02, 0.85); p140RwsGunPitch.add(mgBar);
+      p140RwsMuzzleTip = new THREE.Object3D(); p140RwsMuzzleTip.position.set(0, 0.02, 1.52); p140RwsGunPitch.add(p140RwsMuzzleTip);
+      tankCoaxFlash = new THREE.Mesh(
+        new THREE.ConeGeometry(0.18, 0.75, 7),
+        new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.92 })
+      );
+      tankCoaxFlash.rotation.x = Math.PI / 2; tankCoaxFlash.position.set(0, 0.02, 1.92); tankCoaxFlash.visible = false;
+      p140RwsGunPitch.add(tankCoaxFlash);
+
+      // COCKERILL 105mm HIGH-PRESSURE RIFLED CANNON (Stretches to 9.11m overall!)
+      tankGunPitch = new THREE.Group();
+      tankGunPitch.position.set(0, 0.42, 1.55);
+      tankTurretPivot.add(tankGunPitch);
+      const mant = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.48, 0.56), matArmorDk);
+      tankGunPitch.add(mant);
+
+      tankBarrelSlide = new THREE.Group();
+      tankGunPitch.add(tankBarrelSlide);
+      const bBase = new THREE.Mesh(new THREE.CylinderGeometry(0.098, 0.118, 2.20, 12), matPaint);
+      bBase.rotation.x = Math.PI / 2; bBase.position.z = 1.15; bBase.castShadow = true; tankBarrelSlide.add(bBase);
+      const bEvac = new THREE.Mesh(new THREE.CylinderGeometry(0.145, 0.145, 0.58, 12), matPaint);
+      bEvac.rotation.x = Math.PI / 2; bEvac.position.z = 2.45; tankBarrelSlide.add(bEvac);
+      matMainBarrelHot = matSteel.clone();
+      const bTip = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.094, 2.15, 12), matMainBarrelHot);
+      bTip.rotation.x = Math.PI / 2; bTip.position.z = 3.75; bTip.castShadow = true; tankBarrelSlide.add(bTip);
+      const mBrake = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.46), matArmorDk);
+      mBrake.position.set(0, 0, 4.92); tankBarrelSlide.add(mBrake);
+
+      tankMainFlash = new THREE.Mesh(
+        new THREE.ConeGeometry(0.75, 2.9, 9),
+        new THREE.MeshBasicMaterial({ color: 0xffc857, transparent: true, opacity: 0.94 })
+      );
+      tankMainFlash.rotation.x = Math.PI / 2; tankMainFlash.position.z = 6.35; tankMainFlash.visible = false;
+      tankBarrelSlide.add(tankMainFlash);
+
+      cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, false) : null;
+    }
+
+    // ========================================================================
     // LOWER-BODY DYNAMIC MUD SPLATTER PANELS + BACKFIRE EXHAUST FLAME
     // ========================================================================
     const halfLen = spec.bodyLen * 0.5, halfW = spec.bodyWidth * 0.5;

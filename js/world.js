@@ -834,43 +834,189 @@ KK.World = class World {
   _buildOceanPorts() {
     if (!KK.PORTS) return;
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
-    const matPier = new THREE.MeshStandardMaterial({ color: 0x6f757a, roughness: 0.88 });
-    const matRamp = new THREE.MeshStandardMaterial({ color: 0x4b5258, roughness: 0.92 });
-    const matPad  = new THREE.MeshStandardMaterial({ color: 0x00d4ff, emissive: 0x006d88, roughness: 0.5 });
-    const matWh   = new THREE.MeshStandardMaterial({ color: 0x2f5373, roughness: 0.72 });
-    const matCrane = new THREE.MeshStandardMaterial({ color: 0xe6a817, roughness: 0.55, metalness: 0.35 });
+    const matPier   = new THREE.MeshStandardMaterial({ color: 0x6f757a, roughness: 0.88 });
+    const matModern = new THREE.MeshStandardMaterial({ color: 0xb8c0c8, roughness: 0.62, metalness: 0.22 });
+    const matGlass  = new THREE.MeshStandardMaterial({ color: 0x2a6f97, emissive: 0x164a68, emissiveIntensity: 0.75, roughness: 0.2, metalness: 0.65 });
+    const matRamp   = new THREE.MeshStandardMaterial({ color: 0x4b5258, roughness: 0.92 });
+    const matPad    = new THREE.MeshStandardMaterial({ color: 0x00d4ff, emissive: 0x0088aa, emissiveIntensity: 0.85, roughness: 0.45 });
+    const matWh     = new THREE.MeshStandardMaterial({ color: 0x2f5373, roughness: 0.72 });
+    const matCrane  = new THREE.MeshStandardMaterial({ color: 0xe6a817, roughness: 0.55, metalness: 0.35 });
+    const matRedC   = new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.52, metalness: 0.35 });
+    const matBlueC  = new THREE.MeshStandardMaterial({ color: 0x1d6396, roughness: 0.58 });
+    const matWood   = new THREE.MeshStandardMaterial({ color: 0x735133, roughness: 0.94 });
+    const matWoodDk = new THREE.MeshStandardMaterial({ color: 0x4a331e, roughness: 0.96 });
+    const matRust   = new THREE.MeshStandardMaterial({ color: 0x5c3828, roughness: 0.94, metalness: 0.35 });
+    const matIceC   = new THREE.MeshStandardMaterial({ color: 0x8ea4b5, roughness: 0.72 });
+    const matGlowW  = new THREE.MeshBasicMaterial({ color: 0xffe8a3 });
+    const matGlowC  = new THREE.MeshBasicMaterial({ color: 0x00f5ff });
+    const matGlowR  = new THREE.MeshBasicMaterial({ color: 0x9eff2a });
 
     for (const pt of KK.PORTS) {
       const grp = new THREE.Group();
       const py = seaL + 2.2;
       grp.position.set(pt.x, py, pt.z);
       grp.rotation.y = pt.yaw || 0;
+      const iid = pt.islandId;
+      const c = Math.cos(pt.yaw || 0), s = Math.sin(pt.yaw || 0);
+      const addCol = (lx, lz, hw, hd, hMax) => {
+        const wx = pt.x + (lx * c + lz * s), wz = pt.z + (-lx * s + lz * c);
+        this.buildingColliders.push({ minX: wx - hw, maxX: wx + hw, minZ: wz - hd, maxZ: wz + hd, yMin: py - 2, yMax: py + hMax, label: pt.name });
+      };
 
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(24, 1.4, 48), matPier);
-      deck.position.set(0, 0, 12); deck.castShadow = true; deck.receiveShadow = true; grp.add(deck);
-      for (const px of [-10, 10]) {
-        for (const pz of [-8, 8, 24, 34]) {
-          const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.75, 10, 8), matRamp);
-          pile.position.set(px, -5.2, pz); grp.add(pile);
+      if (iid === 2) {
+        // ====================================================================
+        // ZOLOTOY SAVANNA: MASSIVE MODERNIZED NIGHT-GLOWING CONTAINER TERMINAL!
+        // ====================================================================
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(44, 1.6, 68), matModern);
+        deck.position.set(0, 0, 18); deck.castShadow = true; deck.receiveShadow = true; grp.add(deck);
+        for (const px of [-19, 0, 19]) {
+          for (const pz of [-10, 10, 30, 48]) {
+            const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.95, 11, 8), matRamp);
+            pile.position.set(px, -5.5, pz); grp.add(pile);
+          }
         }
+        // Wide illuminated dual concrete boat launch ramp
+        const ramp = new THREE.Mesh(new THREE.BoxGeometry(14, 0.55, 24), matModern);
+        ramp.position.set(27, -1.5, 24); ramp.rotation.x = 0.20; grp.add(ramp);
+
+        // Glowing neon pier edge guide strips (glow brilliantly at night!)
+        for (const ex of [-21.6, 21.6]) {
+          const strip = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.22, 66), matGlowC);
+          strip.position.set(ex, 0.92, 18); grp.add(strip);
+        }
+        // Tall glowing harbor floodlight masts along both sides
+        for (const fx of [-19, 19]) {
+          for (const fz of [-4, 18, 40]) {
+            const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, 13, 6), matModern);
+            mast.position.set(fx, 7.0, fz); grp.add(mast);
+            const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 0.8), matGlowW);
+            lamp.position.set(fx, 13.6, fz); grp.add(lamp);
+          }
+        }
+        // Modern Illuminated Glass Port Authority Terminal Building
+        const term = new THREE.Mesh(new THREE.BoxGeometry(18, 10.5, 24), matModern);
+        term.position.set(-10, 5.8, -2); term.castShadow = true; grp.add(term);
+        const glassBand = new THREE.Mesh(new THREE.BoxGeometry(18.4, 4.5, 20), matGlass);
+        glassBand.position.set(-10, 6.8, -2); grp.add(glassBand);
+        const roofSign = new THREE.Mesh(new THREE.BoxGeometry(12, 1.6, 0.6), matGlowC);
+        roofSign.position.set(-10, 12.2, 10); grp.add(roofSign);
+        addCol(-10, -2, 9.5, 12.5, 12);
+
+        // Twin Massive Red/White Container Gantry Cranes!
+        for (const gz of [16, 36]) {
+          const leg1 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 22, 2.2), matRedC);
+          leg1.position.set(14, 11.5, gz - 4); grp.add(leg1);
+          const leg2 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 22, 2.2), matRedC);
+          leg2.position.set(14, 11.5, gz + 4); grp.add(leg2);
+          const boom = new THREE.Mesh(new THREE.BoxGeometry(26, 2.2, 2.6), matRedC);
+          boom.position.set(19, 22.0, gz); grp.add(boom);
+          const navL = new THREE.Mesh(new THREE.SphereGeometry(0.45, 6, 6), matGlowW);
+          navL.position.set(31.5, 23.4, gz); grp.add(navL);
+        }
+        // Stacked colorful shipping containers
+        const contCols = [matRedC, matBlueC, matCrane];
+        for (let ci = 0; ci < 3; ci++) {
+          const cont = new THREE.Mesh(new THREE.BoxGeometry(3.2, 3.0, 9.5), contCols[ci]);
+          cont.position.set(-13 + ci * 3.8, 2.3, 22); grp.add(cont);
+        }
+        addCol(-9.2, 22, 6.2, 5.2, 4.5);
+
+        // Large glowing cyan Boat Summon Pad + Beacon
+        const bPad = new THREE.Mesh(new THREE.BoxGeometry(13, 0.20, 13), matPad);
+        bPad.position.set(0, 0.90, 26); grp.add(bPad);
+        const bcn = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 46, 8), new THREE.MeshBasicMaterial({ color: 0x00f5ff, transparent: true, opacity: 0.45 }));
+        bcn.position.set(0, 23, 26); grp.add(bcn);
+
+      } else if (iid === 1 || iid === 4) {
+        // ====================================================================
+        // OSTROV TROPIKA & CORAL CAY: RUSTIC INDONESIAN WOODEN STILT JETTY!
+        // ====================================================================
+        const isSmallCay = (iid === 4);
+        const pw = isSmallCay ? 14 : 20, pl = isSmallCay ? 34 : 44;
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(pw, 0.85, pl), matWood);
+        deck.position.set(0, 0.2, 12); deck.castShadow = true; deck.receiveShadow = true; grp.add(deck);
+        for (const px of [-pw * 0.42, pw * 0.42]) {
+          for (const pz of [-4, 8, 20, isSmallCay ? 27 : 31]) {
+            const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 10, 6), matWoodDk);
+            pile.position.set(px, -4.8, pz); grp.add(pile);
+          }
+        }
+        const ramp = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.45, 20), matWoodDk);
+        ramp.position.set(pw * 0.5 + 4.5, -1.6, 16); ramp.rotation.x = 0.22; grp.add(ramp);
+        // Rustic corrugated-roof wooden harbor warung / fuel shack
+        const shack = new THREE.Mesh(new THREE.BoxGeometry(9.5, 4.2, 11), matWood);
+        shack.position.set(-2.5, 2.7, -1); shack.castShadow = true; grp.add(shack);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(8.2, 2.6, 4), matRedC);
+        roof.rotation.y = Math.PI * 0.25; roof.position.set(-2.5, 6.0, -1); grp.add(roof);
+        addCol(-2.5, -1, 5.2, 6.0, 7);
+        // Warm wooden lantern post
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 6.0, 6), matWoodDk);
+        post.position.set(pw * 0.36, 3.4, 24); grp.add(post);
+        const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.34, 6, 6), matGlowW);
+        lantern.position.set(pw * 0.36, 6.5, 24); grp.add(lantern);
+
+        const bPad = new THREE.Mesh(new THREE.BoxGeometry(9.5, 0.16, 9.5), matPad);
+        bPad.position.set(0, 0.72, 26); grp.add(bPad);
+        const bcn = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 30, 8), new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.38 }));
+        bcn.position.set(0, 15, 26); grp.add(bcn);
+
+      } else if (iid === 5) {
+        // ====================================================================
+        // SITE-140 BLACK ROCK: DILAPIDATED CRUMBLING QUARANTINE PIER!
+        // ====================================================================
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(18, 1.1, 40), matRamp);
+        deck.position.set(0, 0, 10); deck.rotation.z = 0.025; grp.add(deck);
+        for (const px of [-7.5, 7.5]) {
+          for (const pz of [-6, 8, 22, 28]) {
+            const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 10, 6), matRust);
+            pile.position.set(px, -5.0, pz); grp.add(pile);
+          }
+        }
+        const ramp = new THREE.Mesh(new THREE.BoxGeometry(9, 0.45, 20), matRust);
+        ramp.position.set(13.5, -1.6, 15); ramp.rotation.x = 0.24; grp.add(ramp);
+        // Rusted quarantine bunker shed + crooked steel gantry + radioactive green warning beacon
+        const bnk = new THREE.Mesh(new THREE.BoxGeometry(11, 5.2, 12), matRust);
+        bnk.position.set(-3, 3.1, -2); grp.add(bnk);
+        addCol(-3, -2, 6.0, 6.5, 6);
+        const mast = new THREE.Mesh(new THREE.BoxGeometry(1.2, 12, 1.2), matRust);
+        mast.position.set(6, 6.2, 8); mast.rotation.z = -0.14; grp.add(mast);
+        const warnL = new THREE.Mesh(new THREE.SphereGeometry(0.42, 6, 6), matGlowR);
+        warnL.position.set(5.1, 12.2, 8); grp.add(warnL);
+
+        const bPad = new THREE.Mesh(new THREE.BoxGeometry(9.5, 0.16, 9.5), matPad);
+        bPad.position.set(0, 0.68, 26); grp.add(bPad);
+        const bcn = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 32, 8), new THREE.MeshBasicMaterial({ color: 0x9eff2a, transparent: true, opacity: 0.42 }));
+        bcn.position.set(0, 16, 26); grp.add(bcn);
+
+      } else {
+        // ====================================================================
+        // MAINLAND (Soviet Industrial) & SEVERNYY ARCTIC (Frozen Polar Icebreaker Dock)
+        // ====================================================================
+        const isArc = (iid === 3);
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(24, 1.4, 48), isArc ? matIceC : matPier);
+        deck.position.set(0, 0, 12); deck.castShadow = true; deck.receiveShadow = true; grp.add(deck);
+        for (const px of [-10, 10]) {
+          for (const pz of [-8, 8, 24, 34]) {
+            const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.75, 10, 8), matRamp);
+            pile.position.set(px, -5.2, pz); grp.add(pile);
+          }
+        }
+        const ramp = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 22), matRamp);
+        ramp.position.set(16.5, -1.6, 16); ramp.rotation.x = 0.22; grp.add(ramp);
+        const bPad = new THREE.Mesh(new THREE.BoxGeometry(10, 0.16, 10), matPad);
+        bPad.position.set(0, 0.78, 26); grp.add(bPad);
+        const wh = new THREE.Mesh(new THREE.BoxGeometry(14, 7.5, 18), isArc ? matIceC : matWh);
+        wh.position.set(-4, 4.4, -2); wh.castShadow = true; grp.add(wh);
+        addCol(-4, -2, 8.5, 9.5, 9);
+        const craneBase = new THREE.Mesh(new THREE.BoxGeometry(4.5, 14, 4.5), isArc ? matRedC : matCrane);
+        craneBase.position.set(7.5, 7.6, 10); grp.add(craneBase);
+        const craneArm = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 22), isArc ? matRedC : matCrane);
+        craneArm.position.set(7.5, 14.8, 17); grp.add(craneArm);
+        const bcn = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 36, 8), new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.45 }));
+        bcn.position.set(0, 18, 26); grp.add(bcn);
       }
-      const ramp = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 22), matRamp);
-      ramp.position.set(16.5, -1.6, 16); ramp.rotation.x = 0.22; grp.add(ramp);
-      const bPad = new THREE.Mesh(new THREE.BoxGeometry(10, 0.16, 10), matPad);
-      bPad.position.set(0, 0.78, 26); grp.add(bPad);
-      const wh = new THREE.Mesh(new THREE.BoxGeometry(14, 7.5, 18), matWh);
-      wh.position.set(-4, 4.4, -2); wh.castShadow = true; grp.add(wh);
-      const craneBase = new THREE.Mesh(new THREE.BoxGeometry(4.5, 14, 4.5), matCrane);
-      craneBase.position.set(7.5, 7.6, 10); grp.add(craneBase);
-      const craneArm = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 22), matCrane);
-      craneArm.position.set(7.5, 14.8, 17); grp.add(craneArm);
-      const bcn = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 36, 8), new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.45 }));
-      bcn.position.set(0, 18, 26); grp.add(bcn);
 
       this.rootGroup.add(grp);
-      const c = Math.cos(pt.yaw || 0), s = Math.sin(pt.yaw || 0);
-      const wx = pt.x + (-4 * c + -2 * s), wz = pt.z + (4 * s + -2 * c);
-      this.buildingColliders.push({ minX: wx - 8.5, maxX: wx + 8.5, minZ: wz - 9.5, maxZ: wz + 9.5, yMin: py - 2, yMax: py + 9, label: pt.name });
     }
   }
 

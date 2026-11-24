@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.1.1";
-KK.VERSION_FULL = "v15.1.1 ONLINE";
+KK.VERSION = "v15.1.2";
+KK.VERSION_FULL = "v15.1.2 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -835,6 +835,20 @@ KK.ENGINES = {
     peakTorqueRpm: 1650, redlineRpm: 2450, idleRpm: 600, basePitch: 0.46, heatRate: 0.42,
     throttleResp: 7.8, stockTurbo: true, isTwinTurbo: true, stockBoostPsi: 22, antiLag: false,
     soundProfile: { subWave: "sawtooth", bodyWave: "sawtooth", growlWave: "triangle", subMult: 0.50, bodyMult: 1.00, growlMult: 2.00, subLvl: 0.88, bodyLvl: 0.58, growlLvl: 0.42, filterBase: 125, filterMax: 680, wobbleHz: 14.0, wobbleAmt: 0.20, airLvl: 0.095, warmth: 12 }
+  },
+  pindad_215_td: {
+    id: "pindad_215_td", name: "Pindad 5.2L Intercooled Turbodiesel (215 HP)", layout: "Inline-4 Tactical Turbodiesel",
+    price: 11500, fuelType: "diesel", stockHp: 215, baseTorqueNm: 760,
+    peakTorqueRpm: 1600, redlineRpm: 3200, idleRpm: 720, basePitch: 0.72, heatRate: 0.65,
+    throttleResp: 6.4, stockTurbo: true, isTwinTurbo: false, stockBoostPsi: 18, antiLag: false,
+    soundProfile: { subWave: "sawtooth", bodyWave: "triangle", growlWave: "sawtooth", subMult: 0.50, bodyMult: 1.00, growlMult: 1.50, subLvl: 0.62, bodyLvl: 0.48, growlLvl: 0.28, filterBase: 165, filterMax: 740, wobbleHz: 9.2, wobbleAmt: 0.14, airLvl: 0.055, warmth: 6 }
+  },
+  cat_c13_711: {
+    id: "cat_c13_711", name: "Caterpillar C13 12.5L Diesel (711 HP / 2,714 Nm)", layout: "Inline-6 Heavy Turbo Diesel",
+    price: 42000, fuelType: "diesel", stockHp: 711, baseTorqueNm: 2714,
+    peakTorqueRpm: 1500, redlineRpm: 2350, idleRpm: 620, basePitch: 0.54, heatRate: 0.56,
+    throttleResp: 7.4, stockTurbo: true, isTwinTurbo: true, stockBoostPsi: 24, antiLag: false,
+    soundProfile: { subWave: "sawtooth", bodyWave: "sawtooth", growlWave: "triangle", subMult: 0.50, bodyMult: 1.00, growlMult: 1.98, subLvl: 0.80, bodyLvl: 0.54, growlLvl: 0.34, filterBase: 135, filterMax: 660, wobbleHz: 11.8, wobbleAmt: 0.16, airLvl: 0.080, warmth: 9 }
   }
 };
 
@@ -1383,6 +1397,95 @@ KK.VEHICLES = {
       { id: "RR",  x:  1.22, y: 0.26, z: -2.55, steer: false, axle: "rear"  }
     ],
     desc: "850 Nm 10.8L Twin-Turbo V8 diesel 6x6 titan. Unstoppable pulling power — WILL smash wooden bridges!"
+  },
+  komodo_std: {
+    id: "komodo_std", brand: "boreal", name: "Pindad Komodo 4x4 (Standard APC)", category: "Indonesian 4x4 Tactical Armored Car",
+    suspensionType: "Heavy-Duty 4x4 Independent Coil Tactical Suspension (440mm Clearance)",
+    price: 48000, color: "#4e5c42", accentColor: "#21261e", massKg: 7300, cargoSlots: 4, enclosedCargo: true,
+    bodyLen: 5.65, bodyWidth: 2.25, bodyHeight: 2.15, cogOffsetY: 0.28, intakeHeight: 1.75,
+    fuelCapacity: 200, stockEngineId: "pindad_215_td",
+    compatibleEngines: ["pindad_215_td", "toyota_1vd", "kamaz_740", "cat_c13_711"],
+    driveType: "4WD_PART", defaultDriveMode: "4H", hasFactoryRearLock: true, hasFactoryFrontLock: true,
+    defaultFinalDrive: 5.12, defaultGears: [5.40, 3.15, 1.98, 1.32, 1.00, 0.78],
+    wheelRadius: 0.55, wheelWidth: 0.36, restLength: 0.58, maxTravel: 0.44,
+    baseSpringK: 122000, baseDamperC: 13800, baseAntiRoll: 28000, maxSteerDeg: 35, brakeForce: 62000,
+    bedOffset: { x: 0, y: 1.15, z: -1.45 },
+    wheels: [
+      { id: "FL", x: -0.98, y: 0.20, z:  1.80, steer: true,  axle: "front" },
+      { id: "FR", x:  0.98, y: 0.20, z:  1.80, steer: true,  axle: "front" },
+      { id: "RL", x: -0.98, y: 0.20, z: -1.80, steer: false, axle: "rear"  },
+      { id: "RR", x:  0.98, y: 0.20, z: -1.80, steer: false, axle: "rear"  }
+    ],
+    desc: "PT Pindad Komodo 4x4 Standard APC (5.65m × 2.25m × 2.15m, 7.3t). High-clearance monocoque armored 4x4 built for brutal tropical mountain passes!"
+  },
+  komodo_recon: {
+    id: "komodo_recon", brand: "boreal", name: "Pindad Komodo 4x4 (Reconnaissance)", category: "Indonesian 4x4 Thermal Recon Vehicle",
+    suspensionType: "Heavy-Duty 4x4 Independent Coil Tactical Suspension (440mm Clearance)",
+    price: 62000, color: "#43523a", accentColor: "#1b2019", massKg: 8000, cargoSlots: 3, enclosedCargo: true,
+    bodyLen: 5.50, bodyWidth: 2.30, bodyHeight: 2.20, cogOffsetY: 0.30, intakeHeight: 1.82,
+    fuelCapacity: 220, stockEngineId: "pindad_215_td",
+    compatibleEngines: ["pindad_215_td", "toyota_1vd", "kamaz_740", "cat_c13_711"],
+    driveType: "4WD_PART", defaultDriveMode: "4H", hasFactoryRearLock: true, hasFactoryFrontLock: true,
+    defaultFinalDrive: 4.88, defaultGears: [5.20, 3.05, 1.92, 1.28, 1.00, 0.76],
+    wheelRadius: 0.56, wheelWidth: 0.38, restLength: 0.60, maxTravel: 0.46,
+    baseSpringK: 132000, baseDamperC: 14800, baseAntiRoll: 30000, maxSteerDeg: 36, brakeForce: 68000,
+    bedOffset: { x: 0, y: 1.15, z: -1.40 },
+    wheels: [
+      { id: "FL", x: -1.00, y: 0.20, z:  1.78, steer: true,  axle: "front" },
+      { id: "FR", x:  1.00, y: 0.20, z:  1.78, steer: true,  axle: "front" },
+      { id: "RL", x: -1.00, y: 0.20, z: -1.78, steer: false, axle: "rear"  },
+      { id: "RR", x:  1.00, y: 0.20, z: -1.78, steer: false, axle: "rear"  }
+    ],
+    desc: "PT Pindad Komodo 4x4 Recon (5.50m × 2.30m × 2.20m, 8.0t). Telescoping thermal/EO surveillance mast, VHF/HF comms & built-in FLIR Thermal / NVG [6]!"
+  },
+  komodo_turret: {
+    id: "komodo_turret", brand: "boreal", name: "Pindad Komodo 4x4 (CPWS 30mm Turret)", category: "Indonesian 4x4 Autocannon Combat Car",
+    suspensionType: "Reinforced 4x4 Tactical Combat Suspension (440mm Clearance)",
+    price: 94000, color: "#3d4a35", accentColor: "#1a1f18", massKg: 8200, cargoSlots: 2, enclosedCargo: true,
+    bodyLen: 5.65, bodyWidth: 2.25, bodyHeight: 2.15, cogOffsetY: 0.34, intakeHeight: 1.80,
+    fuelCapacity: 210, stockEngineId: "pindad_215_td",
+    compatibleEngines: ["pindad_215_td", "toyota_1vd", "kamaz_740", "cat_c13_711"],
+    driveType: "4WD_PART", defaultDriveMode: "4H", hasFactoryRearLock: true, hasFactoryFrontLock: true,
+    defaultFinalDrive: 4.95, defaultGears: [5.30, 3.10, 1.95, 1.30, 1.00, 0.77],
+    wheelRadius: 0.56, wheelWidth: 0.38, restLength: 0.58, maxTravel: 0.44,
+    baseSpringK: 138000, baseDamperC: 15500, baseAntiRoll: 34000, maxSteerDeg: 35, brakeForce: 72000,
+    bedOffset: { x: 0, y: 1.15, z: -1.40 },
+    wheels: [
+      { id: "FL", x: -1.00, y: 0.20, z:  1.80, steer: true,  axle: "front" },
+      { id: "FR", x:  1.00, y: 0.20, z:  1.80, steer: true,  axle: "front" },
+      { id: "RL", x: -1.00, y: 0.20, z: -1.80, steer: false, axle: "rear"  },
+      { id: "RR", x:  1.00, y: 0.20, z: -1.80, steer: false, axle: "rear"  }
+    ],
+    desc: "PT Pindad Komodo 4x4 armed with a John Cockerill CPWS 30mm Remote Autocannon Turret (8.2t)! Right-click toggle scope, Left-click 30mm fire & FLIR [6]!"
+  },
+  harimau: {
+    id: "harimau", brand: "boreal", name: "Pindad Harimau (Kaplan MT 105mm)", category: "Indonesian-Turkish 31.5t Medium Tank",
+    suspensionType: "6-Roadwheel Torsion-Bar Tropical Tracked Suspension (STANAG Lvl 4)",
+    price: 215000, color: "#4a593d", accentColor: "#232a1e", massKg: 31500, cargoSlots: 4, enclosedCargo: true,
+    isTracked: true, isHarimau: true, rearEngine: true,
+    bodyLen: 7.00, bodyWidth: 3.20, bodyHeight: 2.90, cogOffsetY: 0.24, intakeHeight: 2.05,
+    fuelCapacity: 480, stockEngineId: "cat_c13_711",
+    compatibleEngines: ["cat_c13_711", "v84ms_v12", "mdv16_diesel"],
+    driveType: "AWD", defaultDriveMode: "4H", hasFactoryRearLock: true, hasFactoryFrontLock: true,
+    defaultFinalDrive: 5.40, defaultGears: [6.40, 3.85, 2.35, 1.52, 1.05, 0.78],
+    wheelRadius: 0.44, wheelWidth: 0.56, restLength: 0.52, maxTravel: 0.36,
+    baseSpringK: 420000, baseDamperC: 48000, baseAntiRoll: 96000, maxSteerDeg: 30, brakeForce: 290000,
+    bedOffset: { x: 0, y: 1.50, z: -2.0 },
+    wheels: [
+      { id: "L1", x: -1.36, y: 0.14, z:  2.55, steer: false, axle: "front" },
+      { id: "R1", x:  1.36, y: 0.14, z:  2.55, steer: false, axle: "front" },
+      { id: "L2", x: -1.36, y: 0.14, z:  1.53, steer: false, axle: "mid"   },
+      { id: "R2", x:  1.36, y: 0.14, z:  1.53, steer: false, axle: "mid"   },
+      { id: "L3", x: -1.36, y: 0.14, z:  0.51, steer: false, axle: "mid"   },
+      { id: "R3", x:  1.36, y: 0.14, z:  0.51, steer: false, axle: "mid"   },
+      { id: "L4", x: -1.36, y: 0.14, z: -0.51, steer: false, axle: "mid"   },
+      { id: "R4", x:  1.36, y: 0.14, z: -0.51, steer: false, axle: "mid"   },
+      { id: "L5", x: -1.36, y: 0.14, z: -1.53, steer: false, axle: "mid"   },
+      { id: "R5", x:  1.36, y: 0.14, z: -1.53, steer: false, axle: "mid"   },
+      { id: "L6", x: -1.36, y: 0.14, z: -2.55, steer: false, axle: "rear"  },
+      { id: "R6", x:  1.36, y: 0.14, z: -2.55, steer: false, axle: "rear"  }
+    ],
+    desc: "PT Pindad Harimau / Kaplan MT (7.0m × 3.2m × 2.9m, 31.5t). 711 HP Cat C13 diesel (70 km/h!), Cockerill 3105 105mm autoloader (5.0s reload!), 7.62mm MG, Smoke [G] & Hunter-Killer FLIR [6]!"
   }
 };
 
@@ -1575,6 +1678,11 @@ KK.createDefaultVehicleState = function(vehicleId) {
     health: { mudClog: 0, tieRodBias: 0.0, tires: 100, body: 100, headlightL: 100, headlightR: 100, lightbar: 100, taillightL: 100, taillightR: 100 },
     parts: {}, fuel: spec.fuelCapacity
   };
+  if (spec.id === "harimau") {
+    st.t72HeAmmo = 22; st.t72ApAmmo = 16; st.t72CoaxAmmo = 400; st.t72SmokeCharges = 6; st.t72ShellType = "he";
+  } else if (spec.id === "komodo_turret") {
+    st.btrAmmo = 180;
+  }
   return KK.ensurePartsInitialized(st);
 };
 

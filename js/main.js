@@ -340,7 +340,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1.1 ONLINE! True Shoreline Ocean Ports, Coastal Spur Roads, Map Anchor Icons, Spawnable Ports & Full-Island Spread!');
+      this.ui.toast('Welcome to v15.1.2 ONLINE! Island-Themed Piers (Glowing Savanna Terminal & Rustic/Dilapidated Docks) + 4 Buyable PT Pindad Vehicles (Komodo Standard/Recon/30mm Turret & Harimau 105mm Medium Tank)!');
     }, 650);
   }
 
@@ -568,10 +568,10 @@ KK.Game = class Game {
       if (this.ui.activeModal || (this.startMenu && this.startMenu.isOpen)) return;
       const vid = this.vehicle ? this.vehicle.vState.vehicleId : "";
       const isP140 = (!this.onFoot && !this.ridingWithPeerId && vid === "pzkpfw_140a4");
-      const isT72 = (!this.onFoot && !this.ridingWithPeerId && (vid === "t72" || isP140));
+      const isT72 = (!this.onFoot && !this.ridingWithPeerId && (vid === "t72" || vid === "harimau" || isP140));
       const isBm21 = (!this.onFoot && !this.ridingWithPeerId && vid === "bm21");
       const isShilka = (!this.onFoot && !this.ridingWithPeerId && vid === "shilka");
-      const isArmedBtr = (!this.onFoot && !this.ridingWithPeerId && vid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret);
+      const isArmedBtr = (!this.onFoot && !this.ridingWithPeerId && (vid === "komodo_turret" || (vid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
       const isArmed = isT72 || isBm21 || isShilka || isArmedBtr;
 
       if (e.button === 0) {
@@ -692,7 +692,7 @@ KK.Game = class Game {
       }
       else if (code === "KeyG") {
         const vidG = this.vehicle.vState.vehicleId;
-        if (!this.onFoot && vidG === "t72") this.launchT72Smoke();
+        if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
         else if (!this.onFoot && vidG === "shilka") {
           this.shilkaRadarOn = !this.shilkaRadarOn;
@@ -719,7 +719,7 @@ KK.Game = class Game {
       else if (code === "KeyZ") this.cycleThermalVision();
       else if (code === "KeyR") {
         const vidR = this.vehicle.vState.vehicleId;
-        if (vidR === "t72" || vidR === "bm21" || vidR === "pzkpfw_140a4") this.toggleT72ShellType();
+        if (vidR === "t72" || vidR === "harimau" || vidR === "bm21" || vidR === "pzkpfw_140a4") this.toggleT72ShellType();
         else this.toggleStrapCargo();
       }
       else if (code === "KeyI") {
@@ -2110,7 +2110,7 @@ KK.Game = class Game {
     if (this.ownedVehicles.shilka) this.ownedVehicles.shilka.shilkaAmmo = 800;
     if (this.ownedVehicles.pzkpfw_140a4) { const p = this.ownedVehicles.pzkpfw_140a4; p.p140ApAmmo = 14; p.p140HeshAmmo = 10; p.p140ThermAmmo = 8; p.p140RlgAmmo = 8; p.p140AutoAmmo = 240; }
     const curVs = this.vehicle.vState;
-    if (curVs.vehicleId === "t72") {
+    if (curVs.vehicleId === "t72" || curVs.vehicleId === "harimau") {
       curVs.t72HeAmmo = 18; curVs.t72ApAmmo = 14; curVs.t72CoaxAmmo = 300; curVs.t72SmokeCharges = 4;
       if (curVs.upgrades.t72SeismicFcs) curVs.t72ThermAmmo = 10;
     } else if (curVs.vehicleId === "bm21") { curVs.bm21Rockets = 40; }
@@ -2140,7 +2140,7 @@ KK.Game = class Game {
       this.audio.playWrench();
       return;
     }
-    if (this.vehicle.vState.vehicleId !== "t72") return;
+    if (this.vehicle.vState.vehicleId !== "t72" && this.vehicle.vState.vehicleId !== "harimau") return;
     const vs = this.vehicle.vState;
     const order = vs.upgrades.t72SeismicFcs ? ["he", "ap", "therm"] : ["he", "ap"];
     const nextIdx = (order.indexOf(vs.t72ShellType) + 1) % order.length;
@@ -2158,7 +2158,7 @@ KK.Game = class Game {
   cycleThermalVision() {
     if (this.onFoot || this.ridingWithPeerId) return;
     const vs = this.vehicle.vState;
-    const hasOptic = (vs.vehicleId === "t72" || vs.vehicleId === "shilka" || vs.vehicleId === "pzkpfw_140a4") || (vs.vehicleId === "btr80" && !!vs.upgrades.btrTurret);
+    const hasOptic = (vs.vehicleId === "t72" || vs.vehicleId === "harimau" || vs.vehicleId === "komodo_recon" || vs.vehicleId === "komodo_turret" || vs.vehicleId === "shilka" || vs.vehicleId === "pzkpfw_140a4") || (vs.vehicleId === "btr80" && !!vs.upgrades.btrTurret);
     if (!hasOptic) {
       this.ui.toast("Thermal / IR Optics [Z] are installed on the T-72B, Shilka, and rearmed BTR-80!", true);
       return;
@@ -2210,7 +2210,7 @@ KK.Game = class Game {
   }
 
   launchT72Smoke() {
-    if (this.onFoot || this.vehicle.vState.vehicleId !== "t72") return;
+    if (this.onFoot || (this.vehicle.vState.vehicleId !== "t72" && this.vehicle.vState.vehicleId !== "harimau")) return;
     const vs = this.vehicle.vState;
     if ((vs.t72SmokeCharges || 0) <= 0) {
       this.ui.toast("Out of 81mm Tucha Smoke Grenades! Resupply at a Town Garage!", true); return;
@@ -2529,7 +2529,7 @@ KK.Game = class Game {
     if (this.onFoot || this.ridingWithPeerId || this.ui.activeModal) return;
     const vs = this.vehicle.vState;
     if (vs.vehicleId === "pzkpfw_140a4") { this.fireP140MainCannon(); return; }
-    if (vs.vehicleId !== "t72") return;
+    if (vs.vehicleId !== "t72" && vs.vehicleId !== "harimau") return;
     if (this.t72ReloadTimer > 0) {
       this.ui.toast(`Carousel Autoloader cycling... (${this.t72ReloadTimer.toFixed(1)}s)`);
       return;
@@ -2613,7 +2613,7 @@ KK.Game = class Game {
     if (this.onFoot || this.ridingWithPeerId || this.ui.activeModal) return;
     const vs = this.vehicle.vState;
     if (vs.vehicleId === "pzkpfw_140a4") { this.fireP140AutoKanone40mm(); return; }
-    if (vs.vehicleId !== "t72" || this.t72CoaxCd > 0) return;
+    if ((vs.vehicleId !== "t72" && vs.vehicleId !== "harimau") || this.t72CoaxCd > 0) return;
     if ((vs.t72CoaxAmmo || 0) <= 0) {
       this.ui.toast("OUT OF 14.5mm SECONDARY AMMO! Resupply at a Town Garage!", true); return;
     }
@@ -2661,7 +2661,7 @@ KK.Game = class Game {
   fireBtrTurret() {
     if (this.onFoot || this.ridingWithPeerId || this.ui.activeModal) return;
     const vs = this.vehicle.vState;
-    if (vs.vehicleId !== "btr80" || !vs.upgrades.btrTurret) return;
+    if (vs.vehicleId !== "komodo_turret" && (vs.vehicleId !== "btr80" || !vs.upgrades.btrTurret)) return;
     if (this.btrFireCd > 0) return;
     if ((vs.btrAmmo || 0) <= 0) {
       this.ui.toast("OUT OF 14.5mm AMMO! Visit Richard Hammond on his Desert Mesa to reload ($600)!", true);
@@ -3332,10 +3332,10 @@ KK.Game = class Game {
     if (this.btrFireCd > 0) this.btrFireCd = Math.max(0, this.btrFireCd - dt);
     if (this.btrFlashTimer > 0) this.btrFlashTimer = Math.max(0, this.btrFlashTimer - dt);
     const curVid = this.vehicle.vState.vehicleId;
-    const isT72 = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && (curVid === "t72" || curVid === "pzkpfw_140a4"));
+    const isT72 = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && (curVid === "t72" || curVid === "harimau" || curVid === "pzkpfw_140a4"));
     const isBm21 = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && curVid === "bm21");
     const isShilka = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && curVid === "shilka");
-    const isArmedBtr = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && curVid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret);
+    const isArmedBtr = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && (curVid === "komodo_turret" || (curVid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
     const isArmed = isT72 || isBm21 || isShilka || isArmedBtr;
     if (!isArmed) {
       this.mouseAimHeld = false; this.mouseFireHeld = false; this.coaxFireHeld = false;
@@ -3360,11 +3360,11 @@ KK.Game = class Game {
         this.barrelSmokeCd = 0.085;
         const vidS = this.vehicle.vState.vehicleId;
         const smkInt = Math.min(1.0, this.barrelSmokeTimer / 3.5);
-        if (vidS === "t72" || vidS === "pzkpfw_140a4" || vidS === "bm21" || vidS === "shilka" || (vidS === "btr80" && this.vehicle.vState.upgrades.btrTurret)) {
+        if (vidS === "t72" || vidS === "harimau" || vidS === "komodo_turret" || vidS === "pzkpfw_140a4" || vidS === "bm21" || vidS === "shilka" || (vidS === "btr80" && this.vehicle.vState.upgrades.btrTurret)) {
           const mzS = this._getActiveMuzzleTransform();
           const dW = mzS.dirWorld;
           this.particles.emitBarrelSmoke(mzS.tipWorld.x, mzS.tipWorld.y, mzS.tipWorld.z, dW.x, dW.y, dW.z, smkInt);
-          if ((vidS === "t72" || vidS === "pzkpfw_140a4") && Math.random() < 0.65) {
+          if ((vidS === "t72" || vidS === "harimau" || vidS === "pzkpfw_140a4") && Math.random() < 0.65) {
             this.particles.emitBarrelSmoke(mzS.evacWorld.x, mzS.evacWorld.y, mzS.evacWorld.z, dW.x * 0.25, 0.65, dW.z * 0.25, smkInt * 0.85);
           }
         }
@@ -3390,7 +3390,7 @@ KK.Game = class Game {
 
         // Remote 40mm AutoKanone Turret on PzKpfw 140A4: Independent 2-Axis Tracking!
         // Azimuth: 125°/s (2.18 rad/s, 3.1x faster than 140mm turret) | Elevation: -10° depression to +55° anti-air/Kaiju at 78°/s!
-        if (is140T || curVid === "t72") {
+        if (is140T || curVid === "t72" || curVid === "harimau") {
           let dyRws = targetYaw - (this.p140RwsYaw || 0);
           while (dyRws > Math.PI) dyRws -= Math.PI * 2; while (dyRws < -Math.PI) dyRws += Math.PI * 2;
           const maxRwsStep = 2.18 * dt;
