@@ -241,9 +241,98 @@ KK.BoatManager = class BoatManager {
     return null;
   }
 
-  findBoatUnderPoint(gx, gz) {
+  findBoatUnderPoint(gx, gz, allowRamp = false) {
     const s = this.getDriveableSurfaceAt(gx, gz);
-    return (s && !s.onRamp) ? s : null;
+    if (!s) return null;
+    return (allowRamp || !s.onRamp) ? s : null;
+  }
+
+  // v15.4.3 SOLID CLOSED-RAMP & DECK BULWARK COLLISION (Ram into closed ramp if UP!)
+  resolveDeckWallCollisions(vehicle) {
+    if (!vehicle || !vehicle.pos) return { hitRamp: false, hitWall: false };
+    // Skip if already strapped/welded to deck
+    if (this.findLocalMountedBoat()) return { hitRamp: false, hitWall: false };
+    const gx = vehicle.pos.x, gz = vehicle.pos.z;
+    const surf = this.getDriveableSurfaceAt(gx, gz);
+    if (!surf || !surf.boat) return { hitRamp: false, hitWall: false };
+    const b = surf.boat;
+    const sp = b.spec;
+    if (!sp || !sp.maxPayloadKg) return { hitRamp: false, hitWall: false };
+
+    const c = Math.cos(-(b.yaw || 0)), s = Math.sin(-(b.yaw || 0));
+    const dx = gx - b.gx, dz = gz - b.gz;
+    let lx = dx * c + dz * s;
+    let lz = -dx * s + dz * c;
+    const halfCarW = (vehicle.spec.bodyWidth || 2.0) * 0.45;
+    const halfCarL = (vehicle.spec.bodyLen || 4.6) * 0.44;
+    const rampClosed = !!(b.deckLocked || b.rampAnim < 0.50);
+
+    let minX, maxX, minZ, maxZ, rampIsFront = true;
+    if (b.id === "zubr") {
+      minX = -6.5 + halfCarW; maxX = 6.5 - halfCarW;
+      minZ = -16.0 + halfCarL; maxZ = rampClosed ? (19.6 - halfCarL) : 32.0;
+      rampIsFront = true;
+    } else if (b.id === "serna") {
+      minX = -3.25 + halfCarW; maxX = 3.25 - halfCarW;
+      minZ = -7.5 + halfCarL; maxZ = rampClosed ? (11.8 - halfCarL) : 22.0;
+      rampIsFront = true;
+    } else if (b.id === "patrol") {
+      minX = -2.05 + halfCarW; maxX = 2.05 - halfCarW;
+      minZ = rampClosed ? (-6.2 + halfCarL) : -14.0; maxZ = 0.8 - halfCarL;
+      rampIsFront = false;
+    } else {
+      return { hitRamp: false, hitWall: false };
+    }
+
+    let clamped = false, hitRamp = false;
+    if (lx < minX) { lx = minX; clamped = true; }
+    else if (lx > maxX) { lx = maxX; clamped = true; }
+    if (lz < minZ) {
+      lz = minZ; clamped = true;
+      if (!rampIsFront && rampClosed) hitRamp = true;
+    } else if (lz > maxZ) {
+      lz = maxZ; clamped = true;
+      if (rampIsFront && rampClosed) hitRamp = true;
+    }
+
+    if (clamped) {
+      const cw = Math.cos(b.yaw || 0), sw = Math.sin(b.yaw || 0);
+      vehicle.pos.x = b.gx + (lx * cw - lz * sw);
+      vehicle.pos.z = b.gz + (lx * sw + lz * cw);
+      // Bounce velocity cleanly off steel ramp/bulkhead!
+      vehicle.vel.x = b.vx + (vehicle.vel.x - b.vx) * -0.35;
+      vehicle.vel.z = b.vz + (vehicle.vel.z - b.vz) * -0.35;
+      return { hitRamp, hitWall: true };
+    }
+    return { hitRamp: false, hitWall: false };
+  }
+
+  // v15.4.3 ANYONE CAN DRIVE: Claim a friend's remote ship into local control when pressing [SPACE]!
+  claimRemoteBoatForHelm(remoteBoat) {
+    if (!remoteBoat || !remoteBoat.id || !KK.BOATS[remoteBoat.id]) return null;
+    let existing = this.spawnedBoats.find((b) => b.id === remoteBoat.id);
+    if (!existing) {
+      const built = this._buildBoatMesh(remoteBoat.id);
+      this.scene.add(built.grp);
+      existing = {
+        id: remoteBoat.id, spec: KK.BOATS[remoteBoat.id],
+        mesh: built.grp, fans: built.fans, radars: built.radars, helmWheel: built.helmWheel, helmLever: built.helmLever, skirtMesh: built.skirtMesh,
+        rampPivot: built.rampPivot, rampRestRotX: built.rampRestRotX, rampOpenRotX: built.rampOpenRotX,
+        navLightsGroup: built.navLightsGroup, spotCone: built.spotCone, spotMountLocal: built.spotMountLocal,
+        bayChains: built.bayChains,
+        gx: remoteBoat.gx, gy: remoteBoat.gy, gz: remoteBoat.gz, yaw: remoteBoat.yaw || 0, pitch: 0, roll: 0,
+        vx: 0, vz: 0, speedKmh: 0, throttleCmd: 0, boostCmd: false,
+        anchored: false, deckLocked: !!remoteBoat.deckLocked, unlockWarnUntil: 0,
+        navLightsOn: true, spotLightOn: false, waterDepth: 12, isBeached: false,
+        rampAnim: remoteBoat.deckLocked ? 0.0 : 1.0, cushionAnim: 1.0, deckVehicles: []
+      };
+      this.spawnedBoats.push(existing);
+    } else {
+      existing.gx = remoteBoat.gx; existing.gy = remoteBoat.gy; existing.gz = remoteBoat.gz;
+      existing.yaw = remoteBoat.yaw || 0; existing.deckLocked = !!remoteBoat.deckLocked;
+      existing.rampAnim = existing.deckLocked ? 0.0 : 1.0;
+    }
+    return existing;
   }
 
   findNearbyPort(gx, gz, maxDist = 48) {
@@ -889,6 +978,78 @@ KK.BoatManager = class BoatManager {
     return { ok: true, bay };
   }
 
+  // v15.4.3 IGNITION-OFF AUTO-LOCK TO NEAREST FREE PARKING BAY!
+  autoSnapAndStrapVehicle(boat, vehicle, ui, audio, remotePlayersMap = null) {
+    if (!boat || !vehicle) return null;
+    const existing = this.getLocalMountedEntry(boat);
+    if (existing) return existing;
+    const maxPay = boat.spec.maxPayloadKg || 0;
+    const mass = vehicle.spec.massKg || 2000;
+    if (maxPay <= 0) return null;
+    const curPay = this.getPayloadKg(boat, remotePlayersMap);
+    if (curPay + mass > maxPay) {
+      if (ui) ui.toast(`OVERWEIGHT! ${vehicle.spec.name} (${(mass / 1000).toFixed(1)}t) exceeds ${Math.round(maxPay / 1000)}t deck limit!`, true);
+      return null;
+    }
+    const loc = this.worldToBoatLocal(boat, vehicle.pos.x, vehicle.pos.z);
+    const bays = boat.spec.bays || [];
+    const used = new Set((boat.deckVehicles || []).map((d) => d.bayIdx));
+    if (remotePlayersMap) {
+      for (const rp of remotePlayersMap.values()) {
+        if (rp.boatMount && typeof rp.boatMount.bayIdx === "number" && rp.boatMount.boatId === boat.id) used.add(rp.boatMount.bayIdx);
+      }
+    }
+    // Snap cleanly to the nearest FREE parking bay (or keep current spot if bays full)
+    let bestBay = null, bestIdx = 0, bestD = 9999;
+    for (let i = 0; i < bays.length; i++) {
+      if (used.has(i)) continue;
+      const d = Math.hypot(loc.x - bays[i].x, loc.z - bays[i].z);
+      if (d < bestD) { bestD = d; bestBay = bays[i]; bestIdx = i; }
+    }
+    const snapX = bestBay ? bestBay.x : loc.x;
+    const snapZ = bestBay ? bestBay.z : loc.z;
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(vehicle.quat);
+    const vehYaw = Math.atan2(fwd.x, fwd.z);
+    let relYaw = vehYaw - (boat.yaw || 0);
+    while (relYaw > Math.PI) relYaw -= Math.PI * 2;
+    while (relYaw < -Math.PI) relYaw += Math.PI * 2;
+    // Align neatly straight forward (0) or straight backward (PI) in the parking bay!
+    const alignedYaw = (Math.abs(relYaw) > Math.PI * 0.5) ? Math.PI : 0;
+
+    const entry = {
+      key: "local", peerId: null,
+      vehicleId: vehicle.vState.vehicleId,
+      massKg: mass, bayIdx: bestIdx, spanBoth: false,
+      x: snapX, z: snapZ, relYaw: alignedYaw,
+      label: (bestBay && bestBay.label) || "Deck"
+    };
+    boat.deckVehicles.push(entry);
+    vehicle.hydrolocked = false;
+    vehicle.inWaterDepth = 0;
+    vehicle.vel.set(0, 0, 0);
+    vehicle.angVel.set(0, 0, 0);
+    if (audio && audio.playWrench) audio.playWrench();
+    if (ui) ui.toast(`🔒 IGNITION OFF — Auto-locked ${vehicle.spec.name} into [${entry.label}]! Press [F] to step out & [SPACE] to drive ship!`);
+    return entry;
+  }
+
+  // v15.4.3 IGNITION-ON AUTO-UNLOCK RIGHT ON DECK!
+  autoUnstrapVehicle(boat, vehicle, ui, audio) {
+    if (!boat || !vehicle) return false;
+    const idx = (boat.deckVehicles || []).findIndex((d) => d.key === "local");
+    if (idx < 0) return false;
+    boat.deckVehicles.splice(idx, 1);
+    if (audio && audio.playWrench) audio.playWrench();
+    if (ui) {
+      if (boat.deckLocked) {
+        ui.toast(`🔓 IGNITION ON — Car unlocked! (Note: Ramp is CLOSED [U] — open ramp at helm or you'll ram it!)`, true);
+      } else {
+        ui.toast(`🔓 IGNITION ON — Car unlocked! Ramp is DOWN — vroom off the ship!`);
+      }
+    }
+    return true;
+  }
+
   strapVehicleAtCurrentPos(boat, vehicle, ui, audio, remotePlayersMap = null) {
     if (!boat || !vehicle) return null;
     const existing = this.getLocalMountedEntry(boat);
@@ -1071,11 +1232,15 @@ KK.BoatManager = class BoatManager {
       b.throttleCmd = throttle;
       b.boostCmd = boost;
 
+      // v15.4.3 ZERO-FRICTION HELM: Pressing [W]/[S] auto-weighs anchor / inflates cushion; unpiloted ship holds station!
+      if (isPiloted && b.anchored && Math.abs(throttle) > 0.1) {
+        b.anchored = false;
+        if (audio && audio.playAnchorClank) audio.playAnchorClank();
+      }
+      if (!isPiloted && b.speedKmh < 12) {
+        b.anchored = true;
+      }
       if (b.anchored) {
-        if (isPiloted && Math.abs(throttle) > 0.2 && (!b._ancWarnCd || b._ancWarnCd <= 0)) {
-          b._ancWarnCd = 2.6;
-          if (ui) ui.toast(sp.amphibious ? "AIR CUSHION DUMPED — Press [SPACE] to inflate & lift off!" : "ANCHOR DOWN — Press [SPACE] to weigh anchor!", true);
-        }
         throttle = 0; steer = 0;
         const holdDrag = Math.exp(-dt * 4.5);
         b.vx *= holdDrag; b.vz *= holdDrag;
@@ -1179,7 +1344,7 @@ KK.BoatManager = class BoatManager {
           }
         }
         for (let ci = 0; ci < b.bayChains.length; ci++) {
-          b.bayChains[ci].visible = !!b.deckLocked && occBays.has(ci);
+          b.bayChains[ci].visible = occBays.has(ci);
         }
       }
 

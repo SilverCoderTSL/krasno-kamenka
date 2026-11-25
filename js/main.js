@@ -424,7 +424,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.4.2 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v15.4.3 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -767,12 +767,15 @@ KK.Game = class Game {
       else if (code === "F8") { e.preventDefault(); this.togglePhotoMode(); }
       else if (code === "F9" || code === "Digit9") { e.preventDefault(); this.captureScreenshot(); }
       else if (code === "KeyT") { if (!this.vehicle.winch.active) this.attachWinch(); }
-      else if (code === "Space" && this.boats && this.boats.activeBoat) {
+      else if (code === "Space" && this.boats && (this.boats.activeBoat || this.walkingOnBoat || (this.onFoot && this.boats.findNearbyBoat(this.playerFoot.x, this.playerFoot.z, 22, true)))) {
         e.preventDefault();
-        if (!e.repeat) this.boats.toggleAnchor(this.boats.activeBoat, this.ui, this.audio);
+        if (!e.repeat) this.toggleShipHelm();
       }
-      else if (code === "KeyU" && this.boats && this.boats.activeBoat) {
-        if (!e.repeat) this.boats.toggleDeckLock(this.boats.activeBoat, this.ui, this.audio);
+      else if (code === "KeyU" && this.boats && (this.boats.activeBoat || (this.walkingOnBoat && this.walkingOnBoat.boat))) {
+        if (!e.repeat) {
+          const targetB = this.boats.activeBoat || this.walkingOnBoat.boat;
+          this.boats.toggleDeckLock(targetB, this.ui, this.audio);
+        }
       }
       else if (code === "KeyL" && this.boats && this.boats.activeBoat) {
         if (!e.repeat) this.boats.toggleNavLights(this.boats.activeBoat, this.ui);
@@ -831,8 +834,7 @@ KK.Game = class Game {
         else this.toggleStrapCargo();
       }
       else if (code === "KeyI") {
-        this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
-        this.ui.toast(this.vehicle.ignitionOn ? "Engine Ignition [I]: ON" : "Engine Ignition [I]: OFF");
+        if (!e.repeat) this.toggleVehicleIgnition();
       }
       else if (code === "KeyP") {
         this.vehicle.parkingBrake = !this.vehicle.parkingBrake;
@@ -996,6 +998,68 @@ KK.Game = class Game {
     }
   }
 
+  // v15.4.3 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  toggleShipHelm() {
+    if (!this.boats) return;
+    if (this.boats.activeBoat) {
+      this.stepOntoBoatDeckOrDisembark();
+      return;
+    }
+    if (this.walkingOnBoat && this.walkingOnBoat.boat) {
+      let b = this.walkingOnBoat.boat;
+      if (this.walkingOnBoat.isRemote) {
+        b = this.boats.claimRemoteBoatForHelm(b);
+      }
+      if (b) this.boardBoat(b);
+      return;
+    }
+    if (this.onFoot) {
+      const nb = this.boats.findNearbyBoat(this.playerFoot.x, this.playerFoot.z, 22, true);
+      if (nb && nb.boat) {
+        const b = nb.isRemote ? this.boats.claimRemoteBoatForHelm(nb.boat) : nb.boat;
+        if (b) this.boardBoat(b);
+      }
+    }
+  }
+
+  // v15.4.3 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  toggleVehicleIgnition() {
+    if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
+    this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
+    if (!this.vehicle.ignitionOn) {
+      if (this.boats && !this.boats.findLocalMountedBoat() && !this.remoteBoatMount) {
+        const under = this.boats.findBoatUnderPoint(this.vehicle.pos.x, this.vehicle.pos.z, true);
+        if (under && under.boat) {
+          if (this.boats.spawnedBoats.includes(under.boat)) {
+            if (this.boats.autoSnapAndStrapVehicle(under.boat, this.vehicle, this.ui, this.audio, this.network.remotePlayers)) return;
+          } else if (under.boat.ownerPeerId) {
+            this._tryBoardRemoteBoatWithVehicle(under.boat, under.boat.ownerPeerId);
+            return;
+          }
+        }
+      }
+      this.ui.toast("Engine Ignition [I]: OFF");
+    } else {
+      if (this.boats) {
+        const ownM = this.boats.findLocalMountedBoat();
+        if (ownM) {
+          this.boats.autoUnstrapVehicle(ownM.boat, this.vehicle, this.ui, this.audio);
+          return;
+        }
+        if (this.remoteBoatMount) {
+          const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
+          this.remoteBoatMount = null;
+          if (this.audio && this.audio.playWrench) this.audio.playWrench();
+          this.ui.toast((rb && rb.deckLocked)
+            ? "🔓 IGNITION ON — Car unlocked! (Ramp is CLOSED [U] — open ramp or you'll ram it!)"
+            : "🔓 IGNITION ON — Car unlocked! Vroom off the ship!", !!(rb && rb.deckLocked));
+          return;
+        }
+      }
+      this.ui.toast("Engine Ignition [I]: ON");
+    }
+  }
+
   boardBoat(boat) {
     if (!boat || !this.boats) return;
     this.boats.activeBoat = boat;
@@ -1003,7 +1067,7 @@ KK.Game = class Game {
     this.onFoot = false;
     this.mouseAimHeld = false;
     if (this.localAvatar) this.localAvatar.visible = false;
-    this.ui.toast(`AT THE HELM: ${boat.spec.name}! [SPACE] Anchor/Cushion • [U] Deck Lock • [L/K] Lights • [V] Load/Unload Car • [E] Walk Deck`);
+    this.ui.toast(`⚓ AT THE HELM: ${boat.spec.name}! [WASD] Drive • [U] Open/Close Ramp • [L/K] Lights • [SPACE] Exit Helm`);
   }
 
   stepOntoBoatDeckOrDisembark() {
@@ -3185,60 +3249,26 @@ KK.Game = class Game {
     }
   }
 
-  // v15.4.2.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v15.4.3.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
-    const ab = this.boats.activeBoat;
-    if (action === "strap_or_release") {
-      const ownM = this.boats.findLocalMountedBoat();
-      if (ownM) {
-        if (ownM.boat.deckLocked) { this.ui.toast("Deck is LOCKED by Shipmaster! Click UNLOCK DECK at the helm first.", true); return; }
-        this.boats.strapVehicleAtCurrentPos(ownM.boat, this.vehicle, this.ui, this.audio, this.network.remotePlayers);
-        return;
-      }
-      if (this.remoteBoatMount) {
-        const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
-        if (rb && rb.deckLocked) { this.ui.toast("Deck is LOCKED by Shipmaster!", true); return; }
-        this.remoteBoatMount = null;
-        this.ui.toast("Released car on ship deck — drive off the lowered ramp!");
-        return;
-      }
-      const under = this.boats.findBoatUnderPoint(this.vehicle.pos.x, this.vehicle.pos.z);
-      if (under && under.boat) {
-        if (this.boats.spawnedBoats.includes(under.boat)) {
-          this.boats.strapVehicleAtCurrentPos(under.boat, this.vehicle, this.ui, this.audio, this.network.remotePlayers);
-        } else if (under.boat.ownerPeerId) {
-          this._tryBoardRemoteBoatWithVehicle(under.boat, under.boat.ownerPeerId);
-        }
-      }
+    if (action === "toggle_ignition") {
+      this.toggleVehicleIgnition();
+    } else if (action === "toggle_helm") {
+      this.toggleShipHelm();
+    } else if (action === "toggle_lock") {
+      const targetB = this.boats.activeBoat || (this.walkingOnBoat && this.walkingOnBoat.boat);
+      if (targetB) this.boats.toggleDeckLock(targetB, this.ui, this.audio);
     } else if (action === "step_deck") {
-      if (ab) this.stepOntoBoatDeckOrDisembark();
+      if (this.boats.activeBoat) this.stepOntoBoatDeckOrDisembark();
       else this.handleContextInteract();
-    } else if (action === "take_helm") {
-      if (this.walkingOnBoat && !this.walkingOnBoat.isRemote && this.walkingOnBoat.boat) {
-        this.boardBoat(this.walkingOnBoat.boat);
-      }
     } else if (action === "board_car") {
       if (this.walkingOnBoat) {
         this.walkingOnBoat = null;
         this.onFoot = false;
         if (this.localAvatar) this.localAvatar.visible = false;
-        this.ui.toast(`Boarded ${this.vehicle.spec.name} on deck!`);
+        this.ui.toast(`Boarded ${this.vehicle.spec.name} on deck! Press [I] to start engine & auto-unlock!`);
       }
-    } else if (action === "step_ashore") {
-      if (this.walkingOnBoat) {
-        const b = this.walkingOnBoat.boat;
-        const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
-        const shorePt = this.boats.boatLocalToWorld(b, 0, 0, b.spec.len * 0.56 + 3.0);
-        const shoreH = this.world.getTerrainInfo(shorePt.x, shorePt.z, false).height;
-        this.walkingOnBoat = null;
-        this.playerFoot.x = shorePt.x; this.playerFoot.z = shorePt.z; this.playerFoot.y = Math.max(seaL, shoreH);
-        this.ui.toast(`Stepped off ${b.spec.name}!`);
-      }
-    } else if (action === "toggle_lock" && ab) {
-      this.boats.toggleDeckLock(ab, this.ui, this.audio);
-    } else if (action === "toggle_anchor" && ab) {
-      this.boats.toggleAnchor(ab, this.ui, this.audio);
     }
   }
 
@@ -3693,6 +3723,11 @@ KK.Game = class Game {
     const focusVz = activeBoatNow ? activeBoatNow.vz : (this.onFoot ? 0 : this.vehicle.vel.z);
     this.world.updateChunks(focusGx, focusGz, false, focusVx, focusVz);
 
+    if (this.vehicle._hitClosedRampFlag) {
+      this.vehicle._hitClosedRampFlag = false;
+      if (this.audio) this.audio.playImpact(0.85);
+      this.ui.toast("💥 RAMP IS CLOSED! Press [U] at the helm to lower the ramp before driving off!", true);
+    }
     this.world.updateFallingTrees(dt);
     if (this._winchPullNetCd > 0) this._winchPullNetCd = Math.max(0, this._winchPullNetCd - dt);
     if (this.entities && this.entities.updateWinchLine) {
@@ -4404,57 +4439,50 @@ KK.Game = class Game {
       const ancTxt = b.anchored ? "[SPACE] Lift/Weigh" : "[SPACE] Anchor/Dump";
       const deckTxt = hasDeck ? ` • [U] ${b.deckLocked ? "Unlock Deck" : "Lock Deck"} • [V] ${mounted ? "Unload Car" : "Load Car"}` : "";
       const walkTxt = b.spec.walkBounds ? " • [E] Walk Deck" : " • [E] Disembark";
-      const lkBtn = hasDeck ? `<button class="btn ${b.deckLocked ? 'warn' : 'primary'}" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_lock')">${b.deckLocked ? '🔓 UNLOCK DECK &amp; LOWER RAMP' : '🔒 LOCK DECK &amp; RAISE RAMP'}</button>` : '';
-      const anBtn = `<button class="btn ${b.anchored ? 'accent' : ''}" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_anchor')">${b.anchored ? (b.spec.amphibious ? '💨 INFLATE CUSHION' : '⚓ WEIGH ANCHOR') : (b.spec.amphibious ? '⚓ DUMP CUSHION' : '⚓ DROP ANCHOR')}</button>`;
-      const wkBtn = b.spec.walkBounds ? `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 WALK DECK</button>` : '';
-      setDeckBar(`helm_${b.id}_${b.deckLocked}_${b.anchored}`, lkBtn + anBtn + wkBtn);
-      el.textContent = `⚓ ${b.spec.name} • [C] Cam • [L] Nav • [K] Spot • [7] Cruise`;
+      const lkBtn = hasDeck ? `<button class="btn ${b.deckLocked ? 'warn' : 'primary'}" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_lock')">${b.deckLocked ? '⬇ OPEN RAMP [U]' : '⬆ CLOSE RAMP [U]'}</button>` : '';
+      const exBtn = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_helm')">🚶 EXIT HELM [SPACE]</button>`;
+      setDeckBar(`helm_${b.id}_${b.deckLocked}`, lkBtn + exBtn);
+      el.textContent = `⚓ ${b.spec.name} • [WASD] Drive • [U] Ramp • [L/K] Lights • [C] Cam • [SPACE] Exit Helm`;
       el.classList.remove("hidden");
       return;
     }
     if (this.walkingOnBoat && this.onFoot) {
       const wb = this.walkingOnBoat;
       const dCar = Math.hypot(this.playerFoot.x - this.vehicle.pos.x, this.playerFoot.z - this.vehicle.pos.z);
-      const helmBtn = !wb.isRemote ? `<button class="btn primary" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('take_helm')">⚓ TAKE THE HELM</button>` : '';
-      const carBtn = (dCar < 28) ? `<button class="btn accent" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('board_car')">🚗 BOARD ${this.vehicle.spec.name.split(' ')[0].toUpperCase()}</button>` : '';
-      const offBtn = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_ashore')">🏝 STEP OFF</button>`;
-      setDeckBar(`walk_${wb.boat.id}_${wb.isRemote}_${dCar < 28}`, helmBtn + carBtn + offBtn);
-      el.textContent = `🚶 Walking on ${wb.boat.spec.name} Deck • Use buttons below or [F]`;
+      const helmBtn = `<button class="btn primary" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_helm')">⚓ DRIVE SHIP [SPACE]</button>`;
+      const carBtn = (dCar < 36) ? `<button class="btn accent" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('board_car')">🚗 GET IN CAR [F]</button>` : '';
+      const rBtn = (wb.boat.spec && wb.boat.spec.maxPayloadKg > 0) ? `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_lock')">${wb.boat.deckLocked ? '⬇ OPEN RAMP [U]' : '⬆ CLOSE RAMP [U]'}</button>` : '';
+      setDeckBar(`walk_${wb.boat.id}_${wb.boat.deckLocked}_${dCar < 36}`, helmBtn + carBtn + rBtn);
+      el.textContent = `🚶 On ${wb.boat.spec.name} Deck • [SPACE] Drive Ship • [F] Get in Car • [U] Ramp`;
       el.classList.remove("hidden");
       return;
     }
     if (this.boats) {
       const ownM = !this.onFoot ? this.boats.findLocalMountedBoat() : null;
       if (ownM) {
-        const relBtn = ownM.boat.deckLocked
-          ? `<button class="btn" disabled style="opacity:0.65;">🔒 LOCKED BY SHIPMASTER</button>`
-          : `<button class="btn warn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('strap_or_release')">🔓 RELEASE CAR</button>`;
-        const outBtn = `<button class="btn primary" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT TO DECK / HELM</button>`;
-        setDeckBar(`ownm_${ownM.boat.id}_${ownM.boat.deckLocked}`, relBtn + outBtn);
-        el.textContent = `⚓ STRAPPED on ${ownM.boat.spec.name} • Turrets Live`;
+        const startBtn = `<button class="btn accent" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_ignition')">🔑 START ENGINE [I] (Unlock &amp; Go)</button>`;
+        const outBtn   = `<button class="btn primary" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT [F]</button>`;
+        setDeckBar(`ownm_${ownM.boat.id}_${ownM.boat.deckLocked}`, startBtn + outBtn);
+        el.textContent = `🔒 CAR LOCKED in [${ownM.entry.label}] • [F] Step Out • [I] Start Engine to Unlock`;
         el.classList.remove("hidden");
         return;
       }
       if (!this.onFoot && !this.remoteBoatMount) {
-        const underNow = this.boats.findBoatUnderPoint(this.vehicle.pos.x, this.vehicle.pos.z);
+        const underNow = this.boats.findBoatUnderPoint(this.vehicle.pos.x, this.vehicle.pos.z, true);
         if (underNow && underNow.boat) {
-          const lockBtn = `<button class="btn accent" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('strap_or_release')">🔒 LOCK &amp; STRAP CAR TO DECK</button>`;
-          const outBtn  = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT TO DECK</button>`;
+          const lockBtn = `<button class="btn accent" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_ignition')">🔑 ENGINE OFF [I] (Auto-Lock to Bay)</button>`;
+          const outBtn  = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT [F]</button>`;
           setDeckBar(`park_${underNow.boat.id}`, lockBtn + outBtn);
-          el.textContent = `⚓ PARKED ON ${underNow.boat.spec.name} DECK • Click below to Lock Car or Step Out`;
+          el.textContent = `⚓ ON ${underNow.boat.spec.name} DECK • Turn OFF Ignition [I] to Auto-Lock Car!`;
           el.classList.remove("hidden");
           return;
         }
       }
       if (!this.onFoot && this.remoteBoatMount) {
-        const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
-        const locked = !!(rb && rb.deckLocked);
-        const relBtn = locked
-          ? `<button class="btn" disabled style="opacity:0.65;">🔒 LOCKED BY SHIPMASTER</button>`
-          : `<button class="btn warn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('strap_or_release')">🔓 RELEASE CAR</button>`;
-        const outBtn = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT TO DECK</button>`;
-        setDeckBar(`remm_${locked}`, relBtn + outBtn);
-        el.textContent = locked ? `⚓ Secured on Friend's Ship • Turrets Live` : `⚓ Ship Deck UNLOCKED • Click RELEASE CAR to drive off`;
+        const startBtn = `<button class="btn accent" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_ignition')">🔑 START ENGINE [I] (Unlock &amp; Go)</button>`;
+        const outBtn   = `<button class="btn primary" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT [F]</button>`;
+        setDeckBar(`remm_locked`, startBtn + outBtn);
+        el.textContent = `🔒 CAR LOCKED on Ship • [F] Step Out • [I] Start Engine to Unlock`;
         el.classList.remove("hidden");
         return;
       }
@@ -4539,7 +4567,7 @@ KK.Game = class Game {
       // Smooth vertical target independently of wave bob so sailing feels buttery-smooth!
       const rawY = focusLocal.y;
       if (this._boatCamSmoothY === null || Math.abs(rawY - this._boatCamSmoothY) > 12) this._boatCamSmoothY = rawY;
-      this._boatCamSmoothY += (rawY - this._boatCamSmoothY) * Math.min(1, dt * 3.5);
+      this._boatCamSmoothY += (rawY - this._boatCamSmoothY) * (1.0 - Math.exp(-5.0 * dt));
       const baseY = this._boatCamSmoothY;
       const sy = Math.sin(b.yaw), cy = Math.cos(b.yaw);
 
@@ -4616,14 +4644,14 @@ KK.Game = class Game {
         const r = 8.4 * this.camZoom;
         const elev = this.camOrbitPitch;
         const horiz = Math.cos(elev) * r;
-        const targetPos = new THREE.Vector3(
-          focusLocal.x - Math.sin(this.camOrbitYaw) * horiz,
-          focusLocal.y + 1.6 + Math.sin(elev) * r,
-          focusLocal.z - Math.cos(this.camOrbitYaw) * horiz
-        );
-        const gY = this.world.getTerrainInfo(targetPos.x + this.world.originX, targetPos.z + this.world.originZ, false).height + 0.65;
-        if (targetPos.y < gY) targetPos.y = gY;
-        this.camPosSmooth.lerp(targetPos, Math.min(1, dt * 10));
+        const pAlpha = 1.0 - Math.exp(-10.5 * dt);
+        this._camOffsetSmooth.x += (-Math.sin(this.camOrbitYaw) * horiz - this._camOffsetSmooth.x) * pAlpha;
+        this._camOffsetSmooth.y += ((1.6 + Math.sin(elev) * r) - this._camOffsetSmooth.y) * pAlpha;
+        this._camOffsetSmooth.z += (-Math.cos(this.camOrbitYaw) * horiz - this._camOffsetSmooth.z) * pAlpha;
+        let pX = focusLocal.x + this._camOffsetSmooth.x, pY = focusLocal.y + this._camOffsetSmooth.y, pZ = focusLocal.z + this._camOffsetSmooth.z;
+        const gY = this.world.getTerrainInfo(pX + this.world.originX, pZ + this.world.originZ, false).height + 0.65;
+        if (pY < gY) pY = gY;
+        this.camPosSmooth.set(pX, pY, pZ);
         this.camera.position.copy(this.camPosSmooth);
         const lookUpBias = elev < -0.05 ? ((-elev - 0.05) * 14.0) : 0;
         this.camera.lookAt(focusLocal.x, focusLocal.y + 1.5 + lookUpBias, focusLocal.z);
@@ -4636,14 +4664,14 @@ KK.Game = class Game {
       const r = 5.4 * this.camZoom;
       const elev = this.camOrbitPitch;
       const horiz = Math.cos(elev) * r;
-      const targetPos = new THREE.Vector3(
-        focusLocal.x - Math.sin(this.camOrbitYaw) * horiz,
-        focusLocal.y + 1.55 + Math.sin(elev) * r,
-        focusLocal.z - Math.cos(this.camOrbitYaw) * horiz
-      );
-      const gY = this.world.getTerrainInfo(targetPos.x + this.world.originX, targetPos.z + this.world.originZ, false).height + 0.45;
-      if (targetPos.y < gY) targetPos.y = gY;
-      this.camPosSmooth.lerp(targetPos, Math.min(1, dt * 10));
+      const fAlpha = 1.0 - Math.exp(-10.5 * dt);
+      this._camOffsetSmooth.x += (-Math.sin(this.camOrbitYaw) * horiz - this._camOffsetSmooth.x) * fAlpha;
+      this._camOffsetSmooth.y += ((1.55 + Math.sin(elev) * r) - this._camOffsetSmooth.y) * fAlpha;
+      this._camOffsetSmooth.z += (-Math.cos(this.camOrbitYaw) * horiz - this._camOffsetSmooth.z) * fAlpha;
+      let fX = focusLocal.x + this._camOffsetSmooth.x, fY = focusLocal.y + this._camOffsetSmooth.y, fZ = focusLocal.z + this._camOffsetSmooth.z;
+      const gY = this.world.getTerrainInfo(fX + this.world.originX, fZ + this.world.originZ, false).height + 0.45;
+      if (fY < gY) fY = gY;
+      this.camPosSmooth.set(fX, fY, fZ);
       this.camera.position.copy(this.camPosSmooth);
       const lookUpBias = elev < -0.05 ? ((-elev - 0.05) * 11.0) : 0;
       this.camera.lookAt(focusLocal.x, focusLocal.y + 1.45 + lookUpBias, focusLocal.z);

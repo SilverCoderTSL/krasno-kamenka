@@ -1014,6 +1014,15 @@ KK.VehiclePhysics = class VehiclePhysics {
       }
     }
 
+    // 1B. v15.4.3 SOLID CLOSED SHIP RAMP & CARGO BULWARK COLLISIONS!
+    if (world.boatsRef && world.boatsRef.resolveDeckWallCollisions) {
+      const dHit = world.boatsRef.resolveDeckWallCollisions(this);
+      if (dHit && dHit.hitWall && this.lastImpactFx <= 0) {
+        this.lastImpactFx = 0.45;
+        this._hitClosedRampFlag = !!dHit.hitRamp;
+      }
+    }
+
     // 1C. v15.0.1 SOLID BUILDING, HOUSE, SKYSCRAPER, PORT & REACTOR COLLISIONS!
     if (world.buildingColliders && world.buildingColliders.length > 0) {
       const bRad = Math.max(spec.bodyWidth, spec.bodyLen * 0.45) * 0.50;
