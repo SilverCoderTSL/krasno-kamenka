@@ -3056,6 +3056,8 @@ KK.World = class World {
     const size = KK.CHUNK_SIZE;
     const startX = cx * size, startZ = cz * size;
     this._activeRoadSegs = roadSubset;
+    const group = new THREE.Group();
+    group.position.set(startX + size * 0.5, 0, startZ + size * 0.5);
     const mesh = new THREE.Mesh(geo, this.matTerrain);
     mesh.receiveShadow = true;
     group.add(mesh);

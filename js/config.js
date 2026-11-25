@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.3.5";
-KK.VERSION_FULL = "v15.3.5 ONLINE";
+KK.VERSION = "v15.3.5-hf";
+KK.VERSION_FULL = "v15.3.5-hf ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
