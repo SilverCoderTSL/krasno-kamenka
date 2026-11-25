@@ -319,8 +319,10 @@ KK.SkinwalkerManager = class SkinwalkerManager {
       if (this.deerKills >= 3 && this.spawnCooldown <= 0 && inWoods && !inSanctuary && Math.random() < dt * 0.14) {
         const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(vehicle.quat);
         const side = (Math.random() > 0.5 ? 1 : -1) * (10 + Math.random() * 14);
-        this.gx = px + fwd.x * 58 - fwd.z * side;
-        this.gz = pz + fwd.z * 58 + fwd.x * side;
+        const sxW = px + fwd.x * 58 - fwd.z * side, szW = pz + fwd.z * 58 + fwd.x * side;
+        if (this.world.isDryInland && !this.world.isDryInland(sxW, szW, 7.0, 6.0)) return;
+        this.gx = sxW;
+        this.gz = szW;
         this.gy = this.world.getTerrainInfo(this.gx, this.gz, false).height;
         this.state = "disguised";
         this.mesh.visible = true;
@@ -334,8 +336,8 @@ KK.SkinwalkerManager = class SkinwalkerManager {
       this.fleeTimer -= dt;
       const fAng = Math.atan2(this.gx - px, this.gz - pz);
       this.yaw = fAng;
-      this.gx += Math.sin(fAng) * 22 * dt;
-      this.gz += Math.cos(fAng) * 22 * dt;
+      const fnx = this.gx + Math.sin(fAng) * 22 * dt, fnz = this.gz + Math.cos(fAng) * 22 * dt;
+      if (!this.world.isDryInland || this.world.isDryInland(fnx, fnz, 6.0, 6.0)) { this.gx = fnx; this.gz = fnz; } else { this.state = "dormant"; this.mesh.visible = false; return; }
       this.gy = this.world.getTerrainInfo(this.gx, this.gz, false).height;
       this.world.toLocal(this.gx, this.gy, this.gz, this.mesh.position);
       this.mesh.rotation.set(0, this.yaw, 0);
@@ -414,8 +416,8 @@ KK.SkinwalkerManager = class SkinwalkerManager {
       this.yaw = toPlayerAng;
       this.headPivot.rotation.set(0.08, 0, Math.sin(performance.now() * 0.008) * 0.16);
       const stalkSpd = dist < 18 ? 14.5 : 6.2;
-      this.gx += Math.sin(this.yaw) * stalkSpd * dt;
-      this.gz += Math.cos(this.yaw) * stalkSpd * dt;
+      const snx = this.gx + Math.sin(this.yaw) * stalkSpd * dt, snz = this.gz + Math.cos(this.yaw) * stalkSpd * dt;
+      if (!this.world.isDryInland || this.world.isDryInland(snx, snz, 6.0, 6.0)) { this.gx = snx; this.gz = snz; } else { this.state = "flee"; this.fleeTimer = 8.0; }
       this.phase += dt * (dist < 18 ? 14.0 : 5.5);
       const sw = Math.sin(this.phase) * 0.42;
       this.legFL.rotation.x = sw; this.legRR.rotation.x = sw;

@@ -497,15 +497,32 @@ KK.World = class World {
   }
 
   // v15.2.1 STRICT DRY-INLAND CHECK: Blocks ocean, beaches/coastlines, lakes & river channels!
-  isDryInland(gx, gz, coastMarginM = 6.5, riverPadM = 7.0) {
+  isMainlandDry(gx, gz, coastMarginM = 12.0, riverPadM = 18.0) {
+    const islInfo = this.getIslandInfo(gx, gz);
+    if (!islInfo || !islInfo.island || islInfo.island.id !== 0 || islInfo.mask < 0.72) return false;
+    return this.isDryInland(gx, gz, coastMarginM, riverPadM);
+  }
+
+  isDryInland(gx, gz, coastMarginM = 8.0, riverPadM = 16.0) {
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const islInfo = this.getIslandInfo(gx, gz);
+    if (!islInfo || !islInfo.island || islInfo.mask < 0.55) return false;
     const b = this.getBiomeWeights(gx, gz);
     if ((b.ocean || 0) > 0.08) return false;
-    const ti = this.getTerrainInfo(gx, gz, false);
-    if (ti.waterDepth > 0.05) return false;
-    if (ti.height < seaL + coastMarginM) return false;
     const rc = this.getRiverChannel(gx, gz);
-    if (rc && rc.seg && rc.dist < rc.seg.halfWidth + riverPadM) return false;
+    if (rc && rc.seg && rc.dist < rc.seg.halfWidth + Math.max(riverPadM, 16.0)) return false;
+    if (KK.RIVERS) {
+      for (let i = 0; i < KK.RIVERS.length; i++) {
+        const rv = KK.RIVERS[i];
+        const dx = gx - rv.x, dz = gz - rv.z;
+        if (Math.abs(dx) < rv.rx + 18 && Math.abs(dz) < rv.rx + 18) {
+          if (Math.hypot(dx, dz) < Math.max(rv.rx, rv.rz) + 12) return false;
+        }
+      }
+    }
+    const ti = this.getTerrainInfo(gx, gz, false);
+    if (ti.waterDepth > 0.02) return false;
+    if (ti.height < seaL + coastMarginM) return false;
     return true;
   }
 
@@ -1967,6 +1984,41 @@ KK.World = class World {
         h = rampY;
         surface = "asphalt";
       }
+
+      // Layer Solid Ocean Port Pier Decks so cars drive smoothly out to the pier lip & boat ramps!
+      if (KK.PORTS) {
+        const pierY = seaL + 2.95;
+        for (let pi = 0; pi < KK.PORTS.length; pi++) {
+          const pt = KK.PORTS[pi];
+          const dxP = gx - pt.x, dzP = gz - pt.z;
+          if (Math.abs(dxP) > 65 || Math.abs(dzP) > 65) continue;
+          const cp = Math.cos(-(pt.yaw || 0)), sp = Math.sin(-(pt.yaw || 0));
+          const lxP = dxP * cp + dzP * sp;
+          const lzP = -dxP * sp + dzP * cp;
+          const halfW = (pt.islandId === 2) ? 22.0 : ((pt.islandId === 4) ? 7.5 : ((pt.islandId === 1 || pt.islandId === 5) ? 10.0 : 12.2));
+          const maxZ  = (pt.islandId === 2) ? 52.5 : ((pt.islandId === 4) ? 29.5 : ((pt.islandId === 1) ? 34.5 : ((pt.islandId === 5) ? 30.5 : 36.5)));
+          if (Math.abs(lxP) <= halfW && lzP >= -14 && lzP <= maxZ && pierY >= h - 0.35) {
+            h = pierY;
+            surface = "asphalt";
+            waterDepth = 0;
+            mudDepth = 0;
+            onBridge = true;
+            break;
+          }
+        }
+      }
+
+      // v15.4 DRIVE-ON PHYSICAL BOAT RAMPS & CARGO DECKS!
+      if (this.boatsRef && this.boatsRef.getDriveableSurfaceAt) {
+        const bs = this.boatsRef.getDriveableSurfaceAt(gx, gz);
+        if (bs && bs.height >= h - 0.5) {
+          h = bs.height;
+          surface = "asphalt";
+          waterDepth = 0;
+          mudDepth = 0;
+          onBridge = true;
+        }
+      }
     }
 
     const airInfo = this.getAirstripInfo(gx, gz);
@@ -2767,11 +2819,13 @@ KK.World = class World {
   }
 
   updateChunks(playerGx, playerGz, force = false, velX = 0, velZ = 0) {
-    // Velocity look-ahead preloading (shifts chunk center up to +125m ahead at 250-300 km/h!)
+    // Gentle velocity look-ahead (+90m max) while ALWAYS locking the 3×3 chunks under the player!
+    const rawCx = Math.floor(playerGx / KK.CHUNK_SIZE);
+    const rawCz = Math.floor(playerGz / KK.CHUNK_SIZE);
     const spd = Math.hypot(velX || 0, velZ || 0);
-    const lookT = Math.min(1.5, spd > 22 ? 1.5 : 0);
-    const leadX = Math.max(-135, Math.min(135, (velX || 0) * lookT));
-    const leadZ = Math.max(-135, Math.min(135, (velZ || 0) * lookT));
+    const lookT = spd > 24 ? 1.1 : 0;
+    const leadX = Math.max(-90, Math.min(90, (velX || 0) * lookT));
+    const leadZ = Math.max(-90, Math.min(90, (velZ || 0) * lookT));
     const pcx = Math.floor((playerGx + leadX) / KK.CHUNK_SIZE);
     const pcz = Math.floor((playerGz + leadZ) / KK.CHUNK_SIZE);
 
@@ -2800,6 +2854,18 @@ KK.World = class World {
       const dirX = spd > 1 ? (velX / spd) : 0;
       const dirZ = spd > 1 ? (velZ / spd) : 0;
 
+      // Always protect the 3×3 chunks directly around the player so ground NEVER vanishes underfoot!
+      for (let ax = -1; ax <= 1; ax++) {
+        for (let az = -1; az <= 1; az++) {
+          needed.add((rawCx + ax) + "," + (rawCz + az));
+        }
+      }
+      // If the chunk directly under the player is missing, build it immediately so terrain is never invisible!
+      const underKey = rawCx + "," + rawCz;
+      if (!this.chunks.has(underKey)) {
+        this.chunks.set(underKey, this._createChunk(rawCx, rawCz));
+        listDirty = true;
+      }
       for (let dx = -R; dx <= R; dx++) {
         for (let dz = -R; dz <= R; dz++) {
           const cx = pcx + dx, cz = pcz + dz, key = cx + "," + cz;
@@ -2863,7 +2929,7 @@ KK.World = class World {
           }
           this._activeChunkBuild = null;
         } else {
-          const doneChunk = this._stepChunkBuild(this._activeChunkBuild, t0, 2.6);
+          const doneChunk = this._stepChunkBuild(this._activeChunkBuild, t0, 3.2);
           if (doneChunk) {
             this.chunks.set(this._activeChunkBuild.key, doneChunk);
             this._activeChunkBuild = null;
@@ -2992,7 +3058,7 @@ KK.World = class World {
     const halfX = job.startX + job.size * 0.5, halfZ = job.startZ + job.size * 0.5;
     const total = pos.count;
     let i = job.vIdx;
-    const batchEnd = Math.min(total, i + 540);
+    const batchEnd = Math.min(total, i + 740);
     while (i < batchEnd) {
       const gx = halfX + pos.getX(i);
       const gz = halfZ + pos.getZ(i);

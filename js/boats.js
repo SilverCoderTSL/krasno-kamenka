@@ -169,13 +169,81 @@ KK.BoatManager = class BoatManager {
   getPortMoatSpawnPos(pt, boatSpec = null) {
     const yaw = pt.yaw || 0;
     const c = Math.cos(yaw), s = Math.sin(yaw);
-    const sideOff = (boatSpec && boatSpec.width > 12) ? 46 : ((boatSpec && boatSpec.width > 7) ? 38 : 32);
-    const fwdOff  = (boatSpec && boatSpec.len > 36) ? 62 : 50;
+    // Exact front lip of each port's concrete/wood pier deck!
+    const pierLipZ = (pt.islandId === 2) ? 51.5 : ((pt.islandId === 4) ? 28.5 : ((pt.islandId === 1) ? 33.5 : ((pt.islandId === 5) ? 29.5 : 35.5)));
+    if (boatSpec && (boatSpec.id === "zubr" || boatSpec.id === "serna")) {
+      // Bow loading ramp points STRAIGHT BACK toward the pier lip (180° flipped!)
+      const rampReach = (boatSpec.id === "zubr") ? 26.2 : 16.4;
+      const centerZ = pierLipZ + rampReach;
+      return { x: pt.x + centerZ * s, z: pt.z + centerZ * c, yaw: yaw + Math.PI };
+    }
+    if (boatSpec && boatSpec.id === "patrol") {
+      // Stern loading bay backs straight up to the pier lip!
+      const centerZ = pierLipZ + 9.2;
+      return { x: pt.x + centerZ * s, z: pt.z + centerZ * c, yaw: yaw };
+    }
+    // Strela-X1 moors right alongside the pier edge!
+    const sideOff = 15.0, fwdOff = pierLipZ + 4.0;
     return {
       x: pt.x + (sideOff * c + fwdOff * s),
       z: pt.z + (-sideOff * s + fwdOff * c),
       yaw: yaw
     };
+  }
+
+  // v15.4 PHYSICAL DRIVE-ON RAMP & CARGO DECK SURFACE QUERY (Called by world.getTerrainInfo!)
+  getDriveableSurfaceAt(gx, gz) {
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const checkList = this.spawnedBoats.concat(Array.from(this.remoteBoats.values()));
+    for (let i = 0; i < checkList.length; i++) {
+      const b = checkList[i];
+      const sp = b.spec;
+      if (!sp || !sp.maxPayloadKg) continue;
+      const dx = gx - b.gx, dz = gz - b.gz;
+      const maxR = sp.len * 0.72 + 12;
+      if (Math.abs(dx) > maxR || Math.abs(dz) > maxR) continue;
+      const c = Math.cos(-(b.yaw || 0)), s = Math.sin(-(b.yaw || 0));
+      const lx = dx * c + dz * s;
+      const lz = -dx * s + dz * c;
+      const deckH = b.gy + sp.deckY;
+
+      if (b.id === "zubr") {
+        // Main 13.4m × 36m steel well-deck
+        if (Math.abs(lx) <= 6.7 && lz >= -16.5 && lz <= 20.5) {
+          return { height: deckH, boat: b, onRamp: false, lx, lz };
+        }
+        // Lowered bow loading ramp (lz: 20.2 -> 28.8)
+        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 6.5 && lz > 20.2 && lz <= 29.2) {
+          const u = Math.max(0, Math.min(1, (lz - 20.2) / 8.8));
+          const tipY = Math.max(seaL + 2.85, b.gy + 1.85);
+          return { height: deckH * (1 - u) + tipY * u, boat: b, onRamp: true, lx, lz };
+        }
+      } else if (b.id === "serna") {
+        if (Math.abs(lx) <= 3.4 && lz >= -7.8 && lz <= 12.4) {
+          return { height: deckH, boat: b, onRamp: false, lx, lz };
+        }
+        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 3.3 && lz > 12.2 && lz <= 18.5) {
+          const u = Math.max(0, Math.min(1, (lz - 12.2) / 6.2));
+          const tipY = Math.max(seaL + 2.85, b.gy + 1.60);
+          return { height: deckH * (1 - u) + tipY * u, boat: b, onRamp: true, lx, lz };
+        }
+      } else if (b.id === "patrol") {
+        if (Math.abs(lx) <= 2.15 && lz >= -6.6 && lz <= 1.2) {
+          return { height: deckH, boat: b, onRamp: false, lx, lz };
+        }
+        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 1.95 && lz < -6.4 && lz >= -10.8) {
+          const u = Math.max(0, Math.min(1, (-6.4 - lz) / 4.2));
+          const tipY = Math.max(seaL + 2.85, b.gy + 1.15);
+          return { height: deckH * (1 - u) + tipY * u, boat: b, onRamp: true, lx, lz };
+        }
+      }
+    }
+    return null;
+  }
+
+  findBoatUnderPoint(gx, gz) {
+    const s = this.getDriveableSurfaceAt(gx, gz);
+    return (s && !s.onRamp) ? s : null;
   }
 
   findNearbyPort(gx, gz, maxDist = 48) {
@@ -235,6 +303,8 @@ KK.BoatManager = class BoatManager {
     const grp = new THREE.Group();
     const fans = [];
     const radars = [];
+    let helmWheel = null;
+    let helmLever = null;
     let skirtMesh = null;
     let rampPivot = null;
     let rampRestRotX = 0.0;
@@ -304,6 +374,66 @@ KK.BoatManager = class BoatManager {
       spotCone.position.set(sx, sy - 1.5, sz + 22.5);
       spotCone.visible = false;
       grp.add(spotCone);
+    };
+
+    const matConsole = new THREE.MeshStandardMaterial({ color: 0x1a222a, roughness: 0.72, metalness: 0.35 });
+    const matRadarSc = new THREE.MeshBasicMaterial({ color: 0x19ff6e });
+    const matPlotSc  = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+    const matBrass   = new THREE.MeshStandardMaterial({ color: 0xd9a016, roughness: 0.35, metalness: 0.8 });
+    const matBridgeGlass = new THREE.MeshStandardMaterial({ color: 0x1a445c, emissive: 0x0a2636, emissiveIntensity: 0.45, roughness: 0.12, metalness: 0.6, transparent: true, opacity: 0.32 });
+
+    const buildBridgeInterior = (bx, by, bz, bw, bl, scale = 1.0) => {
+      const bGrp = new THREE.Group();
+      bGrp.position.set(bx, by, bz);
+      // Sloped Helm Console Dashboard
+      const cons = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.86, 0.95 * scale, 0.95 * scale), matConsole);
+      cons.position.set(0, 0.48 * scale, bl * 0.30); bGrp.add(cons);
+      const topPanel = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.84, 0.14 * scale, 0.72 * scale), matHullDark);
+      topPanel.position.set(0, 1.00 * scale, bl * 0.28); topPanel.rotation.x = 0.28; bGrp.add(topPanel);
+      // Glowing Green Radar PPI Scope & Cyan Sonar/GPS Chart Plotter!
+      const radSc = new THREE.Mesh(new THREE.CylinderGeometry(0.24 * scale, 0.24 * scale, 0.05 * scale, 12), matRadarSc);
+      radSc.rotation.x = Math.PI / 2 + 0.28; radSc.position.set(-bw * 0.24, 1.06 * scale, bl * 0.25); bGrp.add(radSc);
+      const gpsSc = new THREE.Mesh(new THREE.BoxGeometry(0.55 * scale, 0.34 * scale, 0.05 * scale), matPlotSc);
+      gpsSc.rotation.x = -0.25; gpsSc.position.set(bw * 0.24, 1.12 * scale, bl * 0.27); bGrp.add(gpsSc);
+      // Brass Compass Binnacle on Centerline
+      const binn = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * scale, 0.20 * scale, 0.42 * scale, 10), matBrass);
+      binn.position.set(0, 1.16 * scale, bl * 0.32); bGrp.add(binn);
+      // Animated Ship's Helm Wheel!
+      helmWheel = new THREE.Group();
+      helmWheel.position.set(0, 1.06 * scale, bl * 0.10);
+      const wRim = new THREE.Mesh(new THREE.TorusGeometry(0.32 * scale, 0.04 * scale, 8, 16), matBrass);
+      helmWheel.add(wRim);
+      for (let sp = 0; sp < 4; sp++) {
+        const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.025 * scale, 0.025 * scale, 0.78 * scale, 6), matBrass);
+        spoke.rotation.z = (sp / 4) * Math.PI; helmWheel.add(spoke);
+      }
+      bGrp.add(helmWheel);
+      // Animated Engine Telegraph Throttle Lever!
+      helmLever = new THREE.Group();
+      helmLever.position.set(bw * 0.16, 1.02 * scale, bl * 0.16);
+      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.025 * scale, 0.025 * scale, 0.42 * scale, 6), matChrome);
+      stalk.position.y = 0.20 * scale; helmLever.add(stalk);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.07 * scale, 8, 6), matRed);
+      knob.position.y = 0.42 * scale; helmLever.add(knob);
+      bGrp.add(helmLever);
+      // Captain's Swivel Helm Chair
+      const chairBase = new THREE.Mesh(new THREE.CylinderGeometry(0.14 * scale, 0.22 * scale, 0.65 * scale, 8), matHullDark);
+      chairBase.position.set(0, 0.32 * scale, -bl * 0.16); bGrp.add(chairBase);
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.62 * scale, 0.14 * scale, 0.58 * scale), matSkirt);
+      seat.position.set(0, 0.68 * scale, -bl * 0.16); bGrp.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.60 * scale, 0.72 * scale, 0.12 * scale), matSkirt);
+      back.position.set(0, 1.05 * scale, -bl * 0.26); bGrp.add(back);
+      // Overhead VHF Radio & Instrument Box
+      const ovh = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.70, 0.28 * scale, 0.48 * scale), matConsole);
+      ovh.position.set(0, 2.05 * scale, bl * 0.22); bGrp.add(ovh);
+      // Corner Structural Window Mullions + Translucent Bridge Glass!
+      for (const mx of [-bw * 0.46, -bw * 0.16, bw * 0.16, bw * 0.46]) {
+        const pil = new THREE.Mesh(new THREE.BoxGeometry(0.14 * scale, 1.45 * scale, 0.14 * scale), matNavalLt);
+        pil.position.set(mx, 1.55 * scale, bl * 0.44); bGrp.add(pil);
+      }
+      const fwdGlass = new THREE.Mesh(new THREE.BoxGeometry(bw * 0.90, 1.25 * scale, 0.06 * scale), matBridgeGlass);
+      fwdGlass.position.set(0, 1.55 * scale, bl * 0.46); bGrp.add(fwdGlass);
+      grp.add(bGrp);
     };
 
     if (boatId === "zubr") {
@@ -381,10 +511,18 @@ KK.BoatManager = class BoatManager {
       // 4. Multi-Tier Starboard Armored Bridge + Sloped Glass + Spinning Radar + Exhaust Stacks + Twin AK-630 CIWS!
       const bridgeLower = new THREE.Mesh(new THREE.BoxGeometry(4.4, 2.8, 10.8), matNavalGry);
       bridgeLower.position.set(7.8, 6.9, 7.6); grp.add(bridgeLower);
-      const bridgeTop = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.8, 7.2), matNavalLt);
-      bridgeTop.position.set(7.8, 9.1, 8.4); grp.add(bridgeTop);
-      const bWin = new THREE.Mesh(new THREE.BoxGeometry(4.0, 1.05, 5.8), matGlass);
-      bWin.position.set(7.8, 9.15, 9.5); grp.add(bWin);
+      const bridgeRoof = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.28, 7.6), matNavalLt);
+      bridgeRoof.position.set(7.8, 10.65, 8.4); grp.add(bridgeRoof);
+      const bridgeBack = new THREE.Mesh(new THREE.BoxGeometry(4.0, 2.3, 1.6), matNavalLt);
+      bridgeBack.position.set(7.8, 9.45, 5.4); grp.add(bridgeBack);
+      buildBridgeInterior(7.8, 8.32, 9.2, 3.6, 5.6, 1.05);
+      // Exterior bridge wing walkway + whip radio antennas!
+      const wingDeck = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.18, 4.6), matDeck);
+      wingDeck.position.set(10.5, 8.32, 8.8); grp.add(wingDeck);
+      for (const az of [6.4, 7.6]) {
+        const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 5.2, 5), matChrome);
+        ant.position.set(9.7, 13.2, az); grp.add(ant);
+      }
       const bVisor = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.16, 1.2), matHullDark);
       bVisor.position.set(7.8, 9.9, 12.2); bVisor.rotation.x = 0.22; grp.add(bVisor);
 
@@ -481,10 +619,13 @@ KK.BoatManager = class BoatManager {
       }
 
       // Detailed Aft Wheelhouse, Brow Visor, Life Buoys, Exhaust Pipes & Spinning Radar!
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(7.8, 3.2, 5.4), matNavalLt);
-      cabin.position.set(0, 3.55, -10.8); grp.add(cabin);
-      const win = new THREE.Mesh(new THREE.BoxGeometry(6.8, 1.05, 0.45), matGlass);
-      win.position.set(0, 4.15, -8.05); grp.add(win);
+      const cabinBase = new THREE.Mesh(new THREE.BoxGeometry(7.8, 1.6, 5.4), matNavalLt);
+      cabinBase.position.set(0, 2.75, -10.8); grp.add(cabinBase);
+      const cabinRoof = new THREE.Mesh(new THREE.BoxGeometry(8.0, 0.28, 5.8), matNavalLt);
+      cabinRoof.position.set(0, 5.38, -10.8); grp.add(cabinRoof);
+      const cabinBack = new THREE.Mesh(new THREE.BoxGeometry(7.6, 1.85, 1.4), matNavalLt);
+      cabinBack.position.set(0, 4.42, -12.8); grp.add(cabinBack);
+      buildBridgeInterior(0, 3.55, -10.2, 5.6, 4.2, 0.90);
       const visor = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.14, 0.85), matHullDark);
       visor.position.set(0, 4.82, -7.85); visor.rotation.x = 0.22; grp.add(visor);
       for (const sx of [-3.95, 3.95]) {
@@ -541,10 +682,20 @@ KK.BoatManager = class BoatManager {
       }
 
       // Detailed Wheelhouse with Brow Visor, Radar Dome & Life Buoy
-      const cabin = new THREE.Mesh(new THREE.BoxGeometry(3.4, 2.05, 4.0), matWhite);
-      cabin.position.set(0, 2.45, 2.8); grp.add(cabin);
-      const win = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.88, 2.8), matGlass);
-      win.position.set(0, 2.74, 3.25); grp.add(win);
+      const cabinBase = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.88, 4.0), matWhite);
+      cabinBase.position.set(0, 1.86, 2.8); grp.add(cabinBase);
+      const cabinRoof = new THREE.Mesh(new THREE.BoxGeometry(3.55, 0.20, 4.2), matWhite);
+      cabinRoof.position.set(0, 3.58, 2.8); grp.add(cabinRoof);
+      buildBridgeInterior(0, 2.26, 2.9, 2.9, 3.4, 0.65);
+      // Articulating Stern Car Loading Ramp!
+      rampPivot = new THREE.Group();
+      rampPivot.position.set(0, 1.44, -6.5);
+      const pRamp = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.24, 4.0), matRampTx);
+      pRamp.position.set(0, 0, -2.0); rampPivot.add(pRamp);
+      rampRestRotX =  1.25; // Folded up against transom in transit
+      rampOpenRotX = -0.22; // Lowered back onto pier when UNLOCKED!
+      rampPivot.rotation.x = rampRestRotX;
+      grp.add(rampPivot);
       const visor = new THREE.Mesh(new THREE.BoxGeometry(3.55, 0.12, 0.72), matHullDark);
       visor.position.set(0, 3.44, 4.78); visor.rotation.x = 0.24; grp.add(visor);
       const radome = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.62, 0.36, 12), matWhite);
@@ -611,7 +762,7 @@ KK.BoatManager = class BoatManager {
     }
 
     grp.add(navLightsGroup);
-    return { grp, fans, radars, skirtMesh, rampPivot, rampRestRotX, rampOpenRotX, navLightsGroup, spotCone, spotMountLocal, bayChains };
+    return { grp, fans, radars, helmWheel, helmLever, skirtMesh, rampPivot, rampRestRotX, rampOpenRotX, navLightsGroup, spotCone, spotMountLocal, bayChains };
   }
 
   summonBoatAtPort(boatId, port) {
@@ -625,7 +776,8 @@ KK.BoatManager = class BoatManager {
     if (existing) {
       if (this.activeBoat === existing) this.activeBoat = null;
       existing.deckVehicles = [];
-      existing.deckLocked = true;
+      existing.deckLocked = false;
+      existing.rampAnim = 1.0;
       existing.anchored = true;
       existing.gx = sp.x; existing.gy = seaL; existing.gz = sp.z;
       existing.yaw = sp.yaw; existing.pitch = 0; existing.roll = 0;
@@ -639,20 +791,20 @@ KK.BoatManager = class BoatManager {
     this.scene.add(built.grp);
     const boat = {
       id: boatId, spec,
-      mesh: built.grp, fans: built.fans, radars: built.radars, skirtMesh: built.skirtMesh,
+      mesh: built.grp, fans: built.fans, radars: built.radars, helmWheel: built.helmWheel, helmLever: built.helmLever, skirtMesh: built.skirtMesh,
       rampPivot: built.rampPivot, rampRestRotX: built.rampRestRotX, rampOpenRotX: built.rampOpenRotX,
       navLightsGroup: built.navLightsGroup, spotCone: built.spotCone, spotMountLocal: built.spotMountLocal,
       bayChains: built.bayChains,
       gx: sp.x, gy: seaL, gz: sp.z, yaw: sp.yaw, pitch: 0, roll: 0,
       vx: 0, vz: 0, speedKmh: 0, throttleCmd: 0, boostCmd: false,
       anchored: true,
-      deckLocked: true,
+      deckLocked: false,
       unlockWarnUntil: 0,
       navLightsOn: true,
       spotLightOn: false,
       waterDepth: 12.0,
       isBeached: false,
-      rampAnim: 0.0,
+      rampAnim: 1.0,
       cushionAnim: 0.0,
       deckVehicles: []
     };
@@ -735,6 +887,55 @@ KK.BoatManager = class BoatManager {
       return { ok: false, reason: `All vehicle bays on ${boat.spec.name} are full!` };
     }
     return { ok: true, bay };
+  }
+
+  strapVehicleAtCurrentPos(boat, vehicle, ui, audio, remotePlayersMap = null) {
+    if (!boat || !vehicle) return null;
+    const existing = this.getLocalMountedEntry(boat);
+    if (existing) {
+      // Unstrap in-place right on the deck so you can drive off the ramp!
+      const idx = boat.deckVehicles.indexOf(existing);
+      if (idx >= 0) boat.deckVehicles.splice(idx, 1);
+      if (audio && audio.playWrench) audio.playWrench();
+      if (ui) ui.toast(`UNSTRAPPED ${vehicle.spec.name} on ${boat.spec.name} deck! Drive off the ramp or re-strap [R]/[V].`);
+      return null;
+    }
+    const maxPay = boat.spec.maxPayloadKg || 0;
+    const mass = vehicle.spec.massKg || 2000;
+    const curPay = this.getPayloadKg(boat, remotePlayersMap);
+    if (curPay + mass > maxPay) {
+      if (ui) ui.toast(`OVERWEIGHT! ${vehicle.spec.name} (${(mass / 1000).toFixed(1)}t) exceeds ${Math.round(maxPay / 1000)}t deck limit!`, true);
+      return null;
+    }
+    // Keep exact parked position & relative heading on deck!
+    const loc = this.worldToBoatLocal(boat, vehicle.pos.x, vehicle.pos.z);
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(vehicle.quat);
+    const vehYaw = Math.atan2(fwd.x, fwd.z);
+    const relYaw = vehYaw - (boat.yaw || 0);
+    // Find nearest bay index for visual chocks
+    let nearBay = 0, bestD = 999;
+    const bays = boat.spec.bays || [];
+    for (let i = 0; i < bays.length; i++) {
+      const d = Math.hypot(loc.x - bays[i].x, loc.z - bays[i].z);
+      if (d < bestD) { bestD = d; nearBay = i; }
+    }
+    const entry = {
+      key: "local", peerId: null,
+      vehicleId: vehicle.vState.vehicleId,
+      massKg: mass, bayIdx: nearBay, spanBoth: false,
+      x: loc.x, z: loc.z, relYaw,
+      label: (bays[nearBay] && bays[nearBay].label) || "Deck"
+    };
+    boat.deckVehicles.push(entry);
+    vehicle.hydrolocked = false;
+    vehicle.inWaterDepth = 0;
+    vehicle.vel.set(0, 0, 0);
+    vehicle.angVel.set(0, 0, 0);
+    if (audio && audio.playWrench) audio.playWrench();
+    const totalT = (this.getPayloadKg(boat, remotePlayersMap) / 1000).toFixed(1);
+    const maxT = Math.round(maxPay / 1000);
+    if (ui) ui.toast(`STRAPPED & CHOCKED ${vehicle.spec.name} on ${boat.spec.name} (${totalT}t / ${maxT}t)! Press [F] to step out & walk to the Bridge Helm!`);
+    return entry;
   }
 
   mountLocalVehicle(boat, vehicle, ui, audio, remotePlayersMap = null) {
@@ -989,6 +1190,8 @@ KK.BoatManager = class BoatManager {
       if (b.radars && b.radars.length > 0) {
         for (const rd of b.radars) rd.rotation.y += dt * 2.2;
       }
+      if (b.helmWheel) b.helmWheel.rotation.z += (-steer * 2.2 - b.helmWheel.rotation.z) * Math.min(1, dt * 8);
+      if (b.helmLever) b.helmLever.rotation.x += (throttle * 0.65 - b.helmLever.rotation.x) * Math.min(1, dt * 8);
 
       if (isPiloted && b.speedKmh > 12 && !b.isBeached && particles && Math.random() < 0.55) {
         particles.emitWaterSplash(b.gx - nFwdX * (sp.len * 0.44), b.gy + 0.3, b.gz - nFwdZ * (sp.len * 0.44), Math.min(2.2, b.speedKmh / 48));
@@ -1000,7 +1203,7 @@ KK.BoatManager = class BoatManager {
         vehicle.pos.copy(this._tmpV);
         vehicle.vel.set(b.vx, 0, b.vz);
         vehicle.angVel.set(0, 0, 0);
-        this._tmpE.set(b.pitch, b.yaw, b.roll, "YXZ");
+        this._tmpE.set(b.pitch, b.yaw + (localEntry.relYaw || 0), b.roll, "YXZ");
         vehicle.quat.setFromEuler(this._tmpE);
         vehicle.inWaterDepth = 0;
         vehicle.hydrolocked = false;
@@ -1039,7 +1242,7 @@ KK.BoatManager = class BoatManager {
         this.scene.add(built.grp);
         rb = {
           id: bData.id, spec, ownerPeerId: pid,
-          mesh: built.grp, fans: built.fans, radars: built.radars, skirtMesh: built.skirtMesh,
+          mesh: built.grp, fans: built.fans, radars: built.radars, helmWheel: built.helmWheel, helmLever: built.helmLever, skirtMesh: built.skirtMesh,
           rampPivot: built.rampPivot, rampRestRotX: built.rampRestRotX, rampOpenRotX: built.rampOpenRotX,
           navLightsGroup: built.navLightsGroup, spotCone: built.spotCone, bayChains: built.bayChains,
           gx: bData.x, gy: bData.y, gz: bData.z, yaw: bData.yaw || 0, pitch: 0, roll: 0,

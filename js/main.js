@@ -52,6 +52,7 @@ KK.Game = class Game {
 
     this.entities = new KK.EntityManager(this.scene, this.world);
     this.boats = new KK.BoatManager(this.scene, this.world);
+    if (this.world) this.world.boatsRef = this.boats;
     this.ownedBoats = { patrol: false, strela: false, serna: false, zubr: false };
     this.activeHarborPort = null;
     this._winchPullNetCd = 0;
@@ -146,6 +147,7 @@ KK.Game = class Game {
     this._boatCamSmoothY = null; this.camOrbitYaw = 0; this.camOrbitPitch = 0.24;
     this.isDraggingMouse = false; this.camPosSmooth = new THREE.Vector3(-8, 6, 0);
     this._camOffsetSmooth = new THREE.Vector3(0, 3.2, -8.2);
+    this._boatCamOffsetSmooth = new THREE.Vector3(0, 10, -24);
     this.keys = {};
     this._bindInputs();
     this.ui = new KK.UIManager(this);
@@ -422,7 +424,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.3.5-hf ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v15.4.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -1101,9 +1103,22 @@ KK.Game = class Game {
       return true;
     }
 
-    // Sitting inside a car mounted on a boat deck: [F] hops out onto the moving boat deck!
+    // Sitting inside a car on a boat deck (strapped OR just parked!): [F] hops out onto the walkable boat deck!
     if (!this.onFoot && this.boats) {
       const ownM = this.boats.findLocalMountedBoat();
+      if (!ownM && !this.remoteBoatMount) {
+        const underCar = this.boats.findBoatUnderPoint(this.vehicle.pos.x, this.vehicle.pos.z);
+        if (underCar && underCar.boat && underCar.boat.spec && underCar.boat.spec.walkBounds) {
+          const b = underCar.boat;
+          const isRem = !this.boats.spawnedBoats.includes(b);
+          const cl = this.boats.clampToWalkDeck(b, underCar.lx + 2.4, underCar.lz);
+          this.walkingOnBoat = { boat: b, isRemote: isRem, ownerPeerId: isRem ? b.ownerPeerId : null, lx: cl.x, lz: cl.z };
+          this.onFoot = true;
+          if (this.localAvatar) this.localAvatar.visible = true;
+          this.ui.toast(`Stepped onto ${b.spec.name} deck! Walk to the Bridge Helm & press [F] to take command (tip: strap car [R]/[V] before sailing!).`);
+          return true;
+        }
+      }
       if (ownM) {
         const b = ownM.boat;
         if (b.spec.walkBounds) {
@@ -3167,6 +3182,63 @@ KK.Game = class Game {
     }
   }
 
+  // v15.4.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  boatDeckAction(action) {
+    if (!this.boats) return;
+    const ab = this.boats.activeBoat;
+    if (action === "strap_or_release") {
+      const ownM = this.boats.findLocalMountedBoat();
+      if (ownM) {
+        if (ownM.boat.deckLocked) { this.ui.toast("Deck is LOCKED by Shipmaster! Click UNLOCK DECK at the helm first.", true); return; }
+        this.boats.strapVehicleAtCurrentPos(ownM.boat, this.vehicle, this.ui, this.audio, this.network.remotePlayers);
+        return;
+      }
+      if (this.remoteBoatMount) {
+        const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
+        if (rb && rb.deckLocked) { this.ui.toast("Deck is LOCKED by Shipmaster!", true); return; }
+        this.remoteBoatMount = null;
+        this.ui.toast("Released car on ship deck — drive off the lowered ramp!");
+        return;
+      }
+      const under = this.boats.findBoatUnderPoint(this.vehicle.pos.x, this.vehicle.pos.z);
+      if (under && under.boat) {
+        if (this.boats.spawnedBoats.includes(under.boat)) {
+          this.boats.strapVehicleAtCurrentPos(under.boat, this.vehicle, this.ui, this.audio, this.network.remotePlayers);
+        } else if (under.boat.ownerPeerId) {
+          this._tryBoardRemoteBoatWithVehicle(under.boat, under.boat.ownerPeerId);
+        }
+      }
+    } else if (action === "step_deck") {
+      if (ab) this.stepOntoBoatDeckOrDisembark();
+      else this.handleContextInteract();
+    } else if (action === "take_helm") {
+      if (this.walkingOnBoat && !this.walkingOnBoat.isRemote && this.walkingOnBoat.boat) {
+        this.boardBoat(this.walkingOnBoat.boat);
+      }
+    } else if (action === "board_car") {
+      if (this.walkingOnBoat) {
+        this.walkingOnBoat = null;
+        this.onFoot = false;
+        if (this.localAvatar) this.localAvatar.visible = false;
+        this.ui.toast(`Boarded ${this.vehicle.spec.name} on deck!`);
+      }
+    } else if (action === "step_ashore") {
+      if (this.walkingOnBoat) {
+        const b = this.walkingOnBoat.boat;
+        const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+        const shorePt = this.boats.boatLocalToWorld(b, 0, 0, b.spec.len * 0.56 + 3.0);
+        const shoreH = this.world.getTerrainInfo(shorePt.x, shorePt.z, false).height;
+        this.walkingOnBoat = null;
+        this.playerFoot.x = shorePt.x; this.playerFoot.z = shorePt.z; this.playerFoot.y = Math.max(seaL, shoreH);
+        this.ui.toast(`Stepped off ${b.spec.name}!`);
+      }
+    } else if (action === "toggle_lock" && ab) {
+      this.boats.toggleDeckLock(ab, this.ui, this.audio);
+    } else if (action === "toggle_anchor" && ab) {
+      this.boats.toggleAnchor(ab, this.ui, this.audio);
+    }
+  }
+
   togglePhotoMode() {
     this.photoMode = !this.photoMode;
     document.body.classList.toggle("photo-mode", this.photoMode);
@@ -3795,7 +3867,7 @@ KK.Game = class Game {
         this.audio.playImpact(0.9);
         this.ui.toast(`SMASH!! You hit a ${animalName} at ${Math.round(hitKmh)} km/h! Radiator -${Math.round(dmg)}%!`, true);
       }
-    }, { x: this.cryptids.sirenhead.gx, z: this.cryptids.sirenhead.gz });
+    }, { x: this.cryptids.sirenhead.gx, z: this.cryptids.sirenhead.gz }, activeBoatNow ? { x: activeBoatNow.gx, z: activeBoatNow.gz } : null);
 
     const focusLocal = this.world.toLocal(focusGx, focusGy, focusGz, new THREE.Vector3());
     this.weather.update(dt, focusLocal, this.audio);
@@ -4308,6 +4380,19 @@ KK.Game = class Game {
   _updateContextPrompt() {
     const el = document.getElementById("context-prompt");
     if (!el) return;
+    const deckBar = document.getElementById("boat-deck-bar");
+    const setDeckBar = (sig, html) => {
+      if (!deckBar) return;
+      if (!sig) {
+        if (this._lastDeckBarSig !== "") { this._lastDeckBarSig = ""; deckBar.classList.add("hidden"); deckBar.innerHTML = ""; }
+        return;
+      }
+      if (this._lastDeckBarSig !== sig) {
+        this._lastDeckBarSig = sig;
+        deckBar.innerHTML = html;
+        deckBar.classList.remove("hidden");
+      }
+    };
     let prompt = "";
     if (this.boats && this.boats.activeBoat) {
       const b = this.boats.activeBoat;
@@ -4316,36 +4401,61 @@ KK.Game = class Game {
       const ancTxt = b.anchored ? "[SPACE] Lift/Weigh" : "[SPACE] Anchor/Dump";
       const deckTxt = hasDeck ? ` • [U] ${b.deckLocked ? "Unlock Deck" : "Lock Deck"} • [V] ${mounted ? "Unload Car" : "Load Car"}` : "";
       const walkTxt = b.spec.walkBounds ? " • [E] Walk Deck" : " • [E] Disembark";
-      el.textContent = `⚓ ${ancTxt}${deckTxt} • [C] Cam • [L] Nav • [K] Spot • [7] Cruise${walkTxt}`;
+      const lkBtn = hasDeck ? `<button class="btn ${b.deckLocked ? 'warn' : 'primary'}" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_lock')">${b.deckLocked ? '🔓 UNLOCK DECK &amp; LOWER RAMP' : '🔒 LOCK DECK &amp; RAISE RAMP'}</button>` : '';
+      const anBtn = `<button class="btn ${b.anchored ? 'accent' : ''}" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_anchor')">${b.anchored ? (b.spec.amphibious ? '💨 INFLATE CUSHION' : '⚓ WEIGH ANCHOR') : (b.spec.amphibious ? '⚓ DUMP CUSHION' : '⚓ DROP ANCHOR')}</button>`;
+      const wkBtn = b.spec.walkBounds ? `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 WALK DECK</button>` : '';
+      setDeckBar(`helm_${b.id}_${b.deckLocked}_${b.anchored}`, lkBtn + anBtn + wkBtn);
+      el.textContent = `⚓ ${b.spec.name} • [C] Cam • [L] Nav • [K] Spot • [7] Cruise`;
       el.classList.remove("hidden");
       return;
     }
     if (this.walkingOnBoat && this.onFoot) {
       const wb = this.walkingOnBoat;
       const dCar = Math.hypot(this.playerFoot.x - this.vehicle.pos.x, this.playerFoot.z - this.vehicle.pos.z);
-      el.textContent = dCar < 6.5
-        ? `[F] Board ${this.vehicle.spec.name} on Deck (Turrets Live!)`
-        : (wb.isRemote ? `[F] Step Off ${wb.boat.spec.name}` : `[F] Take the Helm of ${wb.boat.spec.name} (or walk to bow ramp at shore)`);
+      const helmBtn = !wb.isRemote ? `<button class="btn primary" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('take_helm')">⚓ TAKE THE HELM</button>` : '';
+      const carBtn = (dCar < 28) ? `<button class="btn accent" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('board_car')">🚗 BOARD ${this.vehicle.spec.name.split(' ')[0].toUpperCase()}</button>` : '';
+      const offBtn = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_ashore')">🏝 STEP OFF</button>`;
+      setDeckBar(`walk_${wb.boat.id}_${wb.isRemote}_${dCar < 28}`, helmBtn + carBtn + offBtn);
+      el.textContent = `🚶 Walking on ${wb.boat.spec.name} Deck • Use buttons below or [F]`;
       el.classList.remove("hidden");
       return;
     }
     if (this.boats) {
       const ownM = !this.onFoot ? this.boats.findLocalMountedBoat() : null;
       if (ownM) {
-        el.textContent = ownM.boat.deckLocked
-          ? `⚓ Secured in [${ownM.entry.label}] on ${ownM.boat.spec.name} • Turrets Live • [F] Walk Around Deck`
-          : `⚓ DECK UNLOCKED on ${ownM.boat.spec.name} • Hold [W] to Roll Off Ramp • [F] Walk Deck`;
+        const relBtn = ownM.boat.deckLocked
+          ? `<button class="btn" disabled style="opacity:0.65;">🔒 LOCKED BY SHIPMASTER</button>`
+          : `<button class="btn warn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('strap_or_release')">🔓 RELEASE CAR</button>`;
+        const outBtn = `<button class="btn primary" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT TO DECK / HELM</button>`;
+        setDeckBar(`ownm_${ownM.boat.id}_${ownM.boat.deckLocked}`, relBtn + outBtn);
+        el.textContent = `⚓ STRAPPED on ${ownM.boat.spec.name} • Turrets Live`;
         el.classList.remove("hidden");
         return;
+      }
+      if (!this.onFoot && !this.remoteBoatMount) {
+        const underNow = this.boats.findBoatUnderPoint(this.vehicle.pos.x, this.vehicle.pos.z);
+        if (underNow && underNow.boat) {
+          const lockBtn = `<button class="btn accent" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('strap_or_release')">🔒 LOCK &amp; STRAP CAR TO DECK</button>`;
+          const outBtn  = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT TO DECK</button>`;
+          setDeckBar(`park_${underNow.boat.id}`, lockBtn + outBtn);
+          el.textContent = `⚓ PARKED ON ${underNow.boat.spec.name} DECK • Click below to Lock Car or Step Out`;
+          el.classList.remove("hidden");
+          return;
+        }
       }
       if (!this.onFoot && this.remoteBoatMount) {
         const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
-        el.textContent = (rb && !rb.deckLocked)
-          ? `⚓ DECK UNLOCKED on ${rb.spec.name} • Hold [W] to Roll Off Ramp • [F] Walk Deck`
-          : `⚓ Secured in [${this.remoteBoatMount.label}] • Turrets Live • [F] Walk Around Deck`;
+        const locked = !!(rb && rb.deckLocked);
+        const relBtn = locked
+          ? `<button class="btn" disabled style="opacity:0.65;">🔒 LOCKED BY SHIPMASTER</button>`
+          : `<button class="btn warn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('strap_or_release')">🔓 RELEASE CAR</button>`;
+        const outBtn = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('step_deck')">🚶 STEP OUT TO DECK</button>`;
+        setDeckBar(`remm_${locked}`, relBtn + outBtn);
+        el.textContent = locked ? `⚓ Secured on Friend's Ship • Turrets Live` : `⚓ Ship Deck UNLOCKED • Click RELEASE CAR to drive off`;
         el.classList.remove("hidden");
         return;
       }
+      setDeckBar("", "");
       const pxC = this.onFoot ? this.playerFoot.x : this.vehicle.pos.x;
       const pzC = this.onFoot ? this.playerFoot.z : this.vehicle.pos.z;
       const nb = this.boats.findNearbyBoat(pxC, pzC, 34, true);
@@ -4430,56 +4540,64 @@ KK.Game = class Game {
       const baseY = this._boatCamSmoothY;
       const sy = Math.sin(b.yaw), cy = Math.cos(b.yaw);
 
+      const bAlpha = 1.0 - Math.exp(-10.5 * dt);
       if (this.boatCamMode === 1) {
-        // MODE 1: BRIDGE / FIRST-PERSON HELM VIEW (Looks straight down the cargo deck & bow ramp!)
-        const hl = b.spec.helmLocal || { x: 0, y: 3.5, z: 2.0 };
-        const eyeW = this.boats.boatLocalToWorld(b, hl.x, hl.y + 1.4, hl.z + 1.2);
+        // MODE 1: BRIDGE / FIRST-PERSON HELM VIEW (Locked directly to bridge — ZERO lag!)
+        const hl = (b.id === "zubr") ? { x: 7.8, y: 9.85, z: 8.6 }
+          : (b.id === "serna" ? { x: 0, y: 4.90, z: -10.4 }
+          : (b.id === "patrol" ? { x: 0, y: 3.22, z: 2.8 }
+          : { x: 0, y: 1.55, z: -0.5 }));
+        const eyeW = this.boats.boatLocalToWorld(b, hl.x, hl.y, hl.z);
         const eyeL = this.world.toLocal(eyeW.x, eyeW.y, eyeW.z, new THREE.Vector3());
         const lookYaw = b.yaw + this.camOrbitYaw;
         const lookP = Math.max(-0.45, Math.min(0.45, -0.08 - this.camOrbitPitch * 0.6));
-        this.camera.position.lerp(eyeL, Math.min(1, dt * 16));
+        this.camera.position.copy(eyeL);
         this.camera.lookAt(
           eyeL.x + Math.sin(lookYaw) * 45 * Math.cos(lookP),
           eyeL.y + Math.sin(lookP) * 45,
           eyeL.z + Math.cos(lookYaw) * 45 * Math.cos(lookP)
         );
         return;
-      } else if (this.boatCamMode === 2) {
-        // MODE 2: CARGO DECK / LOADING CAM (Overhead angled view of vehicle bays & bow ramp!)
-        const dOff = Math.max(14, b.spec.len * 0.42) * this.camZoom;
-        const camPos = new THREE.Vector3(
-          focusLocal.x + cy * (b.spec.width * 0.55 + 6.0) - sy * dOff * 0.35,
-          baseY + Math.max(12, b.spec.len * 0.36) * this.camZoom,
-          focusLocal.z - sy * (b.spec.width * 0.55 + 6.0) - cy * dOff * 0.35
-        );
-        this.camera.position.lerp(camPos, Math.min(1, dt * 9.0));
-        this.camera.lookAt(focusLocal.x + sy * (b.spec.len * 0.14), baseY + 1.2, focusLocal.z + cy * (b.spec.len * 0.14));
-        return;
-      } else if (this.boatCamMode === 3) {
-        // MODE 3: LOW WATERLINE CINEMATIC CAM (Skims beside the hull & wake!)
-        const sideD = (b.spec.width * 0.95 + 10.0) * this.camZoom;
-        const backD = (b.spec.len * 0.52 + 6.0) * this.camZoom;
-        const camPos = new THREE.Vector3(
-          focusLocal.x + cy * sideD - sy * backD,
-          baseY + 2.2,
-          focusLocal.z - sy * sideD - cy * backD
-        );
-        this.camera.position.lerp(camPos, Math.min(1, dt * 7.5));
-        this.camera.lookAt(focusLocal.x + sy * (b.spec.len * 0.15), baseY + 2.6, focusLocal.z + cy * (b.spec.len * 0.15));
-        return;
       }
 
-      // MODE 0: WIDE HELM CHASE CAM (Horizon-stabilized smooth orbit!)
-      const dist = (Math.min(46, b.spec.len * 0.90) + 9.0) * this.camZoom;
-      const yaw = b.yaw + this.camOrbitYaw;
-      const h = (Math.min(17, b.spec.len * 0.28) + 5.2) * this.camZoom;
-      const camPos = new THREE.Vector3(
-        focusLocal.x - Math.sin(yaw) * dist,
-        baseY + h + Math.sin(this.camOrbitPitch) * dist * 0.50,
-        focusLocal.z - Math.cos(yaw) * dist
+      let offX, offY, offZ, lookX = focusLocal.x, lookY = baseY + 2.0, lookZ = focusLocal.z;
+      if (this.boatCamMode === 2) {
+        // MODE 2: CARGO DECK / LOADING CAM
+        const dOff = Math.max(14, b.spec.len * 0.42) * this.camZoom;
+        offX = cy * (b.spec.width * 0.55 + 6.0) - sy * dOff * 0.35;
+        offY = Math.max(12, b.spec.len * 0.36) * this.camZoom;
+        offZ = -sy * (b.spec.width * 0.55 + 6.0) - cy * dOff * 0.35;
+        lookX = focusLocal.x + sy * (b.spec.len * 0.14);
+        lookY = baseY + 1.2;
+        lookZ = focusLocal.z + cy * (b.spec.len * 0.14);
+      } else if (this.boatCamMode === 3) {
+        // MODE 3: LOW WATERLINE CINEMATIC CAM
+        const sideD = (b.spec.width * 0.95 + 10.0) * this.camZoom;
+        const backD = (b.spec.len * 0.52 + 6.0) * this.camZoom;
+        offX = cy * sideD - sy * backD;
+        offY = 2.2;
+        offZ = -sy * sideD - cy * backD;
+        lookX = focusLocal.x + sy * (b.spec.len * 0.15);
+        lookY = baseY + 2.6;
+        lookZ = focusLocal.z + cy * (b.spec.len * 0.15);
+      } else {
+        // MODE 0: WIDE HELM CHASE CAM
+        const dist = (Math.min(46, b.spec.len * 0.90) + 9.0) * this.camZoom;
+        const yaw = b.yaw + this.camOrbitYaw;
+        offX = -Math.sin(yaw) * dist;
+        offY = (Math.min(17, b.spec.len * 0.28) + 5.2) * this.camZoom + Math.sin(this.camOrbitPitch) * dist * 0.50;
+        offZ = -Math.cos(yaw) * dist;
+      }
+
+      this._boatCamOffsetSmooth.x += (offX - this._boatCamOffsetSmooth.x) * bAlpha;
+      this._boatCamOffsetSmooth.y += (offY - this._boatCamOffsetSmooth.y) * bAlpha;
+      this._boatCamOffsetSmooth.z += (offZ - this._boatCamOffsetSmooth.z) * bAlpha;
+      this.camera.position.set(
+        focusLocal.x + this._boatCamOffsetSmooth.x,
+        baseY + this._boatCamOffsetSmooth.y,
+        focusLocal.z + this._boatCamOffsetSmooth.z
       );
-      this.camera.position.lerp(camPos, Math.min(1, dt * 9.0));
-      this.camera.lookAt(focusLocal.x, baseY + 2.0, focusLocal.z);
+      this.camera.lookAt(lookX, lookY, lookZ);
       return;
     }
     if (this.camMode !== 3 || this.onFoot || this.ridingWithPeerId) this.camera.up.set(0, 1, 0);

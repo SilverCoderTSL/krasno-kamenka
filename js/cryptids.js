@@ -43,6 +43,33 @@ KK.CryptidManager = class CryptidManager {
 
   // Handle KPVT 14.5mm autocannon hit from a rearmed BTR-80 (Staggers & retreats — never permakills!)
   // v14.2 EXPONENTIAL CALIBER STUN FORMULA (Anchored to T-72B 125mm = 9.5s base!)
+  _isLandSafe(gx, gz, coastM = 10.0, riverPad = 18.0, mainlandOnly = true) {
+    if (mainlandOnly && this.world.isMainlandDry) return this.world.isMainlandDry(gx, gz, coastM, riverPad);
+    return this.world.isDryInland ? this.world.isDryInland(gx, gz, coastM, riverPad) : true;
+  }
+
+  _moveDryLand(ent, desiredAng, stepDist, extraCheck = null, allowSlide = true) {
+    const offsets = allowSlide ? [0, 0.55, -0.55, 1.15, -1.15, 1.65, -1.65] : [0];
+    for (let i = 0; i < offsets.length; i++) {
+      const a = desiredAng + offsets[i];
+      const nx = ent.gx + Math.sin(a) * stepDist;
+      const nz = ent.gz + Math.cos(a) * stepDist;
+      if (!this._isLandSafe(nx, nz)) continue;
+      if (extraCheck && !extraCheck(nx, nz)) continue;
+      ent.gx = nx;
+      ent.gz = nz;
+      return true;
+    }
+    return false;
+  }
+
+  _moveDryInlandFlee(ent, fleeAng, stepDist) {
+    // Prefer fleeing away from player; if blocked by ocean/river, steer toward dry mainland interior!
+    if (this._moveDryLand(ent, fleeAng, stepDist, null, true)) return true;
+    const toCenter = Math.atan2(-ent.gx, -ent.gz);
+    return this._moveDryLand(ent, toCenter, stepDist, null, true);
+  }
+
   _calcCaliberStun(caliberMm = 125, shellMult = 1.0) {
     return +(9.5 * Math.pow(Math.max(10, caliberMm) / 125.0, 2.2) * shellMult).toFixed(2);
   }
@@ -817,7 +844,7 @@ KK.CryptidManager = class CryptidManager {
     // 1. SIREN HEAD: dormant -> distant_broadcast -> stalk -> strike (185 km/h!) -> flee
     const sh = this.sirenhead;
     if (sh.dormantCd > 0) sh.dormantCd -= dt;
-    const shPick = this._nearestPlayerIn(players, sh.gx, sh.gz, (p) => this.world.getBiomeWeights(p.x, p.z).taiga > 0.44);
+    const shPick = this._nearestPlayerIn(players, sh.gx, sh.gz, (p) => this.world.getBiomeWeights(p.x, p.z).taiga > 0.44 && this._isLandSafe(p.x, p.z, 5.0, 4.0));
 
     if (sh.state === "dormant") {
       if (sh.dormantCd <= 0 && shPick.player) {
@@ -825,7 +852,7 @@ KK.CryptidManager = class CryptidManager {
         if (sh.spawnCheckCd <= 0) {
           sh.spawnCheckCd = 28.0;
           if (Math.random() < 0.42) {
-            const tgt = this._randomPlayerIn(players, (p) => this.world.getBiomeWeights(p.x, p.z).taiga > 0.44) || shPick.player;
+            const tgt = this._randomPlayerIn(players, (p) => this.world.getBiomeWeights(p.x, p.z).taiga > 0.44 && this._isLandSafe(p.x, p.z, 5.0, 4.0)) || shPick.player;
             // If player is cruising fast (>30 km/h), manifest AHEAD of their travel path so they drive into the ambush!
             const spd = Math.hypot(tgt.vx || 0, tgt.vz || 0);
             let ang = Math.random() * Math.PI * 2;
@@ -835,7 +862,7 @@ KK.CryptidManager = class CryptidManager {
               distSpawn = Math.min(340, 210 + spd * 2.2);
             }
             const sx = tgt.x + Math.cos(ang) * distSpawn, sz = tgt.z + Math.sin(ang) * distSpawn;
-            if (this.world.getBiomeWeights(sx, sz).taiga > 0.38 && !this._inSanctuary(sx, sz, 40)) {
+            if (this.world.getBiomeWeights(sx, sz).taiga > 0.38 && !this._inSanctuary(sx, sz, 40) && this._isLandSafe(sx, sz, 9.0, 20.0)) {
               sh.gx = sx; sh.gz = sz; sh.state = "distant_broadcast"; sh.stageTimer = 11.0 + Math.random() * 8.0; sh.counterAccum = 0;
             }
           }
@@ -863,7 +890,7 @@ KK.CryptidManager = class CryptidManager {
           const orbitAng = cAng + (shPick.dist < 85 ? 0.95 : 0.35);
           const stalkSpd = shPick.dist > 130 ? 22.0 : 9.5;
           const nx = sh.gx + Math.sin(orbitAng) * stalkSpd * dt, nz = sh.gz + Math.cos(orbitAng) * stalkSpd * dt;
-          if (this.world.getBiomeWeights(nx, nz).taiga > 0.34 && !this._inSanctuary(nx, nz, 45)) { sh.gx = nx; sh.gz = nz; }
+          if (this.world.getBiomeWeights(nx, nz).taiga > 0.34 && !this._inSanctuary(nx, nz, 45) && this._isLandSafe(nx, nz, 8.0, 18.0)) { sh.gx = nx; sh.gz = nz; }
           sh.phase += dt * 5.2;
           if (sh.stageTimer <= 0 || shPick.dist < 75) sh.state = "strike";
         }
@@ -886,7 +913,7 @@ KK.CryptidManager = class CryptidManager {
           sh.yaw = cAng;
           const shSpd = tp.hasAcousticJammer ? 26.4 : 51.4;
           const nx = sh.gx + Math.sin(cAng) * shSpd * dt, nz = sh.gz + Math.cos(cAng) * shSpd * dt;
-          if (this.world.getBiomeWeights(nx, nz).taiga > 0.30 && !this._inSanctuary(nx, nz, 40)) { sh.gx = nx; sh.gz = nz; }
+          if (this.world.getBiomeWeights(nx, nz).taiga > 0.30 && !this._inSanctuary(nx, nz, 40) && this._isLandSafe(nx, nz, 8.0, 18.0)) { sh.gx = nx; sh.gz = nz; }
           else { sh.state = "flee"; sh.fleeTimer = 14; }
           sh.phase += dt * 16.5;
         }
@@ -897,7 +924,7 @@ KK.CryptidManager = class CryptidManager {
       const target = shPick.player || players[0];
       if (target) {
         const bAng = Math.atan2(sh.gx - target.x, sh.gz - target.z);
-        sh.gx += Math.sin(bAng) * 5.2 * dt; sh.gz += Math.cos(bAng) * 5.2 * dt;
+        this._moveDryInlandFlee(sh, bAng, 5.2 * dt);
       }
       sh.phase += dt * 7.5;
       if (sh.recoilTimer <= 0) sh.state = "flee";
@@ -905,9 +932,10 @@ KK.CryptidManager = class CryptidManager {
       sh.fleeTimer -= dt;
       const target = shPick.player || players[0];
       const fAng = Math.atan2(sh.gx - target.x, sh.gz - target.z); sh.yaw = fAng;
-      sh.gx += Math.sin(fAng) * 28 * dt; sh.gz += Math.cos(fAng) * 28 * dt; sh.phase += dt * 14;
+      this._moveDryInlandFlee(sh, fAng, 28 * dt); sh.phase += dt * 14;
       if (sh.fleeTimer <= 0) { sh.state = "dormant"; sh.dormantCd = 145.0; sh.counterAccum = 0; }
     }
+    if (sh.state !== "dormant" && !this._isLandSafe(sh.gx, sh.gz, 8.0, 14.0, true)) { sh.state = "dormant"; sh.dormantCd = 60.0; sh.gx = 6500; sh.gz = -2500; }
     sh.gy = this.world.getTerrainInfo(sh.gx, sh.gz, false).height;
 
     // 2. FOREST YETI
@@ -915,25 +943,25 @@ KK.CryptidManager = class CryptidManager {
     if (yt.throwCd > 0) yt.throwCd -= dt;
     if (yt.dormantCd > 0) yt.dormantCd -= dt;
     const dYetiToSiren = (sh.state !== "dormant") ? Math.hypot(yt.gx - sh.gx, yt.gz - sh.gz) : 9999;
-    const ytPick = this._nearestPlayerIn(players, yt.gx, yt.gz, (p) => this.world.getBiomeWeights(p.x, p.z).taiga > 0.42);
+    const ytPick = this._nearestPlayerIn(players, yt.gx, yt.gz, (p) => this.world.getBiomeWeights(p.x, p.z).taiga > 0.42 && this._isLandSafe(p.x, p.z, 10.0, 16.0, true));
 
     if (dYetiToSiren < 230 || this._inSanctuary(yt.gx, yt.gz, 35)) {
       yt.state = "flee"; yt.fleeTimer = 12;
       const rx = dYetiToSiren < 230 ? sh.gx : KK.CLARKSON_FARM.x, rz = dYetiToSiren < 230 ? sh.gz : KK.CLARKSON_FARM.z;
       const runAng = Math.atan2(yt.gx - rx, yt.gz - rz); yt.yaw = runAng;
-      yt.gx += Math.sin(runAng) * 20 * dt; yt.gz += Math.cos(runAng) * 20 * dt; yt.phase += dt * 16;
+      this._moveDryInlandFlee(yt, runAng, 20 * dt); yt.phase += dt * 16;
     } else if (yt.state === "flee") {
       yt.fleeTimer -= dt;
       const target = ytPick.player || players[0];
       const fAng = Math.atan2(yt.gx - target.x, yt.gz - target.z); yt.yaw = fAng;
-      yt.gx += Math.sin(fAng) * 18 * dt; yt.gz += Math.cos(fAng) * 18 * dt; yt.phase += dt * 15;
+      this._moveDryInlandFlee(yt, fAng, 18 * dt); yt.phase += dt * 15;
       if (yt.fleeTimer <= 0) { yt.state = "prowl"; yt.dormantCd = 85.0; yt.counterAccum = 0; }
     } else if (yt.dormantCd <= 0 && ytPick.player && ytPick.dist > 360) {
       if (Math.random() < dt * 0.04) {
-        const tgt = this._randomPlayerIn(players, (p) => this.world.getBiomeWeights(p.x, p.z).taiga > 0.42) || ytPick.player;
+        const tgt = this._randomPlayerIn(players, (p) => this.world.getBiomeWeights(p.x, p.z).taiga > 0.42 && this._isLandSafe(p.x, p.z, 10.0, 16.0, true)) || ytPick.player;
         const ang = Math.random() * Math.PI * 2;
         const nx = tgt.x + Math.cos(ang) * 165, nz = tgt.z + Math.sin(ang) * 165;
-        if (this.world.getBiomeWeights(nx, nz).taiga > 0.42 && !this._inSanctuary(nx, nz, 45)) { yt.gx = nx; yt.gz = nz; }
+        if (this.world.getBiomeWeights(nx, nz).taiga > 0.42 && !this._inSanctuary(nx, nz, 45) && this._isLandSafe(nx, nz, 8.0, 18.0)) { yt.gx = nx; yt.gz = nz; }
       }
     } else if (yt.dormantCd <= 0 && ytPick.player && ytPick.dist < 145) {
       const tp = ytPick.player;
@@ -941,12 +969,12 @@ KK.CryptidManager = class CryptidManager {
       const cAng = Math.atan2(tp.x - yt.gx, tp.z - yt.gz); yt.yaw = cAng;
       if (yt.state === "stalk") {
         yt.stageTimer -= dt; yt.phase += dt * 4.5;
-        yt.gx += Math.sin(cAng) * 4.5 * dt; yt.gz += Math.cos(cAng) * 4.5 * dt;
+        this._moveDryLand(yt, cAng, 4.5 * dt);
         if (yt.stageTimer <= 0 || ytPick.dist < 62) yt.state = "chase";
       } else {
         const spd = Math.min(19.5, 14.0 + ytPick.dist * 0.055);
         const nx = yt.gx + Math.sin(cAng) * spd * dt, nz = yt.gz + Math.cos(cAng) * spd * dt;
-        if (this.world.getBiomeWeights(nx, nz).taiga > 0.35 && !this._inSanctuary(nx, nz, 35)) { yt.gx = nx; yt.gz = nz; }
+        if (this.world.getBiomeWeights(nx, nz).taiga > 0.35 && !this._inSanctuary(nx, nz, 35) && this._isLandSafe(nx, nz, 8.0, 18.0)) { yt.gx = nx; yt.gz = nz; }
         else { yt.state = "flee"; yt.fleeTimer = 14; }
         yt.phase += dt * 13;
         if (ytPick.dist > 18 && ytPick.dist < 68 && yt.throwCd <= 0) {
@@ -957,6 +985,7 @@ KK.CryptidManager = class CryptidManager {
         }
       }
     } else { yt.state = "prowl"; yt.phase += dt * 3.5; }
+    if (!this._isLandSafe(yt.gx, yt.gz, 8.0, 14.0, true)) { yt.state = "prowl"; yt.dormantCd = 45.0; yt.gx = 5200; yt.gz = -1800; }
     yt.gy = this.world.getTerrainInfo(yt.gx, yt.gz, false).height;
 
     // 3. ABOMINABLE SNOWMAN
@@ -971,19 +1000,19 @@ KK.CryptidManager = class CryptidManager {
       sn.state = "flee"; sn.fleeTimer = 14;
       const runAng = Math.atan2(sn.gx - this.godzilla.gx, sn.gz - this.godzilla.gz);
       sn.yaw = runAng;
-      sn.gx += Math.sin(runAng) * 24 * dt; sn.gz += Math.cos(runAng) * 24 * dt; sn.phase += dt * 16;
+      this._moveDryInlandFlee(sn, runAng, 24 * dt); sn.phase += dt * 16;
     } else if (sn.state === "flee") {
       sn.fleeTimer -= dt;
       const target = snPick.player || players[0];
       const fAng = Math.atan2(sn.gx - target.x, sn.gz - target.z); sn.yaw = fAng;
-      sn.gx += Math.sin(fAng) * 19 * dt; sn.gz += Math.cos(fAng) * 19 * dt; sn.phase += dt * 15;
+      this._moveDryInlandFlee(sn, fAng, 19 * dt); sn.phase += dt * 15;
       if (sn.fleeTimer <= 0) { sn.state = "prowl"; sn.dormantCd = 80.0; sn.counterAccum = 0; }
     } else if (sn.dormantCd <= 0 && snPick.player && snPick.dist > 340) {
       if (Math.random() < dt * 0.04) {
         const tgt = this._randomPlayerIn(players, isSnowArea) || snPick.player;
         const ang = Math.random() * Math.PI * 2;
         const nx = tgt.x + Math.cos(ang) * 155, nz = tgt.z + Math.sin(ang) * 155;
-        if ((this.world.getTerrainInfo(nx, nz, false).height > 145 || weatherSys.weather === "snow") && !this._inSanctuary(nx, nz, 45)) { sn.gx = nx; sn.gz = nz; }
+        if ((this.world.getTerrainInfo(nx, nz, false).height > 145 || weatherSys.weather === "snow") && !this._inSanctuary(nx, nz, 45) && this._isLandSafe(nx, nz, 8.0, 18.0)) { sn.gx = nx; sn.gz = nz; }
       }
     } else if (sn.dormantCd <= 0 && snPick.player && snPick.dist < 155) {
       const tp = snPick.player;
@@ -994,7 +1023,7 @@ KK.CryptidManager = class CryptidManager {
         if (sn.stageTimer <= 0 || snPick.dist < 68) sn.state = "chase";
       } else {
         const nx = sn.gx + Math.sin(cAng) * 16.0 * dt, nz = sn.gz + Math.cos(cAng) * 16.0 * dt;
-        if ((this.world.getTerrainInfo(nx, nz, false).height > 140 || weatherSys.weather === "snow") && !this._inSanctuary(nx, nz, 35)) { sn.gx = nx; sn.gz = nz; }
+        if ((this.world.getTerrainInfo(nx, nz, false).height > 140 || weatherSys.weather === "snow") && !this._inSanctuary(nx, nz, 35) && this._isLandSafe(nx, nz, 8.0, 18.0)) { sn.gx = nx; sn.gz = nz; }
         else { sn.state = "flee"; sn.fleeTimer = 14; }
         sn.phase += dt * 11;
         if (snPick.dist > 16 && snPick.dist < 74 && sn.throwCd <= 0) {
@@ -1005,6 +1034,7 @@ KK.CryptidManager = class CryptidManager {
         }
       }
     } else { sn.state = "prowl"; sn.phase += dt * 3.0; }
+    if (!this._isLandSafe(sn.gx, sn.gz, 8.0, 14.0, true)) { sn.state = "prowl"; sn.dormantCd = 45.0; sn.gx = -5400; sn.gz = -12500; }
     sn.gy = this.world.getTerrainInfo(sn.gx, sn.gz, false).height;
 
     // 4. SANDWYRM: submerged -> tremor -> stalk -> erupt -> flee
@@ -1023,7 +1053,7 @@ KK.CryptidManager = class CryptidManager {
       swm.fleeTimer -= dt;
       const target = swPick.player || players[0];
       const fAng = Math.atan2(swm.gx - target.x, swm.gz - target.z);
-      swm.gx += Math.sin(fAng) * 42 * dt; swm.gz += Math.cos(fAng) * 42 * dt; swm.phase += dt * 6;
+      this._moveDryInlandFlee(swm, fAng, 42 * dt); swm.phase += dt * 6;
       if (swm.fleeTimer <= 0) { swm.state = "submerged"; swm.dormantCd = 65.0; swm.counterAccum = 0; }
     } else if (swm.state === "burrow") {
       // v14.2 VISIBLE SANDWYRM BURROWING RETREAT ANIMATION (3.6s diving nose-first into dunes w/ sand plume!)
@@ -1046,7 +1076,7 @@ KK.CryptidManager = class CryptidManager {
         const tgt = this._randomPlayerIn(players, (p) => this.world.getBiomeWeights(p.x, p.z).desert > 0.40) || swPick.player;
         const ang = Math.random() * Math.PI * 2;
         const nx = tgt.x + Math.cos(ang) * 290, nz = tgt.z + Math.sin(ang) * 290;
-        if (this.world.getBiomeWeights(nx, nz).desert > 0.38 && !this._inSanctuary(nx, nz, 55)) { swm.gx = nx; swm.gz = nz; }
+        if (this.world.getBiomeWeights(nx, nz).desert > 0.38 && !this._inSanctuary(nx, nz, 55) && this._isLandSafe(nx, nz, 8.5, 8.5)) { swm.gx = nx; swm.gz = nz; }
       }
     } else if (swm.dormantCd <= 0 && swPick.player && swPick.dist < 380) {
       const tp = swPick.player;
@@ -1063,8 +1093,9 @@ KK.CryptidManager = class CryptidManager {
         swm.yaw = cAng;
         const wormSpd = (swm.state === "tremor") ? 19.0 : (swm.adaptedToMil ? 47.0 : 43.0);
         const nx = swm.gx + Math.sin(cAng) * wormSpd * dt, nz = swm.gz + Math.cos(cAng) * wormSpd * dt;
-        if (!this._inSanctuary(nx, nz, 50)) { swm.gx = nx; swm.gz = nz; }
-        swm.gy = this.world.getTerrainInfo(swm.gx, swm.gz, false).height;
+        if (!this._inSanctuary(nx, nz, 50) && this._isLandSafe(nx, nz, 8.0, 18.0)) { swm.gx = nx; swm.gz = nz; }
+        if (swm.state !== "submerged" && !this._isLandSafe(swm.gx, swm.gz, 8.0, 14.0, true)) { swm.state = "submerged"; swm.dormantCd = 45.0; swm.gx = 3600; swm.gz = 11500; }
+    swm.gy = this.world.getTerrainInfo(swm.gx, swm.gz, false).height;
         swm.phase += dt * (swm.state === "tremor" ? 5 : 8);
 
         if (swm.state === "tremor") {
@@ -1093,13 +1124,13 @@ KK.CryptidManager = class CryptidManager {
       rx.state = "flare";
       const dFl = Math.hypot(nearFlare.gx - rx.gx, nearFlare.gz - rx.gz);
       const fAng = Math.atan2(nearFlare.gx - rx.gx, nearFlare.gz - rx.gz); rx.yaw = fAng;
-      if (dFl > 6.5) { rx.gx += Math.sin(fAng) * 26.0 * dt; rx.gz += Math.cos(fAng) * 26.0 * dt; rx.phase += dt * 12; }
+      if (dFl > 6.5) { this._moveDryLand(rx, fAng, 26.0 * dt); rx.phase += dt * 12; }
       else rx.phase += dt * 6;
     } else if (rx.state === "flee") {
       rx.fleeTimer -= dt;
       const target = rxPick.player || players[0];
       const fAng = Math.atan2(rx.gx - target.x, rx.gz - target.z); rx.yaw = fAng;
-      rx.gx += Math.sin(fAng) * 22 * dt; rx.gz += Math.cos(fAng) * 22 * dt; rx.phase += dt * 12;
+      this._moveDryInlandFlee(rx, fAng, 22 * dt); rx.phase += dt * 12;
       if (rx.fleeTimer <= 0) { rx.state = "prowl"; rx.dormantCd = 45.0; rx.counterAccum = 0; }
     } else if (rx.dormantCd <= 0 && rxPick.player && rxPick.dist > 380) {
       // Relocate closer inside the volcanic zone if player drove far away (e.g. Far-West volcanic badlands)
@@ -1122,7 +1153,7 @@ KK.CryptidManager = class CryptidManager {
         rx.yaw = cAng;
         if (rx.state === "stalk") {
           rx.stageTimer -= dt; rx.phase += dt * 6.0;
-          rx.gx += Math.sin(cAng) * 10.5 * dt; rx.gz += Math.cos(cAng) * 10.5 * dt;
+          this._moveDryLand(rx, cAng, 10.5 * dt);
           if (rx.stageTimer <= 0 || rxPick.dist < 95) rx.state = "chase";
         } else {
           if (rx.adaptTimer > 0) { rx.adaptTimer -= dt; if (rx.adaptTimer <= 0) rx.adaptedToMil = false; }
@@ -1147,10 +1178,11 @@ KK.CryptidManager = class CryptidManager {
       rx.state = "prowl";
       rx.yaw += Math.sin(performance.now() * 0.00035) * dt * 0.5;
       const nx = rx.gx + Math.sin(rx.yaw) * 4.5 * dt, nz = rx.gz + Math.cos(rx.yaw) * 4.5 * dt;
-      if (this.world.getBiomeWeights(nx, nz).volcanic > 0.24 && !this._inSanctuary(nx, nz, 45)) { rx.gx = nx; rx.gz = nz; }
+      if (this.world.getBiomeWeights(nx, nz).volcanic > 0.24 && !this._inSanctuary(nx, nz, 45) && this._isLandSafe(nx, nz, 8.0, 18.0)) { rx.gx = nx; rx.gz = nz; }
       else rx.yaw += Math.PI * 0.6;
       rx.phase += dt * 4.0;
     }
+    if (!this._isLandSafe(rx.gx, rx.gz, 8.0, 14.0, true)) { rx.state = "prowl"; rx.dormantCd = 40.0; rx.gx = -8500; rx.gz = 1800; }
     rx.gy = this.world.getTerrainInfo(rx.gx, rx.gz, false).height;
 
     // 6. GODZILLA (v14.2: Fair Snow-Delivery Pacing + Stalk-From-Afar + Standoff Tail Whip + Titan Kick + 3-Min Rest!)
@@ -1297,10 +1329,11 @@ KK.CryptidManager = class CryptidManager {
       gz.state = "prowl";
       gz.yaw += Math.sin(performance.now() * 0.0002) * dt * 0.35;
       const nx = gz.gx + Math.sin(gz.yaw) * 6.0 * dt, nz = gz.gz + Math.cos(gz.yaw) * 6.0 * dt;
-      if (nz < -9000 && nz > -42000 && Math.abs(nx) < 35000) { gz.gx = nx; gz.gz = nz; }
+      if (nz < -9000 && nz > -40000 && Math.abs(nx) < 34000 && this._isLandSafe(nx, nz, 10.0, 8.0)) { gz.gx = nx; gz.gz = nz; }
       else gz.yaw += Math.PI * 0.65;
       gz.phase += dt * 1.8;
     }
+    if (!this._isLandSafe(gz.gx, gz.gz, 10.0, 10.0, true)) { gz.state = "prowl"; gz.gx = -4200; gz.gz = -18500; }
     gz.gy = this.world.getTerrainInfo(gz.gx, gz.gz, false).height;
   }
 

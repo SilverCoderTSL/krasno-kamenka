@@ -480,9 +480,7 @@ KK.CockpitBuilder = {
     const leverL = makeTiller(-0.28);
     const leverR = makeTiller( 0.28);
 
-    const cabLight = new THREE.PointLight(0x88ffaa, 0.55, 2.2);
-    cabLight.position.set(cx, cy + 0.24, cz + 0.08);
-    bay.add(cabLight);
+    // v15.3.6: Removed dynamic cockpit PointLight to keep 1st-person locked at 60 FPS!
 
     const eyeLocal = new THREE.Vector3(cx, cy + 0.10, cz - 0.04);
 
@@ -497,7 +495,7 @@ KK.CockpitBuilder = {
           leverR.rotation.x = -0.18 - Math.max(0, -st) * 0.85;
           if (gaugeSys) {
             this.gaugeAccum += dt;
-            if (this.gaugeAccum >= 0.055) { this.gaugeAccum = 0; gaugeSys.draw(state); }
+            if (this.gaugeAccum >= 0.15) { this.gaugeAccum = 0; gaugeSys.draw(state); }
           }
         }
       }
@@ -712,7 +710,7 @@ KK.CockpitBuilder = {
         wiperL.rotation.z = sweep; wiperR.rotation.z = sweep;
         if (gaugeSys && state.inCockpitCam) {
           this.gaugeAccum += dt;
-          if (this.gaugeAccum >= 0.055) { this.gaugeAccum = 0; gaugeSys.draw(state); }
+          if (this.gaugeAccum >= 0.15) { this.gaugeAccum = 0; gaugeSys.draw(state); }
         }
       }
     };

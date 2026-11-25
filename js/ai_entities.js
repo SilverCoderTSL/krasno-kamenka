@@ -73,6 +73,8 @@ KK.EntityManager = class EntityManager {
     for (let i = 0; i < 12; i++) this._spawnGoat(i, -12000, -16000);
     for (let i = 0; i < 10; i++) this._spawnCamel(i, 2400, 6200);
     for (let i = 0; i < 20; i++) this._spawnFish(i);
+    this.seaCreatures = [];
+    this._initSeaEcosystem();
 
     this.spawnLooseCrate(-22, -2.5, "standard");
     this.spawnLooseCrate(-20.6, -2.5, "fuel_drums");
@@ -262,6 +264,122 @@ KK.EntityManager = class EntityManager {
     this.fishes.push({ id: index, gx: 440, gy: 0, gz: 58, yaw: 0, phase: Math.random() * 12, jumpPhase: Math.random() * 8, mesh });
   }
 
+  // ==========================================================================
+  // v15.4.1 MINECRAFT-STYLE OCEAN SEA LIFE ECOSYSTEM (8 Species!)
+  // Cod, Salmon, 6 Tropical Reef Fish, Inflating Pufferfish, Leaping Dolphins,
+  // Gliding Sea Turtles, Manta Rays & Deep-Sea Squid — Strictly Ocean-Only!
+  // ==========================================================================
+  _initSeaEcosystem() {
+    const matCod     = new THREE.MeshStandardMaterial({ color: 0x9b8b6b, roughness: 0.45, metalness: 0.25 });
+    const matSalmon  = new THREE.MeshStandardMaterial({ color: 0xc94a38, roughness: 0.35, metalness: 0.35 });
+    const matSalHead = new THREE.MeshStandardMaterial({ color: 0x3b6e5c, roughness: 0.40 });
+    const matPuffer  = new THREE.MeshStandardMaterial({ color: 0xf4c430, roughness: 0.55 });
+    const matPuffSpk = new THREE.MeshStandardMaterial({ color: 0xfff0b3, roughness: 0.6 });
+    const matDolphin = new THREE.MeshStandardMaterial({ color: 0x7b9bb5, roughness: 0.26, metalness: 0.30 });
+    const matDolBel  = new THREE.MeshStandardMaterial({ color: 0xdce6f0, roughness: 0.35 });
+    const matTurtle  = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.65 });
+    const matShell   = new THREE.MeshStandardMaterial({ color: 0x40916c, roughness: 0.55 });
+    const matManta   = new THREE.MeshStandardMaterial({ color: 0x222a38, roughness: 0.38, metalness: 0.25 });
+    const matSquid   = new THREE.MeshStandardMaterial({ color: 0x2b3a67, roughness: 0.50 });
+    const matEyeBlk  = new THREE.MeshBasicMaterial({ color: 0x0b0d10 });
+    const tropColors = [0xff6b2b, 0x00b4d8, 0xffd60a, 0x9b5de5, 0xf15bb5, 0x2ec4b6];
+    const tropMats = tropColors.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.32, metalness: 0.28 }));
+    const matWhite = new THREE.MeshStandardMaterial({ color: 0xf4f7fa, roughness: 0.4 });
+
+    const addSea = (kind, mesh, speed, zone, extra = {}) => {
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.seaCreatures.push(Object.assign({
+        kind, mesh, speed, zone,
+        gx: 0, gy: -33, gz: 0, yaw: Math.random() * 6.28,
+        phase: Math.random() * 14, jumpPhase: Math.random() * 10,
+        puffAmt: 0
+      }, extra));
+    };
+
+    // 1. 10 Cod (Temperate / All Seas)
+    for (let i = 0; i < 10; i++) {
+      const g = new THREE.Group();
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.30, 0.85), matCod); g.add(b);
+      const t = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.28, 0.30), matCod); t.position.z = -0.55; g.add(t);
+      const d = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 0.36), matCod); d.position.y = 0.20; g.add(d);
+      addSea("cod", g, 3.2, "any", { tail: t });
+    }
+    // 2. 8 Salmon (Cool / Northern & Coastal Seas)
+    for (let i = 0; i < 8; i++) {
+      const g = new THREE.Group();
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 1.05), matSalmon); g.add(b);
+      const h = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.32, 0.34), matSalHead); h.position.z = 0.56; g.add(h);
+      const t = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.32, 0.34), matSalmon); t.position.z = -0.68; g.add(t);
+      addSea("salmon", g, 4.2, "north", { tail: t });
+    }
+    // 3. 12 Vibrant Tropical Reef Fish (Warm Southern / Tropika / Savanna Seas!)
+    for (let i = 0; i < 12; i++) {
+      const g = new THREE.Group();
+      const cm = tropMats[i % tropMats.length];
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.38, 0.62), cm); g.add(b);
+      const st = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.39, 0.14), matWhite); st.position.z = 0.08; g.add(st);
+      const t = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.30, 0.24), cm); t.position.z = -0.42; g.add(t);
+      addSea("tropical", g, 3.8, "south", { tail: t });
+    }
+    // 4. 6 Pufferfish (Inflates into a spiky ball when boats/players come near!)
+    for (let i = 0; i < 6; i++) {
+      const g = new THREE.Group();
+      const core = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.44, 0.52), matPuffer); g.add(core);
+      const spikes = new THREE.Group();
+      for (const [sx, sy, sz] of [[0.28,0,0],[-0.28,0,0],[0,0.28,0],[0,-0.28,0],[0,0,0.30],[0,0,-0.30]]) {
+        const sp = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 4), matPuffSpk);
+        sp.position.set(sx, sy, sz); spikes.add(sp);
+      }
+      spikes.visible = false; g.add(spikes);
+      addSea("puffer", g, 1.9, "south", { spikes });
+    }
+    // 5. 6 Playful Dolphins (Leap in graceful arcs alongside your boat!)
+    for (let i = 0; i < 6; i++) {
+      const g = new THREE.Group();
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.62, 2.45), matDolphin); g.add(b);
+      const bel = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.22, 2.2), matDolBel); bel.position.y = -0.26; g.add(bel);
+      const sn = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.68), matDolphin); sn.position.set(0, -0.06, 1.48); g.add(sn);
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.48, 0.52), matDolphin); fin.position.set(0, 0.45, -0.1); fin.rotation.x = -0.35; g.add(fin);
+      const t = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.10, 0.55), matDolphin); t.position.set(0, 0, -1.45); g.add(t);
+      addSea("dolphin", g, 11.5, "any", { tail: t });
+    }
+    // 6. 5 Sea Turtles (Flapping flippers near beaches & warm straits!)
+    for (let i = 0; i < 5; i++) {
+      const g = new THREE.Group();
+      const sh = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.36, 1.35), matShell); g.add(sh);
+      const hd = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.28, 0.44), matTurtle); hd.position.set(0, 0, 0.85); g.add(hd);
+      const fL = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.08, 0.32), matTurtle); fL.position.set(-0.82, -0.05, 0.32); g.add(fL);
+      const fR = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.08, 0.32), matTurtle); fR.position.set( 0.82, -0.05, 0.32); g.add(fR);
+      addSea("turtle", g, 2.4, "south", { finL: fL, finR: fR });
+    }
+    // 7. 4 Manta Rays (Wide diamond gliders just beneath the waves!)
+    for (let i = 0; i < 4; i++) {
+      const g = new THREE.Group();
+      const core = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.18, 2.2), matManta); g.add(core);
+      const wL = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.10, 1.45), matManta); wL.position.set(-1.5, 0, 0.1); g.add(wL);
+      const wR = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.10, 1.45), matManta); wR.position.set( 1.5, 0, 0.1); g.add(wR);
+      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.06, 2.2, 5), matManta); tail.rotation.x = Math.PI / 2; tail.position.z = -2.0; g.add(tail);
+      addSea("manta", g, 4.6, "any", { finL: wL, finR: wR });
+    }
+    // 8. 5 Ocean Squid (Bobbing with trailing tentacles in deep northern/open seas!)
+    for (let i = 0; i < 5; i++) {
+      const g = new THREE.Group();
+      const hd = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.92, 0.72), matSquid); hd.position.y = 0.25; g.add(hd);
+      for (const sx of [-0.22, 0.22]) {
+        const e = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.06), matEyeBlk); e.position.set(sx, 0.15, 0.38); g.add(e);
+      }
+      const tentGrp = new THREE.Group(); tentGrp.position.y = -0.25;
+      for (let t = 0; t < 6; t++) {
+        const a = (t / 6) * Math.PI * 2;
+        const tn = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.95, 0.10), matSquid);
+        tn.position.set(Math.cos(a) * 0.22, -0.45, Math.sin(a) * 0.22); tentGrp.add(tn);
+      }
+      g.add(tentGrp);
+      addSea("squid", g, 2.1, "north", { tail: tentGrp });
+    }
+  }
+
   spawnLooseCrate(gx, gz, cargoType = "standard") {
     const cDef = KK.CARGO_TYPES[cargoType] || KK.CARGO_TYPES.standard;
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.72, 0.95), new THREE.MeshStandardMaterial({ color: cDef.color, roughness: 0.85 }));
@@ -285,8 +403,8 @@ KK.EntityManager = class EntityManager {
     if (c) { this.scene.remove(c.mesh); this.looseCrates.splice(idx, 1); }
   }
 
-  update(dt, vehicle, weatherSys, onDeerImpact, sirenPos) {
-    const px = vehicle.pos.x, pz = vehicle.pos.z;
+  update(dt, vehicle, weatherSys, onDeerImpact, sirenPos, seaFocus = null) {
+    const px = seaFocus ? seaFocus.x : vehicle.pos.x, pz = seaFocus ? seaFocus.z : vehicle.pos.z;
     const playerBiomes = this.world.getBiomeWeights(px, pz);
     const isDuskOrNight = (weatherSys.timeOfDay > 17.5 || weatherSys.timeOfDay < 6.5);
 
@@ -298,7 +416,7 @@ KK.EntityManager = class EntityManager {
       if (distToPlayer > 340 || this.world.getBiomeWeights(d.gx, d.gz).taiga < 0.26) {
         const ang = Math.random() * Math.PI * 2, rad = 95 + Math.random() * 195;
         const nx = px + Math.cos(ang) * rad, nz = pz + Math.sin(ang) * rad;
-        if (this.world.getBiomeWeights(nx, nz).taiga > 0.30) { d.gx = nx; d.gz = nz; d.state = "wander"; d.stunTimer = 0; d.mesh.rotation.z = 0; }
+        if (this.world.getBiomeWeights(nx, nz).taiga > 0.30 && (!this.world.isDryInland || this.world.isDryInland(nx, nz, 6.0, 5.0))) { d.gx = nx; d.gz = nz; d.state = "wander"; d.stunTimer = 0; d.mesh.rotation.z = 0; }
         else { d.mesh.visible = false; continue; }
       }
       if (d.stunTimer > 0) { d.stunTimer -= dt; d.mesh.rotation.z = Math.PI * 0.48; if (d.stunTimer <= 0) d.mesh.rotation.z = 0; }
@@ -312,7 +430,7 @@ KK.EntityManager = class EntityManager {
         } else if (d.timer <= 0) { d.state = Math.random() < 0.45 ? "graze" : "wander"; d.yaw += (Math.random() - 0.5) * 2.2; d.timer = 3 + Math.random() * 5; }
         const spd = d.state === "flee" ? 13.5 : (d.state === "wander" ? 2.6 : 0);
         if (spd > 0) {
-          d.gx += Math.sin(d.yaw) * spd * dt; d.gz += Math.cos(d.yaw) * spd * dt;
+          const dnx = d.gx + Math.sin(d.yaw) * spd * dt, dnz = d.gz + Math.cos(d.yaw) * spd * dt; if (!this.world.isDryInland || this.world.isDryInland(dnx, dnz, 5.0, 4.0)) { d.gx = dnx; d.gz = dnz; } else { d.yaw += Math.PI * 0.75; }
           d.phase += dt * (d.state === "flee" ? 14 : 6);
           const sw = Math.sin(d.phase) * (d.state === "flee" ? 0.85 : 0.42);
           const legs = d.mesh.userData.legs;
@@ -334,7 +452,7 @@ KK.EntityManager = class EntityManager {
       if (dP > 320) {
         const ang = Math.random() * 6.28, rad = 85 + Math.random() * 175;
         const nx = px + Math.cos(ang) * rad, nz = pz + Math.sin(ang) * rad;
-        if (this.world.getBiomeWeights(nx, nz).mountains > 0.28 || this.world.getTerrainInfo(nx, nz, false).height > 125) { g.gx = nx; g.gz = nz; }
+        if ((this.world.getBiomeWeights(nx, nz).mountains > 0.28 || this.world.getTerrainInfo(nx, nz, false).height > 125) && (!this.world.isDryInland || this.world.isDryInland(nx, nz, 6.0, 5.0))) { g.gx = nx; g.gz = nz; }
         else { g.mesh.visible = false; continue; }
       }
       g.timer -= dt;
@@ -342,14 +460,15 @@ KK.EntityManager = class EntityManager {
       else if (g.timer <= 0) { g.state = Math.random() < 0.5 ? "graze" : "wander"; g.yaw += (Math.random() - 0.5) * 2.4; g.timer = 2.5 + Math.random() * 4; }
       const spd = g.state === "flee" ? 9.5 : (g.state === "wander" ? 2.0 : 0);
       if (spd > 0) {
-        g.gx += Math.sin(g.yaw) * spd * dt; g.gz += Math.cos(g.yaw) * spd * dt;
+        const gnx = g.gx + Math.sin(g.yaw) * spd * dt, gnz = g.gz + Math.cos(g.yaw) * spd * dt; if (!this.world.isDryInland || this.world.isDryInland(gnx, gnz, 5.0, 4.0)) { g.gx = gnx; g.gz = gnz; } else { g.yaw += Math.PI * 0.75; }
         g.phase += dt * (g.state === "flee" ? 13 : 5);
         const sw = Math.sin(g.phase) * 0.65;
         const legs = g.mesh.userData.legs;
         legs[0].rotation.x = sw; legs[1].rotation.x = -sw; legs[2].rotation.x = -sw; legs[3].rotation.x = sw;
       }
-      g.gy = this.world.getTerrainInfo(g.gx, g.gz, false).height;
-      this.world.toLocal(g.gx, g.gy, g.gz, g.mesh.position); g.mesh.rotation.y = g.yaw; g.mesh.visible = dP < 270;
+      const gti = this.world.getTerrainInfo(g.gx, g.gz, false);
+      g.gy = gti.height;
+      this.world.toLocal(g.gx, g.gy, g.gz, g.mesh.position); g.mesh.rotation.y = g.yaw; g.mesh.visible = dP < 270 && gti.waterDepth < 0.15;
     }
 
     // 3. DESERT CAMELS
@@ -360,7 +479,7 @@ KK.EntityManager = class EntityManager {
       if (dP > 360 || this.world.getBiomeWeights(c.gx, c.gz).desert < 0.30) {
         const ang = Math.random() * 6.28, rad = 95 + Math.random() * 195;
         const nx = px + Math.cos(ang) * rad, nz = pz + Math.sin(ang) * rad;
-        if (this.world.getBiomeWeights(nx, nz).desert > 0.32) { c.gx = nx; c.gz = nz; c.stunTimer = 0; c.mesh.rotation.z = 0; }
+        if (this.world.getBiomeWeights(nx, nz).desert > 0.32 && (!this.world.isDryInland || this.world.isDryInland(nx, nz, 6.0, 5.0))) { c.gx = nx; c.gz = nz; c.stunTimer = 0; c.mesh.rotation.z = 0; }
         else { c.mesh.visible = false; continue; }
       }
       if (c.stunTimer > 0) { c.stunTimer -= dt; c.mesh.rotation.z = Math.PI * 0.45; if (c.stunTimer <= 0) c.mesh.rotation.z = 0; }
@@ -370,7 +489,7 @@ KK.EntityManager = class EntityManager {
         else if (c.timer <= 0) { c.state = Math.random() < 0.45 ? "graze" : "wander"; c.yaw += (Math.random() - 0.5) * 1.8; c.timer = 3 + Math.random() * 6; }
         const spd = c.state === "flee" ? 8.8 : (c.state === "wander" ? 1.9 : 0);
         if (spd > 0) {
-          c.gx += Math.sin(c.yaw) * spd * dt; c.gz += Math.cos(c.yaw) * spd * dt;
+          const cnx = c.gx + Math.sin(c.yaw) * spd * dt, cnz = c.gz + Math.cos(c.yaw) * spd * dt; if (!this.world.isDryInland || this.world.isDryInland(cnx, cnz, 5.0, 4.0)) { c.gx = cnx; c.gz = cnz; } else { c.yaw += Math.PI * 0.75; }
           c.phase += dt * (c.state === "flee" ? 9 : 4);
           const sw = Math.sin(c.phase) * 0.52;
           const legs = c.mesh.userData.legs;
@@ -379,8 +498,9 @@ KK.EntityManager = class EntityManager {
         const camelHitRad = Math.max(2.8, Math.max(vehicle.spec.bodyWidth, vehicle.spec.bodyLen * 0.56) * 0.54 + 0.85);
       if (dP < camelHitRad && vehicle.speedKmh > 12 && Math.abs(c.gy - vehicle.pos.y) < 3.0) { c.stunTimer = 6.0; if (onDeerImpact) onDeerImpact("camel", vehicle.speedKmh, c.gx, c.gz); }
       }
-      c.gy = this.world.getTerrainInfo(c.gx, c.gz, false).height;
-      this.world.toLocal(c.gx, c.gy, c.gz, c.mesh.position); c.mesh.rotation.y = c.yaw; c.mesh.visible = dP < 310;
+      const cti = this.world.getTerrainInfo(c.gx, c.gz, false);
+      c.gy = cti.height;
+      this.world.toLocal(c.gx, c.gy, c.gz, c.mesh.position); c.mesh.rotation.y = c.yaw; c.mesh.visible = dP < 310 && cti.waterDepth < 0.15;
     }
 
     // 3B. v15.0.2 ISLAND-SPECIFIC WILDLIFE (Savanna Zebras & Giraffes, Tropical Macaws & Boars, Arctic Polar Bears, Site-140 Rad-Wolves!)
@@ -392,7 +512,7 @@ KK.EntityManager = class EntityManager {
           const ang = Math.random() * 6.28, rad = 75 + Math.random() * 190;
           const nx = px + Math.cos(ang) * rad, nz = pz + Math.sin(ang) * rad;
           const inZCity = KK.ZOLOTOY_CITY && Math.abs(nx - KK.ZOLOTOY_CITY.cx) < (KK.ZOLOTOY_CITY.halfSpan + 40) && Math.abs(nz - KK.ZOLOTOY_CITY.cz) < (KK.ZOLOTOY_CITY.halfSpan + 40);
-          if (!inZCity && (this.world.getBiomeWeights(nx, nz)[biomeKey] || 0) > 0.28) {
+          if (!inZCity && (this.world.getBiomeWeights(nx, nz)[biomeKey] || 0) > 0.28 && (!this.world.isDryInland || this.world.isDryInland(nx, nz, 5.5, 5.0))) {
             a.gx = nx; a.gz = nz; a.state = "wander";
           } else { a.mesh.visible = false; continue; }
         }
@@ -401,7 +521,7 @@ KK.EntityManager = class EntityManager {
         else if (a.timer <= 0) { a.state = Math.random() < 0.4 ? "graze" : "wander"; a.yaw += (Math.random() - 0.5) * 2.0; a.timer = 2.5 + Math.random() * 5; }
         const spd = a.state === "flee" ? fleeSpd : (a.state === "wander" ? walkSpd : 0);
         if (spd > 0) {
-          a.gx += Math.sin(a.yaw) * spd * dt; a.gz += Math.cos(a.yaw) * spd * dt;
+          const anx = a.gx + Math.sin(a.yaw) * spd * dt, anz = a.gz + Math.cos(a.yaw) * spd * dt; if (!this.world.isDryInland || this.world.isDryInland(anx, anz, 5.0, 4.0)) { a.gx = anx; a.gz = anz; } else { a.yaw += Math.PI * 0.75; }
           a.phase += dt * (a.state === "flee" ? 12 : 5);
           const sw = Math.sin(a.phase) * 0.55;
           a.legs[0].rotation.x = sw; a.legs[1].rotation.x = -sw; a.legs[2].rotation.x = -sw; a.legs[3].rotation.x = sw;
@@ -467,6 +587,85 @@ KK.EntityManager = class EntityManager {
         f.mesh.rotation.x = cyc < 0.85 ? -Math.cos((cyc / 0.85) * Math.PI) * 0.65 : 0;
         f.mesh.visible = dF < 160;
       } else { f.yaw += Math.PI * 0.8; f.mesh.visible = false; }
+    }
+
+    // 5. v15.4.1 MINECRAFT-STYLE OCEAN SEA LIFE (Strictly Ocean-Only — Cod, Salmon, Tropical, Puffer, Dolphins, Turtles, Mantas & Squid!)
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const pTerr = this.world.getTerrainInfo(px, pz, false);
+    const nearOcean = (playerBiomes.ocean || 0) > 0.05 || pTerr.height < seaL + 8.0;
+    if (this.seaCreatures) {
+      for (let si = 0; si < this.seaCreatures.length; si++) {
+        const sc = this.seaCreatures[si];
+        if (!nearOcean) { sc.mesh.visible = false; continue; }
+        // Regional ocean flavor (warm southern seas vs cool northern seas)
+        if (sc.zone === "south" && pz < -5000) { sc.mesh.visible = false; continue; }
+        if (sc.zone === "north" && pz >  5000) { sc.mesh.visible = false; continue; }
+
+        const dS = Math.hypot(sc.gx - px, sc.gz - pz);
+        if (dS > 240 || dS < 2 || this.world.getTerrainInfo(sc.gx, sc.gz, false).height > seaL - 1.2) {
+          const ang = Math.random() * 6.28, rad = 28 + Math.random() * 145;
+          const nx = px + Math.cos(ang) * rad, nz = pz + Math.sin(ang) * rad;
+          if (this.world.getTerrainInfo(nx, nz, false).height < seaL - 1.8) {
+            sc.gx = nx; sc.gz = nz; sc.yaw = Math.random() * 6.28;
+          } else { sc.mesh.visible = false; continue; }
+        }
+
+        sc.phase += dt * (sc.kind === "dolphin" ? 5.5 : 4.2);
+        sc.jumpPhase += dt * (sc.kind === "dolphin" ? 1.15 : 0.72);
+        const nx = sc.gx + Math.sin(sc.yaw) * sc.speed * dt;
+        const nz = sc.gz + Math.cos(sc.yaw) * sc.speed * dt;
+        if (this.world.getTerrainInfo(nx, nz, false).height < seaL - 1.5) {
+          sc.gx = nx; sc.gz = nz;
+        } else {
+          sc.yaw += Math.PI * 0.78;
+        }
+        sc.yaw += Math.sin(sc.phase * 0.25) * 0.35 * dt;
+
+        let depthY = seaL - 0.55;
+        let pitchX = 0;
+        if (sc.kind === "dolphin") {
+          const cyc = sc.jumpPhase % 4.6;
+          if (cyc < 1.15) {
+            const u = cyc / 1.15;
+            depthY = seaL - 0.3 + Math.sin(u * Math.PI) * 2.6;
+            pitchX = -Math.cos(u * Math.PI) * 0.72;
+          } else {
+            depthY = seaL - 0.45 + Math.sin(sc.phase) * 0.15;
+          }
+          if (sc.tail) sc.tail.rotation.x = Math.sin(sc.phase * 2.0) * 0.35;
+        } else if (sc.kind === "puffer") {
+          const scared = dS < 22;
+          sc.puffAmt += ((scared ? 1.0 : 0.0) - sc.puffAmt) * Math.min(1, dt * 6);
+          const s = 1.0 + sc.puffAmt * 1.15;
+          sc.mesh.scale.set(s, s, s);
+          if (sc.spikes) sc.spikes.visible = sc.puffAmt > 0.35;
+          depthY = seaL - 0.45 + Math.sin(sc.phase) * 0.12;
+        } else if (sc.kind === "turtle" || sc.kind === "manta") {
+          depthY = seaL - (sc.kind === "manta" ? 0.85 : 0.35) + Math.sin(sc.phase * 0.6) * 0.12;
+          const flap = Math.sin(sc.phase * 1.4) * (sc.kind === "manta" ? 0.32 : 0.45);
+          if (sc.finL) sc.finL.rotation.z = flap;
+          if (sc.finR) sc.finR.rotation.z = -flap;
+        } else if (sc.kind === "squid") {
+          depthY = seaL - 1.1 + Math.sin(sc.phase * 0.9) * 0.55;
+          if (sc.tail) sc.tail.rotation.x = Math.sin(sc.phase * 1.6) * 0.28;
+        } else {
+          // Cod, Salmon & Tropical Fish (Occasional playful surface leaps!)
+          const cyc = sc.jumpPhase % 7.5;
+          if (cyc < 0.70) {
+            const u = cyc / 0.70;
+            depthY = seaL - 0.25 + Math.sin(u * Math.PI) * 0.95;
+            pitchX = -Math.cos(u * Math.PI) * 0.55;
+          } else {
+            depthY = seaL - 0.42;
+          }
+          if (sc.tail) sc.tail.rotation.y = Math.sin(sc.phase * 3.0) * 0.42;
+        }
+
+        sc.gy = depthY;
+        this.world.toLocal(sc.gx, sc.gy, sc.gz, sc.mesh.position);
+        sc.mesh.rotation.set(pitchX, sc.yaw, 0, "YXZ");
+        sc.mesh.visible = dS < 210;
+      }
     }
 
     for (const c of this.looseCrates) {
