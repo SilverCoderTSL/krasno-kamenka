@@ -3030,6 +3030,23 @@ KK.World = class World {
       addInst(this.geoSavGrass, this.matSavGrass2, g2Mats);
     }
 
+    // v15.3.3 ZERO-QUALITY-LOSS INSTANCED CHUNK TREES & FENCES BATCHER!
+    const instBuckets = new Map(); // key -> { geo, mat, matrices: [], owners: [] }
+    const _pDummy = new THREE.Object3D();
+    const _cDummy = new THREE.Object3D();
+    const _mComb  = new THREE.Matrix4();
+    const addInstPart = (bKey, geo, mat, ownerId, isFence, cxL, cyL, czL, rxL = 0, ryL = 0, rzL = 0, sxL = 1, syL = 1, szL = 1) => {
+      let bk = instBuckets.get(bKey);
+      if (!bk) { bk = { geo, mat, matrices: [], owners: [] }; instBuckets.set(bKey, bk); }
+      _cDummy.position.set(cxL, cyL, czL);
+      _cDummy.rotation.set(rxL, ryL, rzL);
+      _cDummy.scale.set(sxL, syL, szL);
+      _cDummy.updateMatrix();
+      _mComb.multiplyMatrices(_pDummy.matrix, _cDummy.matrix);
+      bk.matrices.push(_mComb.clone());
+      bk.owners.push({ id: ownerId, isFence });
+    };
+
     for (let t = 0; t < treeCount; t++) {
       const treeId = `${cx}_${cz}_${t}`;
       if (this.brokenTrees.has(treeId)) continue; // Already smashed down!
@@ -3054,97 +3071,66 @@ KK.World = class World {
       if (blocked) continue;
 
       const scale = 0.95 + this.hash2(cx + t * 5, cz - t * 3) * 0.90;
-      const tGrp = new THREE.Group();
+      const ryBase = info.height - 0.15;
+
       if (isTropChunk) {
-        // Curved Tropical Jungle Palm Tree with 6 splayed emerald fronds!
         const lean = 0.14 + this.hash2(cx + t, cz - t) * 0.16;
-        const p1 = new THREE.Mesh(this.geoPalmSeg, this.matPalmTrunk);
-        p1.position.set(0, 1.35, 0); p1.rotation.z = lean * 0.5; tGrp.add(p1);
-        const p2 = new THREE.Mesh(this.geoPalmSeg, this.matPalmTrunk);
-        p2.position.set(-lean * 1.4, 4.0, 0); p2.rotation.z = lean; tGrp.add(p2);
-        const p3 = new THREE.Mesh(this.geoPalmSeg, this.matPalmTrunk);
-        p3.position.set(-lean * 3.8, 6.5, 0); p3.rotation.z = lean * 1.2; tGrp.add(p3);
+        const rotY = this.hash2(t * 7, cx + cz) * Math.PI * 2;
+        _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, rotY, 0); _pDummy.scale.set(scale * 1.05, scale * 1.15, scale * 1.05); _pDummy.updateMatrix();
+        addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, 0, 1.35, 0, 0, 0, lean * 0.5);
+        addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, -lean * 1.4, 4.0, 0, 0, 0, lean);
+        addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, -lean * 3.8, 6.5, 0, 0, 0, lean * 1.2);
         const crownX = -lean * 5.2, crownY = 7.9;
         for (let f = 0; f < 6; f++) {
           const fa = (f / 6) * Math.PI * 2;
-          const fr = new THREE.Mesh(this.geoPalmFrond, this.matPalmLeaf);
-          fr.position.set(crownX + Math.sin(fa) * 1.5, crownY - 0.15, Math.cos(fa) * 1.5);
-          fr.rotation.y = fa; fr.rotation.x = 0.34;
-          tGrp.add(fr);
+          addInstPart("palm_f", this.geoPalmFrond, this.matPalmLeaf, treeId, false, crownX + Math.sin(fa) * 1.5, crownY - 0.15, Math.cos(fa) * 1.5, 0.34, fa, 0);
         }
-        tGrp.rotation.y = this.hash2(t * 7, cx + cz) * Math.PI * 2;
-        tGrp.scale.set(scale * 1.05, scale * 1.15, scale * 1.05);
-        tGrp.position.set(rx, info.height - 0.15, rz);
-        group.add(tGrp);
-        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
-        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.42 * scale, h: 9.0 * scale, kind: "tree", mesh: tGrp, broken: false });
+        this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "palm", rx, ry: ryBase, rz, scale, rotY, lean });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.42 * scale, h: 9.0 * scale, kind: "tree", broken: false });
       } else if (isSavChunk) {
-        // Wide Flat-Topped African Savanna Acacia Tree!
-        const trk = new THREE.Mesh(this.geoPalmSeg, this.matAcaciaBark);
-        trk.scale.set(1.25, 1.55, 1.25); trk.position.set(0, 2.1, 0); tGrp.add(trk);
-        const can1 = new THREE.Mesh(this.geoAcaciaCanopy, this.matAcaciaLeaf);
-        can1.position.set(0, 4.4, 0); tGrp.add(can1);
-        const can2 = new THREE.Mesh(this.geoAcaciaCanopy, this.matAcaciaLeaf);
-        can2.scale.set(0.68, 0.75, 0.68); can2.position.set(1.1, 5.0, 0.6); tGrp.add(can2);
-        tGrp.rotation.y = this.hash2(t * 11, cx - cz) * Math.PI * 2;
-        tGrp.scale.set(scale * 1.1, scale * 1.0, scale * 1.1);
-        tGrp.position.set(rx, info.height - 0.15, rz);
-        group.add(tGrp);
-        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
-        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.55 * scale, h: 6.2 * scale, kind: "tree", mesh: tGrp, broken: false });
+        const rotY = this.hash2(t * 11, cx - cz) * Math.PI * 2;
+        _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, rotY, 0); _pDummy.scale.set(scale * 1.1, scale * 1.0, scale * 1.1); _pDummy.updateMatrix();
+        addInstPart("aca_t", this.geoPalmSeg, this.matAcaciaBark, treeId, false, 0, 2.1, 0, 0, 0, 0, 1.25, 1.55, 1.25);
+        addInstPart("aca_c", this.geoAcaciaCanopy, this.matAcaciaLeaf, treeId, false, 0, 4.4, 0);
+        addInstPart("aca_c", this.geoAcaciaCanopy, this.matAcaciaLeaf, treeId, false, 1.1, 5.0, 0.6, 0, 0, 0, 0.68, 0.75, 0.68);
+        this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "acacia", rx, ry: ryBase, rz, scale, rotY });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.55 * scale, h: 6.2 * scale, kind: "tree", broken: false });
       } else if (isArcChunk) {
-        // Arctic Glacier Ice Spire / Frost-Laden Pine!
+        _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, 0, 0); _pDummy.scale.set(scale, scale, scale); _pDummy.updateMatrix();
         if (t % 2 === 0) {
-          const spire = new THREE.Mesh(this.geoIceSpire, this.matGlacierIce);
-          spire.position.set(0, 3.6, 0); tGrp.add(spire);
+          addInstPart("ice_s", this.geoIceSpire, this.matGlacierIce, treeId, false, 0, 3.6, 0);
+          this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "ice", rx, ry: ryBase, rz, scale });
         } else {
-          tGrp.add(new THREE.Mesh(this.geoTrunk, this.matTrunk));
-          tGrp.add(new THREE.Mesh(this.geoPine1, this.matSnowPine));
-          tGrp.add(new THREE.Mesh(this.geoPine2, this.matSnowPine));
+          addInstPart("trk", this.geoTrunk, this.matTrunk, treeId, false, 0, 0, 0);
+          addInstPart("sp1", this.geoPine1, this.matSnowPine, treeId, false, 0, 0, 0);
+          addInstPart("sp2", this.geoPine2, this.matSnowPine, treeId, false, 0, 0, 0);
+          this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "snowpine", rx, ry: ryBase, rz, scale });
         }
-        tGrp.scale.set(scale, scale, scale);
-        tGrp.position.set(rx, info.height - 0.15, rz);
-        group.add(tGrp);
-        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
-        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.60 * scale, h: 8.5 * scale, kind: "tree", mesh: tGrp, broken: false });
-      } else if (isRadChunk) {
-        const deadTrk = new THREE.Mesh(this.geoTrunk, this.matObsidian);
-        tGrp.add(deadTrk);
-        tGrp.scale.set(scale * 0.75, scale * 0.85, scale * 0.75);
-        tGrp.position.set(rx, info.height - 0.15, rz);
-        group.add(tGrp);
-        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
-        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.45 * scale, h: 7.5 * scale, kind: "tree", mesh: tGrp, broken: false });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.60 * scale, h: 8.5 * scale, kind: "tree", broken: false });
+      } else if (isRadChunk || isVolcChunk) {
+        const sx = isRadChunk ? 0.75 : 0.85, sy = isRadChunk ? 0.85 : 0.95;
+        _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, 0, 0); _pDummy.scale.set(scale * sx, scale * sy, scale * sx); _pDummy.updateMatrix();
+        addInstPart("dead_t", this.geoTrunk, this.matObsidian, treeId, false, 0, 0, 0);
+        this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "dead", rx, ry: ryBase, rz, scale });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: (isRadChunk ? 0.45 : 0.50) * scale, h: (isRadChunk ? 7.5 : 8.5) * scale, kind: "tree", broken: false });
       } else if (isDesertChunk) {
-        const cMesh = new THREE.Mesh(this.geoCactus, this.matCactus);
-        tGrp.add(cMesh);
-        tGrp.scale.set(scale, scale, scale);
-        tGrp.position.set(rx, info.height - 0.15, rz);
-        group.add(tGrp);
-        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
-        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.46 * scale, h: 5.8 * scale, kind: "tree", mesh: tGrp, broken: false });
-      } else if (isVolcChunk) {
-        const trunk = new THREE.Mesh(this.geoTrunk, this.matObsidian);
-        tGrp.add(trunk);
-        tGrp.scale.set(scale * 0.85, scale * 0.95, scale * 0.85);
-        tGrp.position.set(rx, info.height - 0.15, rz);
-        group.add(tGrp);
-        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
-        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.50 * scale, h: 8.5 * scale, kind: "tree", mesh: tGrp, broken: false });
+        _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, 0, 0); _pDummy.scale.set(scale, scale, scale); _pDummy.updateMatrix();
+        addInstPart("cac", this.geoCactus, this.matCactus, treeId, false, 0, 0, 0);
+        this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "cactus", rx, ry: ryBase, rz, scale });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.46 * scale, h: 5.8 * scale, kind: "tree", broken: false });
       } else {
         // Towering 3-tier Siberian Taiga Pine (21m to 40m tall!)
-        const trunk = new THREE.Mesh(this.geoTrunk, this.matTrunk);
-        tGrp.add(trunk);
-        const foliageMat = info.height > 210 ? this.matSnowPine : this.matPine;
-        tGrp.add(new THREE.Mesh(this.geoPine1, foliageMat));
-        tGrp.add(new THREE.Mesh(this.geoPine2, foliageMat));
-        tGrp.add(new THREE.Mesh(this.geoPine3, foliageMat));
-        tGrp.scale.set(scale, scale, scale);
-        tGrp.position.set(rx, info.height - 0.15, rz);
-        group.add(tGrp);
+        const isSnow = info.height > 210;
+        const fMat = isSnow ? this.matSnowPine : this.matPine;
+        const pfx = isSnow ? "sp" : "gp";
+        _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, 0, 0); _pDummy.scale.set(scale, scale, scale); _pDummy.updateMatrix();
+        addInstPart("trk", this.geoTrunk, this.matTrunk, treeId, false, 0, 0, 0);
+        addInstPart(pfx + "1", this.geoPine1, fMat, treeId, false, 0, 0, 0);
+        addInstPart(pfx + "2", this.geoPine2, fMat, treeId, false, 0, 0, 0);
+        addInstPart(pfx + "3", this.geoPine3, fMat, treeId, false, 0, 0, 0);
         trees.push({ x: gx, y: info.height + 1.8, z: gz });
-        this.treeMeshMap.set(treeId, { mesh: tGrp, chunkKey });
-        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.56 * scale, h: 9.0 * scale, kind: "tree", mesh: tGrp, broken: false });
+        this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: isSnow ? "snowpine" : "pine", rx, ry: ryBase, rz, scale });
+        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.56 * scale, h: 9.0 * scale, kind: "tree", broken: false });
       }
     }
 
@@ -3222,30 +3208,40 @@ KK.World = class World {
           const fz = bz + nz * side * offset;
           const fy = this.getTerrainInfo(fx, fz, false).height;
 
-          const fGrp = new THREE.Group();
-          fGrp.position.set(fx - (startX + size * 0.5), fy, fz - (startZ + size * 0.5));
-          fGrp.rotation.y = yaw + Math.PI * 0.5;
-
+          const frx = fx - (startX + size * 0.5), frz = fz - (startZ + size * 0.5);
+          const fYaw = yaw + Math.PI * 0.5;
+          _pDummy.position.set(frx, fy, frz); _pDummy.rotation.set(0, fYaw, 0); _pDummy.scale.set(1, 1, 1); _pDummy.updateMatrix();
           const pMat = isMetal ? this.matFenceMetal : this.matFenceWood;
+          const pKey = isMetal ? "fp_m" : "fp_w";
           for (const px of [-2.4, 0, 2.4]) {
-            const post = new THREE.Mesh(this.geoFencePost, pMat);
-            post.position.set(px, 0.65, 0);
-            fGrp.add(post);
+            addInstPart(pKey, this.geoFencePost, pMat, fenceId, true, px, 0.65, 0);
           }
           if (isMetal) {
-            const rail = new THREE.Mesh(this.geoGuardRail, this.matFenceMetal);
-            rail.position.set(0, 0.85, 0); fGrp.add(rail);
+            addInstPart("fr_m", this.geoGuardRail, this.matFenceMetal, fenceId, true, 0, 0.85, 0);
           } else {
-            const r1 = new THREE.Mesh(this.geoFenceRailW, this.matFenceWood);
-            r1.position.set(0, 1.05, 0); fGrp.add(r1);
-            const r2 = new THREE.Mesh(this.geoFenceRailW, this.matFenceWood);
-            r2.position.set(0, 0.58, 0); fGrp.add(r2);
+            addInstPart("fr_w", this.geoFenceRailW, this.matFenceWood, fenceId, true, 0, 1.05, 0);
+            addInstPart("fr_w", this.geoFenceRailW, this.matFenceWood, fenceId, true, 0, 0.58, 0);
           }
-          group.add(fGrp);
-          this.fenceMeshMap.set(fenceId, { mesh: fGrp, chunkKey });
+          this.fenceMeshMap.set(fenceId, { instRefs: [], chunkKey, group, isMetal, rx: frx, ry: fy, rz: frz, yaw: fYaw });
           fences.push({ id: fenceId, x: fx, y: fy, z: fz, ux, uz, halfLen: 2.65, halfThick: 0.16, r: 2.8, isMetal, broken: false });
         }
       }
+    }
+
+    // Finalize all batched InstancedMeshes for this chunk (cuts ~1,200+ draw calls -> ~200-350!)
+    for (const bk of instBuckets.values()) {
+      const cnt = bk.matrices.length;
+      if (cnt === 0) continue;
+      const im = new THREE.InstancedMesh(bk.geo, bk.mat, cnt);
+      for (let i = 0; i < cnt; i++) {
+        im.setMatrixAt(i, bk.matrices[i]);
+        const ow = bk.owners[i];
+        const map = ow.isFence ? this.fenceMeshMap : this.treeMeshMap;
+        const entry = map.get(ow.id);
+        if (entry && entry.instRefs) entry.instRefs.push({ im, idx: i });
+      }
+      im.instanceMatrix.needsUpdate = true;
+      group.add(im);
     }
 
     this.rootGroup.add(group);
@@ -3302,15 +3298,52 @@ KK.World = class World {
       }
     }
     const entry = this.treeMeshMap.get(treeId);
-    if (entry && entry.mesh) {
-      const len = Math.hypot(dirX, dirZ) || 1;
-      this.fallingTrees.push({
-        mesh: entry.mesh,
-        ax: -dirZ / len,
-        az: dirX / len,
-        angle: 0,
-        timer: 2.8
-      });
+    if (entry) {
+      let fallMesh = entry.mesh || null;
+      if (!fallMesh && entry.instRefs && entry.instRefs.length > 0) {
+        if (!this._zeroMat4) this._zeroMat4 = new THREE.Matrix4().makeScale(0, 0, 0);
+        for (const ref of entry.instRefs) {
+          ref.im.setMatrixAt(ref.idx, this._zeroMat4);
+          ref.im.instanceMatrix.needsUpdate = true;
+        }
+        // Spawn lightweight falling tree mesh so smashing trees looks identical!
+        if (entry.group) {
+          const tGrp = new THREE.Group();
+          const st = entry.style || "pine";
+          if (st === "cactus") {
+            tGrp.add(new THREE.Mesh(this.geoCactus, this.matCactus));
+          } else if (st === "ice") {
+            const sp = new THREE.Mesh(this.geoIceSpire, this.matGlacierIce); sp.position.y = 3.6; tGrp.add(sp);
+          } else if (st === "dead") {
+            tGrp.add(new THREE.Mesh(this.geoTrunk, this.matObsidian));
+          } else if (st === "acacia") {
+            const trk = new THREE.Mesh(this.geoPalmSeg, this.matAcaciaBark); trk.scale.set(1.25, 1.55, 1.25); trk.position.y = 2.1; tGrp.add(trk);
+            const c1 = new THREE.Mesh(this.geoAcaciaCanopy, this.matAcaciaLeaf); c1.position.y = 4.4; tGrp.add(c1);
+          } else if (st === "palm") {
+            const p1 = new THREE.Mesh(this.geoPalmSeg, this.matPalmTrunk); p1.position.y = 2.8; p1.scale.y = 2.4; tGrp.add(p1);
+          } else {
+            const fMat = st === "snowpine" ? this.matSnowPine : this.matPine;
+            tGrp.add(new THREE.Mesh(this.geoTrunk, this.matTrunk));
+            tGrp.add(new THREE.Mesh(this.geoPine1, fMat));
+            tGrp.add(new THREE.Mesh(this.geoPine2, fMat));
+          }
+          const s = entry.scale || 1.0;
+          tGrp.scale.set(s, s, s);
+          tGrp.position.set(entry.rx, entry.ry, entry.rz);
+          entry.group.add(tGrp);
+          fallMesh = tGrp;
+        }
+      }
+      if (fallMesh) {
+        const len = Math.hypot(dirX, dirZ) || 1;
+        this.fallingTrees.push({
+          mesh: fallMesh,
+          ax: -dirZ / len,
+          az: dirX / len,
+          angle: 0,
+          timer: 2.8
+        });
+      }
     }
   }
 
@@ -3337,17 +3370,46 @@ KK.World = class World {
       if (this.activeFences[i].id === fenceId) this.activeFences[i].broken = true;
     }
     const entry = this.fenceMeshMap.get(fenceId);
-    if (entry && entry.mesh) {
-      const len = Math.hypot(dirX, dirZ) || 1;
-      this.fallingFences.push({
-        mesh: entry.mesh,
-        vx: (dirX / len) * 9.5 + (Math.random() - 0.5) * 3.0,
-        vy: 4.2 + Math.random() * 2.5,
-        vz: (dirZ / len) * 9.5 + (Math.random() - 0.5) * 3.0,
-        rx: (Math.random() - 0.5) * 6.0,
-        rz: (Math.random() - 0.5) * 6.0,
-        timer: 2.2
-      });
+    if (entry) {
+      let flyMesh = entry.mesh || null;
+      if (!flyMesh && entry.instRefs && entry.instRefs.length > 0) {
+        if (!this._zeroMat4) this._zeroMat4 = new THREE.Matrix4().makeScale(0, 0, 0);
+        for (const ref of entry.instRefs) {
+          ref.im.setMatrixAt(ref.idx, this._zeroMat4);
+          ref.im.instanceMatrix.needsUpdate = true;
+        }
+        if (entry.group) {
+          const fGrp = new THREE.Group();
+          fGrp.position.set(entry.rx, entry.ry, entry.rz);
+          fGrp.rotation.y = entry.yaw || 0;
+          const pMat = entry.isMetal ? this.matFenceMetal : this.matFenceWood;
+          for (const px of [-2.4, 0, 2.4]) {
+            const post = new THREE.Mesh(this.geoFencePost, pMat);
+            post.position.set(px, 0.65, 0); fGrp.add(post);
+          }
+          if (entry.isMetal) {
+            const rail = new THREE.Mesh(this.geoGuardRail, this.matFenceMetal);
+            rail.position.set(0, 0.85, 0); fGrp.add(rail);
+          } else {
+            const r1 = new THREE.Mesh(this.geoFenceRailW, this.matFenceWood); r1.position.set(0, 1.05, 0); fGrp.add(r1);
+            const r2 = new THREE.Mesh(this.geoFenceRailW, this.matFenceWood); r2.position.set(0, 0.58, 0); fGrp.add(r2);
+          }
+          entry.group.add(fGrp);
+          flyMesh = fGrp;
+        }
+      }
+      if (flyMesh) {
+        const len = Math.hypot(dirX, dirZ) || 1;
+        this.fallingFences.push({
+          mesh: flyMesh,
+          vx: (dirX / len) * 9.5 + (Math.random() - 0.5) * 3.0,
+          vy: 4.2 + Math.random() * 2.5,
+          vz: (dirZ / len) * 9.5 + (Math.random() - 0.5) * 3.0,
+          rx: (Math.random() - 0.5) * 6.0,
+          rz: (Math.random() - 0.5) * 6.0,
+          timer: 2.2
+        });
+      }
     }
   }
 

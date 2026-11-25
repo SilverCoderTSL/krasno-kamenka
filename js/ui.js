@@ -1192,7 +1192,7 @@ KK.UIManager = class UIManager {
             <div class="small muted" style="margin:6px 0 5px 0;"><b>Multiplayer Visuals &amp; Screenshots:</b></div>
             <div class="btn-row">
               <button class="btn small ${g.remoteDustEnabled ? 'primary' : ''}" onclick="window.__GAME__.toggleRemoteDust()">OTHER PLAYERS MUD/DUST: ${g.remoteDustEnabled ? 'ON' : 'OFF'}</button>
-              <button class="btn small" onclick="window.__GAME__.togglePhotoMode(); window.__GAME__.ui.closeModal();">📷 PHOTO MODE [Tab]</button>
+              <button class="btn small" onclick="window.__GAME__.togglePhotoMode(); window.__GAME__.ui.closeModal();">📷 PHOTO MODE [F8]</button>
               <button class="btn accent small" onclick="window.__GAME__.ui.closeModal(); setTimeout(() => window.__GAME__.captureScreenshot(), 120);">📸 SNAP PNG [F9]</button>
             </div>
           </div>

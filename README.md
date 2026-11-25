@@ -1,12 +1,9 @@
-# Krasno-Kamenka Oblast (v15.3.2 ONLINE — Zero-Quality-Loss Optimization & Laptop Presets Pass)
+# Krasno-Kamenka Oblast (v15.3.3 ONLINE — InstancedMesh Trees & Fences Draw-Call Pass)
 
-## What's New in Version 15.3.2 ONLINE
-1. **InstancedMesh Chunk Batching (`js/world.js`):**
-   - Batched Savanna grass tufts, termite mounds, and chunk boulders into `THREE.InstancedMesh` calls—100% identical visuals while slashing hundreds of per-frame draw calls across active chunks.
-2. **20 Hz Throttled HUD & 2D Canvas Radar (`js/main.js`):**
-   - Capped `updateHUD()` and `drawCompassAndRadar()` to 20 Hz (`0.05 s`) instead of 60 Hz—visually indistinguishable while cutting UI/Canvas CPU overhead by ~65%.
-3. **Real Graphics Presets & Live Draw-Call Counter (`js/ui.js`, `js/main.js`):**
-   - Added **`POTATO` / `LOW` / `MEDIUM` / `HIGH`** graphics presets in **`[O] Options → Audio & Graphics`** (persisted in `localStorage`, defaulting to **`HIGH`** so zero quality is lost on capable PCs, while low-end laptops can drop to `LOW` or `POTATO` for 1.0×/0.85× pixel ratio, shadows off, and `5×5` chunk radius).
-   - Added live **DRAW CALLS** telemetry right beside **LIVE FPS**.
-4. **Multiplayer Shadow Optimization (`js/main.js`):**
-   - Disabled `castShadow` on remote players' vehicles (keeping full shadows on your own rig) so online convoys don't multiply shadow-pass draw calls.
+## What's New in Version 15.3.3 ONLINE
+1. **InstancedMesh Chunk Trees (`js/world.js`):**
+   - Batched all chunk trees across every biome (Siberian Taiga pines, snow pines, tropical palms, Savanna acacias, Arctic glacier spires, desert cacti, and dead volcanic/radioactive trunks) into per-chunk `THREE.InstancedMesh` batches—100% identical visuals and smash/falling-tree physics while eliminating hundreds of draw calls!
+2. **InstancedMesh Roadside Fences & Guardrails (`js/world.js`):**
+   - Batched all wooden ranch fence posts/rails and metal highway guardrails into `THREE.InstancedMesh` batches—smashing through a panel hides its instanced parts and launches the debris flying identically.
+3. **UI Label Fix (`js/ui.js`):**
+   - Updated the Photo Mode button label in `[O] Options → Audio & Graphics` from `[Tab]` to `[F8]`.
