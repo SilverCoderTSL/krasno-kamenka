@@ -4007,7 +4007,7 @@ KK.VehicleBuilder = {
     }
 
     const rig = {
-      root, chassis, hoodPivot, cockpit, wheelAssemblies, cargoGroup, cargoMeshes, strapGroup, smokePuffs, spec, p140RwsGunPitch, p140RwsMuzzleTip, btrMuzzleTip, btrGunGroup,
+      root, chassis, hoodPivot, cockpit, wheelAssemblies, cargoGroup, cargoMeshes, strapGroup, smokePuffs, spec, p140RwsGunPitch, p140RwsMuzzleTip, btrMuzzleTip, btrGunGroup, tankGunPitch, shilkaGunPitch,
       matPaint, matTire, matDirtOverlay, matHeadlight, matTaillight, matBlinker, matReverse, matLedStrip,
       snorkelGroup, bullbarGroup, lightbarGroup, spotL, spotR, ledSpot, remoteHeadLight, hlGlows, ledGlow, flameMesh,
       hoodOpenTarget: 0, hoodOpenCurrent: 0, baseColor: basePaintColor,

@@ -370,7 +370,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1.6 ONLINE! Full Multiplayer Sync Update: James May Molotovs, 3.2x Rage Clarkson & Sheep, Synced Skinwalker Rescue, Remote Winch Cables, Ocean Boats & Zolotoy Tram!');
+      this.ui.toast('Welcome to v15.1.7 ONLINE! Full Multiplayer Sync Update: James May Molotovs, 3.2x Rage Clarkson & Sheep, Synced Skinwalker Rescue, Remote Winch Cables, Ocean Boats & Zolotoy Tram!');
     }, 650);
   }
 
@@ -662,8 +662,11 @@ KK.Game = class Game {
       const sens = this.mouseAimHeld ? 0.55 : 1.0;
       this.camOrbitYaw -= e.movementX * 0.0048 * sens;
       if (this.mouseAimHeld) {
-        const maxEl = (this.vehicle && (this.vehicle.vState.vehicleId === "bm21" || this.vehicle.vState.vehicleId === "shilka")) ? 0.78 : 0.55;
-        this.btrAimPitch = Math.max(-0.26, Math.min(maxEl, this.btrAimPitch - e.movementY * 0.0036 * sens));
+        const mvId = this.vehicle ? this.vehicle.vState.vehicleId : "";
+        const isTankLim = (mvId === "t72" || mvId === "harimau" || mvId === "pzkpfw_140a4");
+        const minEl = isTankLim ? -0.12 : -0.14;
+        const maxEl = (mvId === "bm21" || mvId === "shilka") ? 0.78 : (isTankLim ? 0.32 : 0.55);
+        this.btrAimPitch = Math.max(minEl, Math.min(maxEl, this.btrAimPitch - e.movementY * 0.0036 * sens));
       } else {
         this.camOrbitPitch = Math.max(-0.85, Math.min(1.05, this.camOrbitPitch + e.movementY * 0.0042 * sens));
       }
@@ -709,10 +712,8 @@ KK.Game = class Game {
       else if (code === "Tab") { e.preventDefault(); this.togglePhotoMode(); }
       else if (code === "F9" || code === "Digit9") { e.preventDefault(); this.captureScreenshot(); }
       else if (code === "KeyT") { if (!this.vehicle.winch.active) this.attachWinch(); }
-      else if (code === "KeyV") {
-        if (this.boats && this.boats.activeBoat) {
-          this.boats.toggleMountVehicle(this.boats.activeBoat, this.vehicle, this.ui);
-        }
+      else if (code === "KeyV" && this.boats && this.boats.activeBoat) {
+        this.boats.toggleMountVehicle(this.boats.activeBoat, this.vehicle, this.ui);
       }
       else if (code === "KeyY") {
         if (this.vehicle.winch.active) {
@@ -2273,25 +2274,24 @@ KK.Game = class Game {
   _getBarrelAimWorldDir(yawOverride = null) {
     const yaw = (yawOverride !== null) ? yawOverride : (this.btrTurretYaw || 0);
     const vid = this.vehicle.vState.vehicleId;
-    const maxP = (vid === "bm21" || vid === "shilka") ? 0.78 : 0.32;
-    const pitch = Math.max(-0.12, Math.min(maxP, this.btrAimPitch || 0));
+    const isTankLim = (vid === "t72" || vid === "harimau" || vid === "pzkpfw_140a4");
+    const minP = isTankLim ? -0.12 : -0.14;
+    const maxP = (vid === "bm21" || vid === "shilka") ? 0.78 : (isTankLim ? 0.32 : 0.55);
+    const pitch = Math.max(minP, Math.min(maxP, this.btrAimPitch || 0));
     const dirLocal = new THREE.Vector3(
       Math.sin(yaw) * Math.cos(pitch),
       Math.sin(pitch),
       Math.cos(yaw) * Math.cos(pitch)
     ).normalize();
-    const barrelWorld = dirLocal.applyQuaternion(this.vehicle.quat).normalize();
-    const camDir = new THREE.Vector3(); this.camera.getWorldDirection(camDir); camDir.normalize();
-    // Converge onto exact camera reticle once barrel has finished traversing within 2.0 degrees
-    if (barrelWorld.angleTo(camDir) < 0.019) return camDir;
-    return barrelWorld;
+    return dirLocal.applyQuaternion(this.vehicle.quat).normalize();
   }
 
   _getActiveMuzzleTransform() {
     const vid = this.vehicle.vState.vehicleId;
     const yaw = this.btrTurretYaw || 0;
-    const maxP = (vid === "bm21" || vid === "shilka") ? 0.78 : 0.32;
-    const pitch = Math.max(-0.12, Math.min(maxP, this.btrAimPitch || 0));
+    const isTankMz = (vid === "t72" || vid === "harimau" || vid === "pzkpfw_140a4");
+    const maxP = (vid === "bm21" || vid === "shilka") ? 0.78 : (isTankMz ? 0.32 : 0.55);
+    const pitch = Math.max(isTankMz ? -0.12 : -0.14, Math.min(maxP, this.btrAimPitch || 0));
 
     // Local barrel direction inside chassis space (+Z forward, +Y up)
     const dirLocal = new THREE.Vector3(
@@ -2587,15 +2587,22 @@ KK.Game = class Game {
       return;
     }
     vs[ammoKey]--;
-    this.t72ReloadTotal = vs.upgrades.t72SeismicFcs ? 4.8 : 6.5;
+    this.t72ReloadTotal = (vs.vehicleId === "harimau") ? 5.0 : (vs.upgrades.t72SeismicFcs ? 4.8 : 6.5);
     this.t72ReloadTimer = this.t72ReloadTotal;
     this.t72BarrelRecoil = 1.0;
     this.t72MainFlash = 0.16;
 
-    const muzzleG = new THREE.Vector3(0, 1.92, 0.18).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
-    const aimDir = new THREE.Vector3();
-    this.camera.getWorldDirection(aimDir);
-    aimDir.normalize();
+    const mzMain = this._getActiveMuzzleTransform();
+    const muzzleG = mzMain.tipWorld.clone();
+    let aimDir;
+    if (this.vehicleRig && this.vehicleRig.tankGunPitch) {
+      this.vehicleRig.root.updateMatrixWorld(true);
+      const qBarW = new THREE.Quaternion();
+      this.vehicleRig.tankGunPitch.getWorldQuaternion(qBarW);
+      aimDir = new THREE.Vector3(0, 0, 1).applyQuaternion(qBarW).normalize();
+    } else {
+      aimDir = this._getBarrelAimWorldDir();
+    }
 
     const maxRange = shell === "ap" ? 460 : 380;
     let endPt = muzzleG.clone().addScaledVector(aimDir, maxRange);
@@ -2719,18 +2726,19 @@ KK.Game = class Game {
     this.btrFlashTimer = isKomodoMg ? 0.065 : 0.095;
     vs.btrAmmo--;
 
-    let muzzleLocal;
-    if (this.vehicleRig && this.vehicleRig.btrMuzzleTip) {
+    let muzzleLocal, aimDir;
+    if (this.vehicleRig && this.vehicleRig.btrMuzzleTip && this.vehicleRig.btrGunGroup) {
       this.vehicleRig.root.updateMatrixWorld(true);
       const tipL = new THREE.Vector3();
       this.vehicleRig.btrMuzzleTip.getWorldPosition(tipL);
       muzzleLocal = new THREE.Vector3(tipL.x + this.world.originX, tipL.y, tipL.z + this.world.originZ);
+      const qBarW = new THREE.Quaternion();
+      this.vehicleRig.btrGunGroup.getWorldQuaternion(qBarW);
+      aimDir = new THREE.Vector3(0, 0, 1).applyQuaternion(qBarW).normalize();
     } else {
       muzzleLocal = new THREE.Vector3(0, 2.48, (isKomodo30 || isKomodoMg) ? 0.20 : 0.92).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
+      aimDir = this._getBarrelAimWorldDir();
     }
-    const aimDir = new THREE.Vector3();
-    this.camera.getWorldDirection(aimDir);
-    aimDir.normalize();
 
     const maxRange = 240;
     let endPt = muzzleLocal.clone().addScaledVector(aimDir, maxRange);
@@ -2928,7 +2936,15 @@ KK.Game = class Game {
 
     const bOff = [[-0.32, 0.11], [0.32, 0.11], [-0.32, -0.11], [0.32, -0.11]][this.shilkaActiveBarrel];
     const muzzleG = new THREE.Vector3(bOff[0], 1.92 + bOff[1], 0.05).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
-    const aimDir = new THREE.Vector3(); this.camera.getWorldDirection(aimDir);
+    let aimDir;
+    if (this.vehicleRig && this.vehicleRig.shilkaGunPitch) {
+      this.vehicleRig.root.updateMatrixWorld(true);
+      const qShW = new THREE.Quaternion();
+      this.vehicleRig.shilkaGunPitch.getWorldQuaternion(qShW);
+      aimDir = new THREE.Vector3(0, 0, 1).applyQuaternion(qShW).normalize();
+    } else {
+      aimDir = this._getBarrelAimWorldDir();
+    }
     aimDir.x += (Math.random() - 0.5) * 0.016;
     aimDir.y += (Math.random() - 0.5) * 0.016;
     aimDir.z += (Math.random() - 0.5) * 0.016;
