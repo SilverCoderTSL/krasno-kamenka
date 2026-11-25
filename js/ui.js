@@ -161,11 +161,14 @@ KK.UIManager = class UIManager {
   // LIVE TOP COMPASS TAPE + ROTATING 1.6KM MINI-RADAR
   // ==========================================================================
   drawCompassAndRadar(game) {
-    const px = game.onFoot ? game.playerFoot.x : game.vehicle.pos.x;
-    const pz = game.onFoot ? game.playerFoot.z : game.vehicle.pos.z;
+    const ab = game.boats ? game.boats.activeBoat : null;
+    const px = ab ? ab.gx : (game.onFoot ? game.playerFoot.x : game.vehicle.pos.x);
+    const pz = ab ? ab.gz : (game.onFoot ? game.playerFoot.z : game.vehicle.pos.z);
 
     let headingDeg = 0;
-    if (game.onFoot) {
+    if (ab) {
+      headingDeg = (Math.atan2(Math.sin(ab.yaw), -Math.cos(ab.yaw)) * 180 / Math.PI + 360) % 360;
+    } else if (game.onFoot) {
       headingDeg = (Math.atan2(Math.sin(game.playerFoot.yaw), -Math.cos(game.playerFoot.yaw)) * 180 / Math.PI + 360) % 360;
     } else {
       const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(game.vehicle.quat);
@@ -743,7 +746,7 @@ KK.UIManager = class UIManager {
     const g = this.game;
     const portInfo = g.activeHarborPort || (g.boats && g.boats.findNearbyPort(
       g.onFoot ? g.playerFoot.x : g.vehicle.pos.x,
-      g.onFoot ? g.playerFoot.z : g.vehicle.pos.z, 75
+      g.onFoot ? g.playerFoot.z : g.vehicle.pos.z, 80
     ));
     const portName = portInfo && portInfo.port ? portInfo.port.name : "Ocean Port";
     const owned = g.ownedBoats || {};
@@ -755,25 +758,28 @@ KK.UIManager = class UIManager {
       if (!b) continue;
       const isOwned = !!owned[bid];
       const spawned = g.boats ? g.boats.spawnedBoats.find((x) => x.id === bid) : null;
-      const carCap = b.maxCarMassKg > 0
-        ? `Mounts Vehicles up to ${Math.round(b.maxCarMassKg / 1000)}t`
+      const curLoadT = spawned ? (g.boats.getPayloadKg(spawned, g.network ? g.network.remotePlayers : null) / 1000).toFixed(1) : "0.0";
+      const maxT = Math.round((b.maxPayloadKg || 0) / 1000);
+      const bayCnt = (b.bays || []).length;
+      const carCap = maxT > 0
+        ? `${maxT}t Payload (${bayCnt} Bay${bayCnt === 1 ? "" : "s"}${spawned ? ` • Loaded: ${curLoadT}t` : ""})`
         : "1 Person Only (No Vehicles)";
       const amphTag = b.amphibious ? ' <span style="color:#2de08b;font-weight:800;">• AMPHIBIOUS</span>' : "";
       cards += `
         <div class="card" style="padding:12px;border:1px solid ${isOwned ? '#2de08b' : '#2b3e52'};margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
             <div>
-              <b style="font-size:15px;color:#f0f6fc;">${b.name}</b>${amphTag}
+              <b style="font-size:15px;color:#f0f6fc;">${b.name}</b> <span class="small muted">(${b.len}m × ${b.width}m)</span>${amphTag}
               <div class="small muted" style="margin-top:3px;">${b.desc}</div>
               <div class="small" style="margin-top:5px;color:#80faff;">
-                Top Speed: <b>${b.topSpeedKmh} km/h</b> &nbsp;|&nbsp; Seats: <b>${b.seats}</b> &nbsp;|&nbsp; Deck: <b>${carCap}</b>
+                Top Speed: <b>${b.topSpeedKmh} km/h (${Math.round(b.topSpeedKmh / 1.852)} kts)</b> &nbsp;|&nbsp; Deck: <b>${carCap}</b>
               </div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:6px;min-width:175px;align-items:flex-end;">
+            <div style="display:flex;flex-direction:column;gap:6px;min-width:185px;align-items:flex-end;">
               ${isOwned
                 ? `<button class="btn primary small" onclick="window.__GAME__.summonAndOptionallyBoardBoat('${bid}', false)">SUMMON TO WATER</button>
-                   <button class="btn accent small" onclick="window.__GAME__.summonAndOptionallyBoardBoat('${bid}', true)">SUMMON &amp; BOARD</button>
-                   ${spawned && b.maxCarMassKg > 0 && curRig ? `<button class="btn small" onclick="window.__GAME__.mountCurrentCarOnBoat('${bid}')">LOAD ${curRig.name.split(' ')[0].toUpperCase()} ON DECK</button>` : ""}`
+                   <button class="btn accent small" onclick="window.__GAME__.summonAndOptionallyBoardBoat('${bid}', true)">SUMMON &amp; BOARD HELM</button>
+                   ${spawned && maxT > 0 && curRig ? `<button class="btn small" onclick="window.__GAME__.mountCurrentCarOnBoat('${bid}')">LOAD ${curRig.name.split(' ')[0].toUpperCase()} ON DECK</button>` : ""}`
                 : `<button class="btn warn small" onclick="window.__GAME__.buyBoat('${bid}')">UNLOCK ($${b.price.toLocaleString()})</button>`}
             </div>
           </div>
@@ -784,13 +790,13 @@ KK.UIManager = class UIManager {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <div>
           <b style="font-size:16px;color:#00e5ff;">⚓ ${portName.toUpperCase()}</b>
-          <div class="small muted">Summoned boats spawn floating in the harbor water beside the pier — your vehicle stays parked safely!</div>
+          <div class="small muted">Summoned vessels launch anchored in harbor water — your vehicle stays parked safely on shore!</div>
         </div>
         <div style="font-family:monospace;font-size:15px;color:#2de08b;font-weight:800;">$${Math.floor(g.money).toLocaleString()}</div>
       </div>
       ${cards}
       <div class="small muted" style="margin-top:6px;">
-        <b>Boat Controls:</b> [W/S] Throttle &nbsp;•&nbsp; [A/D] Rudder &nbsp;•&nbsp; [Shift] Full Ahead &nbsp;•&nbsp; [V] Load/Unload Vehicle on Deck &nbsp;•&nbsp; [E] or [F] Board / Disembark
+        <b>Helm Controls:</b> [W/S] Throttle • [A/D] Rudder • [Shift] Flank • [SPACE] Anchor/Cushion • [U] Deck Lock/Ramp • [L] Nav Lights • [K] Searchlight • [N] Foghorn • [V] Load/Unload Car • [E] Walk on Deck
       </div>`;
   }
 
@@ -1346,6 +1352,64 @@ KK.UIManager = class UIManager {
     const getEl = (id) => this._hudCache[id] || (this._hudCache[id] = document.getElementById(id));
     const setTxt = (id, val) => { const e = getEl(id); if (e) e.textContent = val; };
     const engOverall = KK.getEngineOverallHealth(vs);
+
+    const activeBoat = game.boats ? game.boats.activeBoat : null;
+    const dashEl = getEl("hud-dash");
+    const helmEl = getEl("hud-helm");
+    if (dashEl) dashEl.classList.toggle("hidden", !!activeBoat);
+    if (helmEl) helmEl.classList.toggle("hidden", !activeBoat);
+
+    if (activeBoat) {
+      const sp = activeBoat.spec;
+      const kts = Math.round((activeBoat.speedKmh || 0) / 1.852);
+      const hdg = Math.round(((Math.atan2(Math.sin(activeBoat.yaw), -Math.cos(activeBoat.yaw)) * 180 / Math.PI) + 360) % 360);
+      const thr = activeBoat.throttleCmd || 0;
+      const tele = activeBoat.anchored ? (sp.amphibious ? "CUSHION OFF" : "ANCHORED")
+        : (thr > 0.1 ? (activeBoat.boostCmd ? "FLANK" : "AHEAD") : (thr < -0.1 ? "ASTERN" : "STOP"));
+      const depthTxt = activeBoat.isBeached ? "BEACHED" : (activeBoat.waterDepth < 3.5 ? `SHOAL ${activeBoat.waterDepth.toFixed(1)}m` : `${Math.round(activeBoat.waterDepth)}m`);
+      const loadT = (game.boats.getPayloadKg(activeBoat, game.network ? game.network.remotePlayers : null) / 1000).toFixed(1);
+      const maxT = Math.round((sp.maxPayloadKg || 0) / 1000);
+
+      setTxt("helm-vessel-name", "⚓ " + sp.name.toUpperCase());
+      setTxt("helm-telegraph", tele);
+      setTxt("helm-kts", String(kts));
+      setTxt("helm-kmh", `${Math.round(activeBoat.speedKmh || 0)} KM/H`);
+      setTxt("helm-hdg", `HDG ${String(hdg).padStart(3, "0")}°`);
+      setTxt("helm-depth", depthTxt);
+      setTxt("helm-payload", maxT > 0 ? `${loadT}/${maxT}t` : "SOLO 1P");
+      const lockEl = getEl("helm-lock");
+      if (lockEl) {
+        lockEl.textContent = maxT > 0 ? (activeBoat.deckLocked ? "LOCKED" : "OPEN") : "N/A";
+        lockEl.style.color = activeBoat.deckLocked ? "#ffd166" : "#2de08b";
+      }
+      const ancEl = getEl("helm-anchor");
+      if (ancEl) {
+        ancEl.textContent = sp.amphibious ? (activeBoat.anchored ? "DUMPED" : "HOVER") : (activeBoat.anchored ? "DROPPED" : "WEIGHED");
+        ancEl.style.color = activeBoat.anchored ? "#ff9f1c" : "#2de08b";
+      }
+      const bNav = getEl("helm-badge-nav"); if (bNav) bNav.classList.toggle("on", !!activeBoat.navLightsOn);
+      const bSpot = getEl("helm-badge-spot"); if (bSpot) bSpot.classList.toggle("on", !!activeBoat.spotLightOn);
+      const bAnc = getEl("helm-badge-anc"); if (bAnc) bAnc.classList.toggle("warn", !!activeBoat.anchored);
+
+      setTxt("hud-coords", `${(activeBoat.gx / 1000).toFixed(2)}km, ${(activeBoat.gz / 1000).toFixed(2)}km | SEA HELM`);
+      setTxt("hud-cash", "$" + Math.floor(game.money).toLocaleString());
+      setTxt("hud-time", game.weather.getTimeString());
+      setTxt("hud-weather", game.weather.weather.toUpperCase());
+      setTxt("hud-biome", game.world.getBiomeName(activeBoat.gx, activeBoat.gz));
+      setTxt("hud-account-pill", game.account && game.account.username ? ("👤 " + game.account.username) : "👤 GUEST (LOGIN)");
+      const cargoBox = getEl("hud-cargo-box"); if (cargoBox) cargoBox.classList.add("hidden");
+      const wpEl = getEl("hud-waypoint");
+      if (wpEl) {
+        if (game.waypoint) {
+          const dx = game.waypoint.x - activeBoat.gx, dz = game.waypoint.z - activeBoat.gz;
+          const bearing = (Math.atan2(dx, -dz) * 180 / Math.PI + 360) % 360;
+          wpEl.textContent = `GPS: ${game.waypoint.label} — ${(Math.hypot(dx, dz) / 1000).toFixed(2)} km (HDG ${Math.round(bearing)}°)`;
+          wpEl.classList.remove("hidden");
+        } else { wpEl.classList.add("hidden"); }
+      }
+      this.drawCompassAndRadar(game);
+      return;
+    }
 
     const isHaywire = (game.empGlitchTimer || 0) > 0;
     const isRad = (game.empKind === "radiation");

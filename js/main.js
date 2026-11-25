@@ -55,6 +55,9 @@ KK.Game = class Game {
     this.ownedBoats = { patrol: false, strela: false, serna: false, zubr: false };
     this.activeHarborPort = null;
     this._winchPullNetCd = 0;
+    this.walkingOnBoat = null;    // { boat, isRemote, ownerPeerId, lx, lz } — walkable moving deck!
+    this.remoteBoatMount = null;  // { ownerPeerId, boatId, bayIdx, bx, bz, deckY } — car mounted on friend's ship!
+    this._pendingCashTx = new Map();
     this.cryptids = new KK.CryptidManager(this.scene, this.world);
     this.hazards = new KK.HazardManager(this.scene, this.world);
     this.clarksonFarm = new KK.ClarksonFarm(this.scene, this.world);
@@ -216,10 +219,22 @@ KK.Game = class Game {
         this.money += amt;
         if (this.audio) this.audio.playCash();
         this._saveProgress(true);
+        if (msg.txId && msg.peerId && this.network) {
+          this.network.send({ type: "cash_ack", targetPeerId: msg.peerId, txId: msg.txId, receiverCallsign: this.network.callsign, amount: amt });
+        }
         const from = msg.senderCallsign || "A comrade";
         this.ui.toast(`RECEIVED $${amt.toLocaleString()} from ${from}!`);
         this.ui.addChatLine("BANK", `${from} sent you $${amt.toLocaleString()}!`, true);
         if (this.ui.activeModal === "players") this.ui.renderOnlinePlayers();
+      },
+      onCashAck: (msg) => {
+        if (!msg || !msg.txId || !this._pendingCashTx) return;
+        const tx = this._pendingCashTx.get(msg.txId);
+        if (tx) {
+          clearTimeout(tx.timer);
+          this._pendingCashTx.delete(msg.txId);
+          this.ui.toast(`✓ CONFIRMED: ${msg.receiverCallsign || tx.callsign} received $${tx.amt.toLocaleString()}!`);
+        }
       },
       onFriendNotify: (msg) => {
         const from = msg.senderCallsign || "A comrade";
@@ -389,7 +404,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1.8 ONLINE! Press [TAB] for Online Players (Add Friends & Send Cash, $1,000 min) + Razor-Accurate Roadside Fence Hitboxes!');
+      this.ui.toast('Welcome to v15.2 ONLINE! Realistic Full-Scale 52m Zubr (150t / 6 Bays), Multi-Crew Walkable Decks, Shipmaster Lock [U], Anchor [Space], Nav/Searchlights, Marine Audio, Nautical HUD & Zero-Lag 60 FPS Ocean/Trailers!');
     }, 650);
   }
 
@@ -719,7 +734,7 @@ KK.Game = class Game {
       }
       // 2. ON-FOOT INVENTORY [E] | IN-CAR MANUAL GEAR UP [E]
       else if (code === "KeyE") {
-        if (this.boats && this.boats.activeBoat) { this.disembarkBoat(); return; }
+        if (this.boats && this.boats.activeBoat) { this.stepOntoBoatDeckOrDisembark(); return; }
         if (this.onFoot) { this.ui.openModal("inventory"); return; }
         if (this.vehicle.autoShift) { this.vehicle.autoShift = false; this.ui.toast("Switched to MANUAL Transmission (Q=Down, E=Up, [4]=Auto)"); }
         this.vehicle.gear = Math.min(this.vehicle.vState.tuning.gears.length, this.vehicle.gear + 1);
@@ -732,8 +747,21 @@ KK.Game = class Game {
       else if (code === "F8") { e.preventDefault(); this.togglePhotoMode(); }
       else if (code === "F9" || code === "Digit9") { e.preventDefault(); this.captureScreenshot(); }
       else if (code === "KeyT") { if (!this.vehicle.winch.active) this.attachWinch(); }
+      else if (code === "Space" && this.boats && this.boats.activeBoat) {
+        e.preventDefault();
+        if (!e.repeat) this.boats.toggleAnchor(this.boats.activeBoat, this.ui, this.audio);
+      }
+      else if (code === "KeyU" && this.boats && this.boats.activeBoat) {
+        if (!e.repeat) this.boats.toggleDeckLock(this.boats.activeBoat, this.ui, this.audio);
+      }
+      else if (code === "KeyL" && this.boats && this.boats.activeBoat) {
+        if (!e.repeat) this.boats.toggleNavLights(this.boats.activeBoat, this.ui);
+      }
+      else if (code === "KeyK" && this.boats && this.boats.activeBoat) {
+        if (!e.repeat) this.boats.toggleSpotlight(this.boats.activeBoat, this.ui);
+      }
       else if (code === "KeyV" && this.boats && this.boats.activeBoat) {
-        this.boats.toggleMountVehicle(this.boats.activeBoat, this.vehicle, this.ui);
+        this.boats.toggleMountVehicle(this.boats.activeBoat, this.vehicle, this.ui, this.audio, this.network.remotePlayers);
       }
       else if (code === "KeyY") {
         if (this.vehicle.winch.active) {
@@ -926,7 +954,8 @@ KK.Game = class Game {
   mountCurrentCarOnBoat(boatId) {
     const boat = this.boats && this.boats.spawnedBoats.find((x) => x.id === boatId);
     if (!boat) { this.ui.toast("Summon the boat into the harbor first!", true); return; }
-    if (this.boats.toggleMountVehicle(boat, this.vehicle, this.ui)) {
+    if (this.boats.mountLocalVehicle(boat, this.vehicle, this.ui, this.audio, this.network.remotePlayers)) {
+      this.remoteBoatMount = null;
       this.ui.closeModal();
       this.boardBoat(boat);
     }
@@ -935,18 +964,38 @@ KK.Game = class Game {
   boardBoat(boat) {
     if (!boat || !this.boats) return;
     this.boats.activeBoat = boat;
+    this.walkingOnBoat = null;
     this.onFoot = false;
     this.mouseAimHeld = false;
     if (this.localAvatar) this.localAvatar.visible = false;
-    this.ui.toast(`BOARDED ${boat.spec.name}! [W/S] Throttle, [A/D] Rudder, [Shift] Boost, [V] Load/Unload Car, [E] Disembark.`);
+    this.ui.toast(`AT THE HELM: ${boat.spec.name}! [SPACE] Anchor/Cushion • [U] Deck Lock • [L/K] Lights • [V] Load/Unload Car • [E] Walk Deck`);
+  }
+
+  stepOntoBoatDeckOrDisembark() {
+    if (!this.boats || !this.boats.activeBoat) return;
+    const b = this.boats.activeBoat;
+    if (b.spec && b.spec.walkBounds) {
+      this.boats.activeBoat = null;
+      const hl = b.spec.helmLocal || { x: 0, z: 0 };
+      const clamped = this.boats.clampToWalkDeck(b, hl.x * 0.72, hl.z - 2.0);
+      this.walkingOnBoat = { boat: b, isRemote: false, ownerPeerId: null, lx: clamped.x, lz: clamped.z };
+      this.onFoot = true;
+      if (this.localAvatar) this.localAvatar.visible = true;
+      const wP = this.boats.boatLocalToWorld(b, clamped.x, b.spec.deckY + 0.12, clamped.z);
+      this.playerFoot.x = wP.x; this.playerFoot.y = wP.y; this.playerFoot.z = wP.z;
+      this.ui.toast(`Walking on ${b.spec.name} deck! [F] near Helm to retake bridge, [F] near car to board turret/cab, or [F] at ramp to step ashore.`);
+      return;
+    }
+    this.disembarkBoat();
   }
 
   disembarkBoat() {
     if (!this.boats || !this.boats.activeBoat) return;
     const b = this.boats.activeBoat;
     this.boats.activeBoat = null;
-    if (b.mountedCar) {
-      if (!this.boats.toggleMountVehicle(b, this.vehicle, this.ui)) {
+    this.walkingOnBoat = null;
+    if (this.boats.getLocalMountedEntry(b)) {
+      if (!this.boats.unmountLocalVehicle(b, this.vehicle, this.ui, this.audio, !b.deckLocked)) {
         this.boats.activeBoat = b;
         return;
       }
@@ -954,17 +1003,121 @@ KK.Game = class Game {
     this.ui.toast(`Disembarked ${b.spec.name}! Returned to ${this.vehicle.spec.name}.`);
   }
 
+  _tryBoardRemoteBoatWithVehicle(rb, ownerPeerId) {
+    if (!rb || !rb.spec || !rb.spec.maxPayloadKg) {
+      this.ui.toast(`${rb ? rb.spec.name : "Boat"} cannot carry vehicles!`, true);
+      return false;
+    }
+    if (rb.deckLocked) {
+      this.ui.toast(`Shipmaster has the deck LOCKED! Ask them to press [U] to lower the ramp & unlock!`, true);
+      return false;
+    }
+    const chk = this.boats.canMountVehicle(rb, this.vehicle, this.network.remotePlayers);
+    if (!chk.ok) { this.ui.toast(chk.reason, true); return false; }
+    this.remoteBoatMount = {
+      ownerPeerId, boatId: rb.id, bayIdx: chk.bay.bayIdx,
+      bx: chk.bay.x, bz: chk.bay.z, deckY: rb.spec.deckY, label: chk.bay.label
+    };
+    this.vehicle.hydrolocked = false;
+    this.vehicle.inWaterDepth = 0;
+    this.vehicle.vel.set(0, 0, 0);
+    this.vehicle.angVel.set(0, 0, 0);
+    if (this.audio && this.audio.playWrench) this.audio.playWrench();
+    this.ui.toast(`BOARDED ${rb.spec.name} [${chk.bay.label}]! Stay inside to fire turrets or press [F] to walk the deck!`);
+    return true;
+  }
+
   handleContextInteract() {
     if (this.boats && this.boats.activeBoat) {
-      this.disembarkBoat();
+      this.stepOntoBoatDeckOrDisembark();
       return true;
     }
+
+    // Walking on a moving boat deck: [F] near car boards car, [F] near shore steps ashore, [F] on own boat retakes helm!
+    if (this.walkingOnBoat && this.onFoot) {
+      const wb = this.walkingOnBoat;
+      const b = wb.boat;
+      const dCar = Math.hypot(this.playerFoot.x - this.vehicle.pos.x, this.playerFoot.z - this.vehicle.pos.z);
+      if (dCar < 6.5) {
+        this.walkingOnBoat = null;
+        this.onFoot = false;
+        if (this.localAvatar) this.localAvatar.visible = false;
+        this.ui.toast(`Boarded ${this.vehicle.spec.name} on deck! Turrets live — if deck is UNLOCKED [U], drive [W] to roll off!`);
+        return true;
+      }
+      // Step ashore if near bow ramp & land is close
+      const shorePt = this.boats.boatLocalToWorld(b, 0, 0, b.spec.len * 0.56 + 3.0);
+      const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+      const shoreH = this.world.getTerrainInfo(shorePt.x, shorePt.z, false).height;
+      if (wb.lz > (b.spec.walkBounds.maxZ - 4.0) && shoreH >= seaL - 0.8) {
+        this.walkingOnBoat = null;
+        this.playerFoot.x = shorePt.x; this.playerFoot.z = shorePt.z; this.playerFoot.y = shoreH;
+        this.ui.toast(`Stepped ashore off ${b.spec.name}!`);
+        return true;
+      }
+      if (!wb.isRemote) {
+        this.boardBoat(b);
+        return true;
+      }
+      // On a remote friend's boat: jump off into water or shore
+      const sidePt = this.boats.boatLocalToWorld(b, (wb.lx >= 0 ? 1 : -1) * (b.spec.width * 0.55 + 2.5), 0, wb.lz);
+      this.walkingOnBoat = null;
+      this.playerFoot.x = sidePt.x; this.playerFoot.z = sidePt.z;
+      this.playerFoot.y = Math.max(seaL, this.world.getTerrainInfo(sidePt.x, sidePt.z, false).height);
+      this.ui.toast(`Stepped off ${b.spec.name}!`);
+      return true;
+    }
+
+    // Sitting inside a car mounted on a boat deck: [F] hops out onto the moving boat deck!
+    if (!this.onFoot && this.boats) {
+      const ownM = this.boats.findLocalMountedBoat();
+      if (ownM) {
+        const b = ownM.boat;
+        if (b.spec.walkBounds) {
+          const cl = this.boats.clampToWalkDeck(b, ownM.entry.x + 2.6, ownM.entry.z);
+          this.walkingOnBoat = { boat: b, isRemote: false, ownerPeerId: null, lx: cl.x, lz: cl.z };
+          this.onFoot = true;
+          if (this.localAvatar) this.localAvatar.visible = true;
+          this.ui.toast(`Stepped out onto ${b.spec.name} deck! Press [F] to take the helm or re-enter your car.`);
+          return true;
+        }
+      }
+      if (this.remoteBoatMount) {
+        const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
+        if (rb && rb.spec && rb.spec.walkBounds) {
+          const cl = this.boats.clampToWalkDeck(rb, this.remoteBoatMount.bx + 2.6, this.remoteBoatMount.bz);
+          this.walkingOnBoat = { boat: rb, isRemote: true, ownerPeerId: this.remoteBoatMount.ownerPeerId, lx: cl.x, lz: cl.z };
+          this.onFoot = true;
+          if (this.localAvatar) this.localAvatar.visible = true;
+          this.ui.toast(`Walking on ${rb.spec.name} deck! Press [F] near your car to hop back in.`);
+          return true;
+        }
+      }
+    }
+
     const ix = this.onFoot ? this.playerFoot.x : this.vehicle.pos.x;
     const iz = this.onFoot ? this.playerFoot.z : this.vehicle.pos.z;
     if (this.boats) {
-      const nearBoat = this.boats.findNearbyBoat(ix, iz, 28);
-      if (nearBoat) { this.boardBoat(nearBoat.boat); return true; }
-      const nearPort = this.boats.findNearbyPort(ix, iz, 44);
+      const nearBoat = this.boats.findNearbyBoat(ix, iz, 34, true);
+      if (nearBoat) {
+        if (!nearBoat.isRemote) {
+          this.boardBoat(nearBoat.boat);
+          return true;
+        } else if (this.onFoot) {
+          // Climb aboard friend's moving ship deck (also works as Man-Overboard boarding ladder!)
+          if (nearBoat.boat.spec && nearBoat.boat.spec.walkBounds) {
+            const loc = this.boats.worldToBoatLocal(nearBoat.boat, ix, iz);
+            const cl = this.boats.clampToWalkDeck(nearBoat.boat, loc.x, loc.z);
+            this.walkingOnBoat = { boat: nearBoat.boat, isRemote: true, ownerPeerId: nearBoat.ownerPeerId, lx: cl.x, lz: cl.z };
+            this.ui.toast(`Climbed aboard ${nearBoat.boat.spec.name}!`);
+            return true;
+          }
+        } else {
+          // Driving a car near a friend's unlocked ship -> load into free bay!
+          if (this._tryBoardRemoteBoatWithVehicle(nearBoat.boat, nearBoat.ownerPeerId)) return true;
+        }
+      }
+      const nearPort = this.boats.findNearbyPort(ix, iz, 48);
       if (nearPort) {
         this.activeHarborPort = nearPort;
         this.ui.openModal("harbor");
@@ -2852,21 +3005,33 @@ KK.Game = class Game {
       this.ui.toast(`Not enough cash! You have $${Math.floor(this.money).toLocaleString()}.`, true);
       return;
     }
-    if (!this.network || this.network.mode === "offline") {
-      this.ui.toast("Must be online to send cash!", true);
+    if (!this.network || this.network.mode === "offline" || !this.network.mqtt || !this.network.mqtt.connected) {
+      this.ui.toast("Relay offline — cannot wire cash right now!", true);
       return;
     }
+    const txId = "TX-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 9999);
     this.money -= amt;
     if (this.audio) this.audio.playCash();
     this._saveProgress(true);
+    const timer = setTimeout(() => {
+      if (this._pendingCashTx && this._pendingCashTx.has(txId)) {
+        this._pendingCashTx.delete(txId);
+        this.money += amt;
+        this._saveProgress(true);
+        this.ui.toast(`Transfer to ${callsign || peerId} unconfirmed (older client or dropped relay) — refunded $${amt.toLocaleString()}!`, true);
+        if (this.ui.activeModal === "players") this.ui.renderOnlinePlayers();
+      }
+    }, 4500);
+    this._pendingCashTx.set(txId, { amt, callsign: callsign || peerId, timer });
     this.network.send({
       type: "cash_transfer",
+      txId,
       targetPeerId: peerId,
       senderCallsign: this.network.callsign,
       amount: amt
     });
-    this.ui.toast(`Sent $${amt.toLocaleString()} to ${callsign || peerId}!`);
-    this.ui.addChatLine("BANK", `Sent $${amt.toLocaleString()} to ${callsign || peerId}.`, true);
+    this.ui.toast(`Wiring $${amt.toLocaleString()} to ${callsign || peerId}...`);
+    this.ui.addChatLine("BANK", `Wired $${amt.toLocaleString()} to ${callsign || peerId}.`, true);
     if (this.ui.activeModal === "players") this.ui.renderOnlinePlayers();
   }
 
@@ -3093,8 +3258,12 @@ KK.Game = class Game {
     const dt = Math.min(0.05, (now - this.lastTime) / 1000);
     this.lastTime = now;
 
-    const modalOpen = !!this.ui.activeModal;
-    this.xrayActive = (!modalOpen && !!this.keys.KeyX);
+    const activeBoatNow = this.boats ? this.boats.activeBoat : null;
+    const modalOpen = !!this.ui.activeModal || !!(this.startMenu && this.startMenu.isOpen);
+    const inBoatHelm = !!activeBoatNow;
+    const localOwnBoatMount = this.boats ? this.boats.findLocalMountedBoat() : null;
+    const isCarOnAnyBoat = !!(localOwnBoatMount || this.remoteBoatMount);
+    this.xrayActive = (!modalOpen && !inBoatHelm && !!this.keys.KeyX);
     this._updateTimedWork(dt);
     if (this.coopBoostTimer > 0) this.coopBoostTimer = Math.max(0, this.coopBoostTimer - dt);
 
@@ -3109,29 +3278,62 @@ KK.Game = class Game {
       }
     }
     const driveInput = {
-      throttle: (!this.onFoot && !modalOpen && (this.keys.KeyW || this.keys.ArrowUp)) ? 1 : 0,
-      brake: (!this.onFoot && !modalOpen && (this.keys.KeyS || this.keys.ArrowDown)) ? 1 : 0,
-      steer: (!this.onFoot && !modalOpen && !(this.skinwalker && this.skinwalker.isGrabbing)) ? ((this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) - (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0)) : 0,
-      handbrake: (!this.onFoot && !modalOpen && !!this.keys.Space)
+      throttle: (!this.onFoot && !modalOpen && !inBoatHelm && (this.keys.KeyW || this.keys.ArrowUp)) ? 1 : 0,
+      brake: (!this.onFoot && !modalOpen && !inBoatHelm && (this.keys.KeyS || this.keys.ArrowDown)) ? 1 : 0,
+      steer: (!this.onFoot && !modalOpen && !inBoatHelm && !(this.skinwalker && this.skinwalker.isGrabbing)) ? ((this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) - (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0)) : 0,
+      handbrake: (!this.onFoot && !modalOpen && !inBoatHelm && !!this.keys.Space)
     };
-    if (this.vehicle.winch.active) { const shiftHeld = !!(this.keys.ShiftLeft || this.keys.ShiftRight); this.vehicle.winch.reeling = (!modalOpen && this.keys.KeyT) ? (shiftHeld ? 1 : -1) : 0; }
-    const horn = !this.onFoot && !modalOpen && !!this.keys.KeyN;
+    if (this.vehicle.winch.active) { const shiftHeld = !!(this.keys.ShiftLeft || this.keys.ShiftRight); this.vehicle.winch.reeling = (!modalOpen && !inBoatHelm && this.keys.KeyT) ? (shiftHeld ? 1 : -1) : 0; }
+    const horn = !this.onFoot && !modalOpen && !inBoatHelm && !!this.keys.KeyN;
+    const boatHorn = inBoatHelm && !modalOpen && !!this.keys.KeyN;
     this.vehicle.hornActive = horn;
     const is140Horn = !!this.vehicle.spec.isSchreckensfurst;
     this.audio.setHorn(horn, this.vehicle.spec.id === "kamaz", is140Horn);
+    if (this.audio.setNavalHorn) this.audio.setNavalHorn(boatHorn, activeBoatNow && (activeBoatNow.id === "zubr" || activeBoatNow.id === "serna"));
     if (horn && is140Horn && this.townNpcs && Math.random() < dt * 2.5) {
       this.townNpcs.triggerTownPanic(this.vehicle.pos.x, this.vehicle.pos.z, 75);
     }
 
-    this.vehicle.step(
-      dt,
-      (this.onFoot || this.ridingWithPeerId || this.carriedByPeerId || this.timedWork) ? { throttle: 0, brake: 0, steer: 0, handbrake: true } : driveInput,
-      this.world,
-      this.weather.getGripModifier(),
-      this.network.remotePlayers,
-      this.weather.weather,
-      { ice: this.cryptids.iceAuraStrength, quicksand: this.cryptids.quicksandDrag }
-    );
+    // If sitting inside a mounted car and the Shipmaster UNLOCKED the deck, pressing [W] rolls you cleanly off the ramp!
+    if (isCarOnAnyBoat && !inBoatHelm && !this.onFoot && !modalOpen && driveInput.throttle > 0.5) {
+      if (localOwnBoatMount && !localOwnBoatMount.boat.deckLocked) {
+        this.boats.unmountLocalVehicle(localOwnBoatMount.boat, this.vehicle, this.ui, this.audio, true);
+      } else if (this.remoteBoatMount) {
+        const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
+        if (rb && !rb.deckLocked) {
+          const fwdX = Math.sin(rb.yaw), fwdZ = Math.cos(rb.yaw);
+          const dropX = rb.gx + fwdX * (rb.spec.len * 0.54 + 4.5);
+          const dropZ = rb.gz + fwdZ * (rb.spec.len * 0.54 + 4.5);
+          const tiD = this.world.getTerrainInfo(dropX, dropZ, false);
+          this.vehicle.pos.set(dropX, Math.max(tiD.height, KK.SEA_LEVEL || -32) + 1.15, dropZ);
+          this.vehicle.vel.set(fwdX * 5.0, 0, fwdZ * 5.0);
+          this.remoteBoatMount = null;
+          this.ui.toast(`Rolled off ${rb.spec.name} ramp!`);
+        } else if (rb && rb.deckLocked && (!this._deckLockToastCd || this._deckLockToastCd <= 0)) {
+          this._deckLockToastCd = 2.5;
+          this.ui.toast("DECK LOCKED by Shipmaster! You can still aim/fire turrets or press [F] to walk the deck!", true);
+        }
+      }
+    }
+    if (this._deckLockToastCd > 0) this._deckLockToastCd -= dt;
+
+    // v15.2 COMPLETE PHYSICS ISOLATION: Skip car physics when mounted on a boat deck OR carried on a trailer (Zero hydrolock & zero jitter!)
+    if (!isCarOnAnyBoat && !this.carriedByPeerId) {
+      this.vehicle.step(
+        dt,
+        (this.onFoot || this.ridingWithPeerId || inBoatHelm || this.timedWork) ? { throttle: 0, brake: 0, steer: 0, handbrake: true } : driveInput,
+        this.world,
+        this.weather.getGripModifier(),
+        this.network.remotePlayers,
+        this.weather.weather,
+        { ice: this.cryptids.iceAuraStrength, quicksand: this.cryptids.quicksandDrag }
+      );
+    } else {
+      this.vehicle.inWaterDepth = 0;
+      this.vehicle.hydrolocked = false;
+      this.vehicle.distanceMetersFrame = 0;
+      this.vehicle.speedKmh = 0;
+    }
     this.stats.distanceKm += this.vehicle.distanceMetersFrame / 1000.0;
 
     // Air-Time Stunt Cash Bonus for epic ramp & cliff jumps!
@@ -3224,14 +3426,41 @@ KK.Game = class Game {
       const moveS = (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0) - (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0);
       const spd = (this.keys.ShiftLeft || this.keys.ShiftRight) ? 7.6 : 4.2;
       const isMoving = Math.abs(moveF) > 0.05 || Math.abs(moveS) > 0.05;
-      if (isMoving) {
-        const camFwd = new THREE.Vector3(); this.camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
-        const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
-        const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
-        this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        this.playerFoot.yaw = Math.atan2(dir.x, dir.z); this.playerFoot.walkPhase += dt * spd * 2.2;
+
+      if (this.walkingOnBoat && this.boats) {
+        // Walk freely in boat-local coordinates on a moving ship deck!
+        const wb = this.walkingOnBoat;
+        const b = wb.isRemote ? this.boats.remoteBoats.get(wb.ownerPeerId) : wb.boat;
+        if (!b || !b.spec || !b.spec.walkBounds) {
+          this.walkingOnBoat = null;
+        } else {
+          if (isMoving) {
+            const camFwd = new THREE.Vector3(); this.camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
+            const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
+            const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
+            // Rotate world movement into boat-local frame
+            const c = Math.cos(-(b.yaw || 0)), s = Math.sin(-(b.yaw || 0));
+            const dlx = dir.x * c + dir.z * s;
+            const dlz = -dir.x * s + dir.z * c;
+            const cl = this.boats.clampToWalkDeck(b, wb.lx + dlx * spd * dt, wb.lz + dlz * spd * dt);
+            wb.lx = cl.x; wb.lz = cl.z;
+            this.playerFoot.yaw = Math.atan2(dir.x, dir.z);
+            this.playerFoot.walkPhase += dt * spd * 2.2;
+          }
+          const wPos = this.boats.boatLocalToWorld(b, wb.lx, b.spec.deckY + 0.06, wb.lz);
+          this.playerFoot.x = wPos.x; this.playerFoot.y = wPos.y; this.playerFoot.z = wPos.z;
+        }
+      } else {
+        if (isMoving) {
+          const camFwd = new THREE.Vector3(); this.camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
+          const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
+          const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
+          this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
+          this.playerFoot.yaw = Math.atan2(dir.x, dir.z); this.playerFoot.walkPhase += dt * spd * 2.2;
+        }
+        const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+        this.playerFoot.y = Math.max(seaL - 0.35, this.world.getTerrainInfo(this.playerFoot.x, this.playerFoot.z, true).height);
       }
-      this.playerFoot.y = this.world.getTerrainInfo(this.playerFoot.x, this.playerFoot.z, true).height;
       if (this.playerFoot.repairingTimer > 0) this.playerFoot.repairingTimer -= dt;
       this.localAvatar.userData.animate(this.playerFoot.walkPhase, isMoving, !!this.playerFoot.carryingCrate, this.playerFoot.repairingTimer > 0);
     }
@@ -3239,9 +3468,9 @@ KK.Game = class Game {
     let ridingPeer = this.ridingWithPeerId ? this.network.remotePlayers.get(this.ridingWithPeerId) : null;
     if (this.ridingWithPeerId && !ridingPeer) { this.ridingWithPeerId = null; this.onFoot = true; this.localAvatar.visible = true; }
     if (ridingPeer) { this.playerFoot.x = ridingPeer.gx; this.playerFoot.y = ridingPeer.gy; this.playerFoot.z = ridingPeer.gz; }
-    const focusGx = ridingPeer ? ridingPeer.gx : (this.onFoot ? this.playerFoot.x : this.vehicle.pos.x);
-    const focusGz = ridingPeer ? ridingPeer.gz : (this.onFoot ? this.playerFoot.z : this.vehicle.pos.z);
-    const focusGy = ridingPeer ? ridingPeer.gy : (this.onFoot ? this.playerFoot.y : this.vehicle.pos.y);
+    const focusGx = activeBoatNow ? activeBoatNow.gx : (ridingPeer ? ridingPeer.gx : (this.onFoot ? this.playerFoot.x : this.vehicle.pos.x));
+    const focusGz = activeBoatNow ? activeBoatNow.gz : (ridingPeer ? ridingPeer.gz : (this.onFoot ? this.playerFoot.z : this.vehicle.pos.z));
+    const focusGy = activeBoatNow ? (activeBoatNow.gy + (activeBoatNow.spec.deckY || 2.0)) : (ridingPeer ? ridingPeer.gy : (this.onFoot ? this.playerFoot.y : this.vehicle.pos.y));
     const shift = this.world.checkFloatingOrigin(focusGx, focusGz);
     if (shift) { this.camPosSmooth.x += shift.dx; this.camPosSmooth.z += shift.dz; }
     this.world.updateChunks(focusGx, focusGz);
@@ -3259,8 +3488,26 @@ KK.Game = class Game {
         steer: (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) - (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0),
         boost: !!(this.keys.ShiftLeft || this.keys.ShiftRight)
       } : null;
-      this.boats.update(dt, boatIn, this.vehicle, this.particles, this.audio);
+      this.boats.update(dt, boatIn, this.vehicle, this.particles, this.audio, this.ui, this.network.remotePlayers, this.network.peerId);
       if (this.boats.updateRemoteBoats) this.boats.updateRemoteBoats(dt, this.network.remotePlayers, this.particles);
+      // Weld local car onto remote friend's boat deck at 60 FPS!
+      if (this.remoteBoatMount) {
+        const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
+        if (rb) {
+          const wP = this.boats.boatLocalToWorld(rb, this.remoteBoatMount.bx, this.remoteBoatMount.deckY + 0.06, this.remoteBoatMount.bz);
+          this.vehicle.pos.copy(wP);
+          this.vehicle.vel.set(rb.vx || 0, 0, rb.vz || 0);
+          this.vehicle.angVel.set(0, 0, 0);
+          this.vehicle.quat.setFromEuler(new THREE.Euler(rb.pitch || 0, rb.yaw || 0, rb.roll || 0, "YXZ"));
+          this.vehicle.inWaterDepth = 0; this.vehicle.hydrolocked = false;
+        } else {
+          this.remoteBoatMount = null;
+        }
+      }
+      // Update dedicated Marine Audio & mute parked car engine when piloting!
+      if (this.audio && this.audio.updateBoatAudio) {
+        this.audio.updateBoatAudio(activeBoatNow, boatIn ? (boatIn.throttle - boatIn.brake) : 0, boatIn ? boatIn.boost : false);
+      }
     }
     if (this.world.updateTram) this.world.updateTram(dt, this.vehicle, this.audio);
 
@@ -3457,9 +3704,13 @@ KK.Game = class Game {
     if (this.carriedByPeerId) {
       const crp = this.network.remotePlayers.get(this.carriedByPeerId);
       if (crp && crp.trailer) {
-        const tq = new THREE.Quaternion().setFromEuler(new THREE.Euler(crp.trailer.p || 0, crp.trailer.yaw || 0, crp.trailer.r || 0, "YXZ"));
+        const tx = crp._trX !== undefined ? crp._trX : crp.trailer.x;
+        const ty = crp._trY !== undefined ? crp._trY : crp.trailer.y;
+        const tz = crp._trZ !== undefined ? crp._trZ : crp.trailer.z;
+        const tyaw = crp._trYaw !== undefined ? crp._trYaw : (crp.trailer.yaw || 0);
+        const tq = new THREE.Quaternion().setFromEuler(new THREE.Euler(crp.trailer.p || 0, tyaw, crp.trailer.r || 0, "YXZ"));
         const deckOff = new THREE.Vector3(0, 1.18, -0.15).applyQuaternion(tq);
-        this.vehicle.pos.set(crp.trailer.x + deckOff.x, crp.trailer.y + deckOff.y, crp.trailer.z + deckOff.z);
+        this.vehicle.pos.set(tx + deckOff.x, ty + deckOff.y, tz + deckOff.z);
         this.vehicle.quat.copy(tq);
         this.vehicle.vel.set(0, 0, 0);
         this.vehicle.angVel.set(0, 0, 0);
@@ -3705,7 +3956,7 @@ KK.Game = class Game {
       empEl.classList.toggle("sonic", this.empKind === "sonic");
     }
     if (this.flareCount < 6 && this.world.getNearbyTownInteraction(this.vehicle.pos.x, this.vehicle.pos.z)) this.flareCount = 6;
-    this.audio.updateEngine(this.vehicle.rpm, driveInput.throttle, this.vehicle.boostPsi, KK.ENGINES[this.vehicle.vState.engineId], this.vehicle.engineRunning, this.onFoot, this.weather.weather, !!this.vehicle.vState.upgrades.twinTurboKit, !!this.vehicle.spec.isTracked, this.vehicle.speedKmh, dt);
+    this.audio.updateEngine(this.vehicle.rpm, driveInput.throttle, this.vehicle.boostPsi, KK.ENGINES[this.vehicle.vState.engineId], this.vehicle.engineRunning && !inBoatHelm, this.onFoot, this.weather.weather, !!this.vehicle.vState.upgrades.twinTurboKit, !!this.vehicle.spec.isTracked, this.vehicle.speedKmh, dt);
     const lPos = this.onFoot ? { x: this.playerFoot.x, y: this.playerFoot.y, z: this.playerFoot.z } : this.vehicle.pos;
     const lRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
     this.audio.updateRemoteEngines(this.network.remotePlayers, lPos, lRight);
@@ -3716,14 +3967,46 @@ KK.Game = class Game {
       this.wpBeacon.visible = true;
     } else { this.wpBeacon.visible = false; }
 
-    this.network.broadcastPlayerState(dt, this.vehicle, this.playerFoot, this.onFoot, this.trailer, this.wipersOn, !!this.timedWork, this.btrTurretYaw, this.carriedByPeerId, false, this.barrelHeat, this.p140RwsYaw, this.p140RwsPitch, this.btrAimPitch, this.autoBarrelHeat, this.boats ? this.boats.activeBoat : null);
+    const myBoatMount = this.remoteBoatMount
+      ? { ownerPeerId: this.remoteBoatMount.ownerPeerId, boatId: this.remoteBoatMount.boatId, bayIdx: this.remoteBoatMount.bayIdx, bx: this.remoteBoatMount.bx, bz: this.remoteBoatMount.bz, deckY: this.remoteBoatMount.deckY }
+      : (localOwnBoatMount ? { ownerPeerId: this.network.peerId, boatId: localOwnBoatMount.boat.id, bayIdx: localOwnBoatMount.entry.bayIdx, bx: localOwnBoatMount.entry.x, bz: localOwnBoatMount.entry.z, deckY: localOwnBoatMount.boat.spec.deckY } : null);
+    this.network.broadcastPlayerState(dt, this.vehicle, this.playerFoot, this.onFoot, this.trailer, this.wipersOn, !!this.timedWork, this.btrTurretYaw, this.carriedByPeerId, false, this.barrelHeat, this.p140RwsYaw, this.p140RwsPitch, this.btrAimPitch, this.autoBarrelHeat, this.boats ? this.boats.activeBoat : null, myBoatMount);
     const lerpF = Math.min(1, dt * 12);
     for (const rp of this.network.remotePlayers.values()) {
-      rp.gx += (rp.tx - rp.gx) * lerpF; rp.gy += (rp.ty - rp.gy) * lerpF; rp.gz += (rp.tz - rp.gz) * lerpF;
+      // 1. Velocity dead-reckoning + smooth lerp for normal remote driving
+      rp.gx += (rp.vx || 0) * dt * 0.65 + (rp.tx - rp.gx) * lerpF;
+      rp.gy += (rp.ty - rp.gy) * lerpF;
+      rp.gz += (rp.vz || 0) * dt * 0.65 + (rp.tz - rp.gz) * lerpF;
+      let weldedQuat = null;
+
+      // 2. ZERO-LAG 60 FPS LOCAL PARENT-LOCK: If this comrade's car is loaded on OUR trailer, glue it directly to our 60 FPS trailer deck!
+      if (rp.carriedByPeerId === this.network.peerId && this.trailer) {
+        const tq = new THREE.Quaternion().setFromEuler(new THREE.Euler(this.trailer.pitch || 0, this.trailer.yaw || 0, this.trailer.roll || 0, "YXZ"));
+        const dOff = new THREE.Vector3(0, 1.18, -0.15).applyQuaternion(tq);
+        rp.gx = this.trailer.pos.x + dOff.x;
+        rp.gy = this.trailer.pos.y + dOff.y;
+        rp.gz = this.trailer.pos.z + dOff.z;
+        weldedQuat = tq;
+      } else if (rp.boatMount && this.boats) {
+        // ZERO-LAG 60 FPS DECK WELD: If this comrade's car is mounted on our boat OR another remote boat, weld it directly to its bay!
+        const hostBoat = (rp.boatMount.ownerPeerId === this.network.peerId)
+          ? this.boats.spawnedBoats.find((b) => b.id === rp.boatMount.boatId)
+          : this.boats.remoteBoats.get(rp.boatMount.ownerPeerId);
+        if (hostBoat) {
+          const wP = this.boats.boatLocalToWorld(hostBoat, rp.boatMount.bx || 0, (rp.boatMount.deckY || hostBoat.spec.deckY) + 0.06, rp.boatMount.bz || 0);
+          rp.gx = wP.x; rp.gy = wP.y; rp.gz = wP.z;
+          weldedQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(hostBoat.pitch || 0, hostBoat.yaw || 0, hostBoat.roll || 0, "YXZ"));
+        }
+      }
+
       if (rp.rig) {
         this.world.toLocal(rp.gx, rp.gy, rp.gz, rp.rig.root.position);
         const qCur = new THREE.Quaternion(rp.qx, rp.qy, rp.qz, rp.qw);
-        qCur.slerp(new THREE.Quaternion(rp.tqx, rp.tqy, rp.tqz, rp.tqw), lerpF);
+        if (weldedQuat) {
+          qCur.copy(weldedQuat);
+        } else {
+          qCur.slerp(new THREE.Quaternion(rp.tqx, rp.tqy, rp.tqz, rp.tqw), lerpF);
+        }
         rp.qx = qCur.x; rp.qy = qCur.y; rp.qz = qCur.z; rp.qw = qCur.w;
         rp.rig.root.quaternion.copy(qCur);
         rp.rig.baseColor.set(rp.paintColor || "#5b6d5b");
@@ -3749,8 +4032,15 @@ KK.Game = class Game {
           rp.trailerRig._lastCc = -1;
           this.scene.add(rp.trailerRig.root);
         }
-        this.world.toLocal(rp.trailer.x, rp.trailer.y, rp.trailer.z, rp.trailerRig.root.position);
-        rp.trailerRig.root.rotation.set(rp.trailer.p || 0, rp.trailer.yaw || 0, rp.trailer.r || 0, "YXZ");
+        if (rp._trX === undefined) { rp._trX = rp.trailer.x; rp._trY = rp.trailer.y; rp._trZ = rp.trailer.z; rp._trYaw = rp.trailer.yaw || 0; }
+        rp._trX += (rp.vx || 0) * dt * 0.65 + (rp.trailer.x - rp._trX) * lerpF;
+        rp._trY += (rp.trailer.y - rp._trY) * lerpF;
+        rp._trZ += (rp.vz || 0) * dt * 0.65 + (rp.trailer.z - rp._trZ) * lerpF;
+        let dTrY = (rp.trailer.yaw || 0) - rp._trYaw;
+        while (dTrY > Math.PI) dTrY -= Math.PI * 2; while (dTrY < -Math.PI) dTrY += Math.PI * 2;
+        rp._trYaw += dTrY * lerpF;
+        this.world.toLocal(rp._trX, rp._trY, rp._trZ, rp.trailerRig.root.position);
+        rp.trailerRig.root.rotation.set(rp.trailer.p || 0, rp._trYaw, rp.trailer.r || 0, "YXZ");
         if (rp.trailerRig._lastCc !== rp.trailer.cc) {
           rp.trailerRig._lastCc = rp.trailer.cc;
           rp.trailerRig.setCargoVisual(rp.trailer.cc || 0, rp.trailer.ct || "logs", true);
@@ -3774,7 +4064,7 @@ KK.Game = class Game {
     const camGz = this.camera.position.z + this.world.originZ;
     const waterSurfCam = this.world.getWaterSurfaceAt(camGx, camGz);
     const camUnderwater = (waterSurfCam > -5000 && this.camera.position.y < waterSurfCam + 0.08);
-    const vehUnderwater = (!this.onFoot && !this.vehicle.spec.amphibious && this.vehicle.inWaterDepth > 1.35);
+    const vehUnderwater = (!this.onFoot && !inBoatHelm && !isCarOnAnyBoat && !this.vehicle.spec.amphibious && this.vehicle.inWaterDepth > 1.35);
     const isUnderwater = camUnderwater || vehUnderwater;
     if (this.vehicle.spec.isTracked && this.vehicle.vState.upgrades.t72Snorkel && this.vehicle.inWaterDepth > 1.2 && Math.random() < 0.45) {
       this.particles.emitFrostOrSand(this.vehicle.pos.x, this.vehicle.pos.y + 1.8, this.vehicle.pos.z, true, 2);
@@ -3856,21 +4146,52 @@ KK.Game = class Game {
     let prompt = "";
     if (this.boats && this.boats.activeBoat) {
       const b = this.boats.activeBoat;
-      const deckTxt = b.spec.maxCarMassKg > 0 ? (b.mountedCar ? " | [V] Unload Vehicle" : " | [V] Load Vehicle on Deck") : "";
-      el.textContent = `⚓ ${b.spec.name} (${Math.round(b.speedKmh)} km/h) • [W/S] Throttle • [A/D] Rudder • [Shift] Boost${deckTxt} • [E] Disembark`;
+      const hasDeck = (b.spec.maxPayloadKg || 0) > 0;
+      const mounted = !!this.boats.getLocalMountedEntry(b);
+      const ancTxt = b.anchored ? "[SPACE] Lift/Weigh" : "[SPACE] Anchor/Dump";
+      const deckTxt = hasDeck ? ` • [U] ${b.deckLocked ? "Unlock Deck" : "Lock Deck"} • [V] ${mounted ? "Unload Car" : "Load Car"}` : "";
+      const walkTxt = b.spec.walkBounds ? " • [E] Walk Deck" : " • [E] Disembark";
+      el.textContent = `⚓ ${ancTxt}${deckTxt} • [L] Nav • [K] Spot • [N] Foghorn${walkTxt}`;
+      el.classList.remove("hidden");
+      return;
+    }
+    if (this.walkingOnBoat && this.onFoot) {
+      const wb = this.walkingOnBoat;
+      const dCar = Math.hypot(this.playerFoot.x - this.vehicle.pos.x, this.playerFoot.z - this.vehicle.pos.z);
+      el.textContent = dCar < 6.5
+        ? `[F] Board ${this.vehicle.spec.name} on Deck (Turrets Live!)`
+        : (wb.isRemote ? `[F] Step Off ${wb.boat.spec.name}` : `[F] Take the Helm of ${wb.boat.spec.name} (or walk to bow ramp at shore)`);
       el.classList.remove("hidden");
       return;
     }
     if (this.boats) {
-      const pxC = this.onFoot ? this.playerFoot.x : this.vehicle.pos.x;
-      const pzC = this.onFoot ? this.playerFoot.z : this.vehicle.pos.z;
-      const nb = this.boats.findNearbyBoat(pxC, pzC, 28);
-      if (nb) {
-        el.textContent = `[F] Board ${nb.boat.spec.name}`;
+      const ownM = !this.onFoot ? this.boats.findLocalMountedBoat() : null;
+      if (ownM) {
+        el.textContent = ownM.boat.deckLocked
+          ? `⚓ Secured in [${ownM.entry.label}] on ${ownM.boat.spec.name} • Turrets Live • [F] Walk Around Deck`
+          : `⚓ DECK UNLOCKED on ${ownM.boat.spec.name} • Hold [W] to Roll Off Ramp • [F] Walk Deck`;
         el.classList.remove("hidden");
         return;
       }
-      const np = this.boats.findNearbyPort(pxC, pzC, 44);
+      if (!this.onFoot && this.remoteBoatMount) {
+        const rb = this.boats.remoteBoats.get(this.remoteBoatMount.ownerPeerId);
+        el.textContent = (rb && !rb.deckLocked)
+          ? `⚓ DECK UNLOCKED on ${rb.spec.name} • Hold [W] to Roll Off Ramp • [F] Walk Deck`
+          : `⚓ Secured in [${this.remoteBoatMount.label}] • Turrets Live • [F] Walk Around Deck`;
+        el.classList.remove("hidden");
+        return;
+      }
+      const pxC = this.onFoot ? this.playerFoot.x : this.vehicle.pos.x;
+      const pzC = this.onFoot ? this.playerFoot.z : this.vehicle.pos.z;
+      const nb = this.boats.findNearbyBoat(pxC, pzC, 34, true);
+      if (nb) {
+        el.textContent = nb.isRemote
+          ? (this.onFoot ? `[F] Climb Aboard ${nb.boat.spec.name}` : `[F] Load ${this.vehicle.spec.name} onto ${nb.boat.spec.name}`)
+          : `[F] Board Helm of ${nb.boat.spec.name}`;
+        el.classList.remove("hidden");
+        return;
+      }
+      const np = this.boats.findNearbyPort(pxC, pzC, 48);
       if (np) {
         el.textContent = `[F] Open ${np.port.name} — Unlock & Summon Boats`;
         el.classList.remove("hidden");
@@ -3937,16 +4258,16 @@ KK.Game = class Game {
   _updateCamera(dt, focusLocal) {
     if (this.boats && this.boats.activeBoat) {
       const b = this.boats.activeBoat;
-      const dist = (b.spec.len * 1.15 + 7.5) * this.camZoom;
+      const dist = (Math.min(44, b.spec.len * 0.88) + 9.0) * this.camZoom;
       const yaw = b.yaw + this.camOrbitYaw;
-      const h = (b.spec.len * 0.32 + 4.5) * this.camZoom;
+      const h = (Math.min(16, b.spec.len * 0.28) + 5.2) * this.camZoom;
       const camPos = new THREE.Vector3(
         focusLocal.x - Math.sin(yaw) * dist,
-        focusLocal.y + h + Math.sin(this.camOrbitPitch) * dist * 0.55,
+        focusLocal.y + h + Math.sin(this.camOrbitPitch) * dist * 0.50,
         focusLocal.z - Math.cos(yaw) * dist
       );
-      this.camera.position.lerp(camPos, Math.min(1, dt * 7.5));
-      this.camera.lookAt(focusLocal.x, focusLocal.y + 1.8, focusLocal.z);
+      this.camera.position.lerp(camPos, Math.min(1, dt * 8.5));
+      this.camera.lookAt(focusLocal.x, focusLocal.y + 2.2, focusLocal.z);
       return;
     }
     if (this.camMode !== 3 || this.onFoot || this.ridingWithPeerId) this.camera.up.set(0, 1, 0);

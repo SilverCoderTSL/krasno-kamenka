@@ -2768,9 +2768,31 @@ KK.World = class World {
     }
   }
 
+  _isPureDeepOceanChunk(startX, startZ, size) {
+    if (!KK.ISLANDS) return false;
+    const midX = startX + size * 0.5, midZ = startZ + size * 0.5;
+    const pad = size * 0.95 + 240;
+    for (let i = 0; i < KK.ISLANDS.length; i++) {
+      const isl = KK.ISLANDS[i];
+      const nx = (midX - isl.cx) / (isl.rx * 1.15 + pad);
+      const nz = (midZ - isl.cz) / (isl.rz * 1.15 + pad);
+      if (nx * nx + nz * nz < 1.0) return false;
+    }
+    return true;
+  }
+
   _createChunk(cx, cz) {
     const size = KK.CHUNK_SIZE, segs = KK.CHUNK_SEGMENTS;
     const startX = cx * size, startZ = cz * size;
+
+    // v15.2 60 FPS FAST DEEP-OCEAN CHUNK SKIP: Zero-cost stub for empty seabed far from islands!
+    if (this._isPureDeepOceanChunk(startX, startZ, size)) {
+      const group = new THREE.Group();
+      group.position.set(startX + size * 0.5, 0, startZ + size * 0.5);
+      this.rootGroup.add(group);
+      return { group, mesh: null, heights: null, trees: [], colliders: [], fences: [], isPureOcean: true };
+    }
+
     const geo = new THREE.PlaneGeometry(size, size, segs, segs);
     geo.rotateX(-Math.PI / 2);
 

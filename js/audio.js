@@ -183,6 +183,29 @@ KK.AudioEngine = class AudioEngine {
     this.hornOsc1.start(); this.hornOsc2.start();
 
     // ------------------------------------------------------------------------
+    // v15.2 DEDICATED PROCEDURAL MARINE ENGINE, HOVERCRAFT FAN & NAVAL FOGHORN SYNTH!
+    this.boatOsc1 = this.ctx.createOscillator(); this.boatOsc1.type = "sawtooth"; this.boatOsc1.frequency.value = 65;
+    this.boatOsc2 = this.ctx.createOscillator(); this.boatOsc2.type = "triangle"; this.boatOsc2.frequency.value = 130;
+    this.boatFilt = this.ctx.createBiquadFilter(); this.boatFilt.type = "lowpass"; this.boatFilt.frequency.value = 340;
+    this.boatGain = this.ctx.createGain(); this.boatGain.gain.value = 0.0;
+    this.boatOsc1.connect(this.boatFilt); this.boatOsc2.connect(this.boatFilt);
+    this.boatFilt.connect(this.boatGain); this.boatGain.connect(this.master);
+    this.boatOsc1.start(); this.boatOsc2.start();
+
+    this.boatNoiseSrc = this.ctx.createBufferSource(); this.boatNoiseSrc.buffer = this.noiseBuf; this.boatNoiseSrc.loop = true;
+    this.boatNoiseFilt = this.ctx.createBiquadFilter(); this.boatNoiseFilt.type = "bandpass"; this.boatNoiseFilt.frequency.value = 260; this.boatNoiseFilt.Q.value = 0.85;
+    this.boatNoiseGain = this.ctx.createGain(); this.boatNoiseGain.gain.value = 0.0;
+    this.boatNoiseSrc.connect(this.boatNoiseFilt); this.boatNoiseFilt.connect(this.boatNoiseGain); this.boatNoiseGain.connect(this.master);
+    this.boatNoiseSrc.start();
+
+    this.fogOsc1 = this.ctx.createOscillator(); this.fogOsc1.type = "sawtooth"; this.fogOsc1.frequency.value = 78;
+    this.fogOsc2 = this.ctx.createOscillator(); this.fogOsc2.type = "triangle"; this.fogOsc2.frequency.value = 117;
+    this.fogFilt = this.ctx.createBiquadFilter(); this.fogFilt.type = "lowpass"; this.fogFilt.frequency.value = 360;
+    this.fogGain = this.ctx.createGain(); this.fogGain.gain.value = 0.0;
+    this.fogOsc1.connect(this.fogFilt); this.fogOsc2.connect(this.fogFilt);
+    this.fogFilt.connect(this.fogGain); this.fogGain.connect(this.master);
+    this.fogOsc1.start(); this.fogOsc2.start();
+
     // v14.1P DEDICATED DEEP V16 TANK DIESEL MONSTER SYNTH (MDV-16 1,600 HP!)
     // ------------------------------------------------------------------------
     this.v16Sub = this.ctx.createOscillator(); this.v16Sub.type = "sine"; this.v16Sub.frequency.value = 30;
@@ -802,6 +825,81 @@ KK.AudioEngine = class AudioEngine {
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.014);
     src.connect(hp); hp.connect(g); g.connect(this.master);
     src.start(t); src.stop(t + 0.018);
+  }
+
+  updateBoatAudio(boat, throttle = 0, boost = false) {
+    if (!this.started || this.muted || !this.boatGain) return;
+    const t = this.ctx.currentTime;
+    if (!boat) {
+      this.boatGain.gain.setTargetAtTime(0.0, t, 0.12);
+      this.boatNoiseGain.gain.setTargetAtTime(0.0, t, 0.12);
+      return;
+    }
+    const id = boat.id;
+    const spdNorm = Math.min(1.2, (boat.speedKmh || 0) / Math.max(20, boat.spec.topSpeedKmh || 90));
+    const thr = Math.min(1.2, Math.abs(throttle) * (boost ? 1.25 : 1.0));
+    const anchored = !!boat.anchored;
+
+    if (id === "zubr") {
+      const idleScale = anchored ? 0.35 : 1.0;
+      const f1 = (88 + spdNorm * 115 + thr * 68) * idleScale;
+      this.boatOsc1.type = "sawtooth";
+      this.boatOsc1.frequency.setTargetAtTime(f1, t, 0.08);
+      this.boatOsc2.frequency.setTargetAtTime(f1 * 2.02, t, 0.08);
+      this.boatFilt.frequency.setTargetAtTime(anchored ? 220 : (360 + thr * 420 + spdNorm * 300), t, 0.08);
+      this.boatGain.gain.setTargetAtTime(anchored ? 0.055 : (0.11 + thr * 0.07), t, 0.08);
+      this.boatNoiseFilt.frequency.setTargetAtTime(anchored ? 140 : (210 + spdNorm * 280 + thr * 180), t, 0.08);
+      this.boatNoiseGain.gain.setTargetAtTime(anchored ? 0.04 : (0.18 + spdNorm * 0.14 + thr * 0.08), t, 0.08);
+    } else if (id === "serna") {
+      const f1 = 42 + spdNorm * 58 + thr * 34;
+      this.boatOsc1.type = "sawtooth";
+      this.boatOsc1.frequency.setTargetAtTime(f1, t, 0.08);
+      this.boatOsc2.frequency.setTargetAtTime(f1 * 1.5, t, 0.08);
+      this.boatFilt.frequency.setTargetAtTime(210 + thr * 280 + spdNorm * 160, t, 0.08);
+      this.boatGain.gain.setTargetAtTime(0.14 + thr * 0.07, t, 0.08);
+      this.boatNoiseFilt.frequency.setTargetAtTime(320 + spdNorm * 350, t, 0.08);
+      this.boatNoiseGain.gain.setTargetAtTime(0.03 + spdNorm * 0.12, t, 0.08);
+    } else {
+      const hi = (id === "strela") ? 1.55 : 1.0;
+      const f1 = (78 + spdNorm * 165 + thr * 85) * hi;
+      this.boatOsc1.type = "sawtooth";
+      this.boatOsc1.frequency.setTargetAtTime(f1, t, 0.06);
+      this.boatOsc2.frequency.setTargetAtTime(f1 * 1.98, t, 0.06);
+      this.boatFilt.frequency.setTargetAtTime(420 + thr * 720 + spdNorm * 580, t, 0.06);
+      this.boatGain.gain.setTargetAtTime(0.085 + thr * 0.065, t, 0.06);
+      this.boatNoiseFilt.frequency.setTargetAtTime(480 + spdNorm * 750, t, 0.08);
+      this.boatNoiseGain.gain.setTargetAtTime(0.025 + spdNorm * 0.16, t, 0.08);
+    }
+  }
+
+  setNavalHorn(active, isBigShip = true) {
+    if (!this.started || this.muted || !this.fogGain) return;
+    const t = this.ctx.currentTime;
+    this.fogOsc1.frequency.setTargetAtTime(isBigShip ? 76 : 278, t, 0.03);
+    this.fogOsc2.frequency.setTargetAtTime(isBigShip ? 114 : 348, t, 0.03);
+    this.fogFilt.frequency.setTargetAtTime(isBigShip ? 320 : 980, t, 0.04);
+    this.fogGain.gain.setTargetAtTime(active ? (isBigShip ? 0.34 : 0.20) : 0.0, t, active ? 0.06 : 0.24);
+  }
+
+  playAnchorClank() {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    for (let k = 0; k < 4; k++) {
+      const st = t + k * 0.085;
+      const o = this.ctx.createOscillator(); o.type = "square"; o.frequency.value = 185 + (k % 2) * 65;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.22, st); g.gain.exponentialRampToValueAtTime(0.001, st + 0.07);
+      o.connect(g); g.connect(this.master); o.start(st); o.stop(st + 0.08);
+    }
+  }
+
+  playRampHydraulics() {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+    const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.setValueAtTime(1400, t); bp.frequency.exponentialRampToValueAtTime(420, t + 0.55); bp.Q.value = 2.0;
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.58);
+    src.connect(bp); bp.connect(g); g.connect(this.master); src.start(t); src.stop(t + 0.60);
   }
 
   playTramBell() {

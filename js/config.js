@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.1.8";
-KK.VERSION_FULL = "v15.1.8 ONLINE";
+KK.VERSION = "v15.2";
+KK.VERSION_FULL = "v15.2 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -56,31 +56,58 @@ KK.PORTS = [
   { id: "port_site140",  name: "Site-140 Quarantine Pier",   x:  64800, z: -65200, dirAng:  2.42, islandId: 5, nearTownId: 14, portTownId: 14   }
 ];
 
-// v15.1 UNLOCKABLE OCEAN BOATS & HOVERCRAFT (Summon at any of the 9 Ports!)
+// v15.2 REALISTIC FULL-SCALE OCEAN VESSELS, MULTI-VEHICLE DECK BAYS & PAYLOAD BUDGETS!
 KK.BOATS = {
   patrol: {
     id: "patrol", name: "Krasnaya Utility Patrol Boat", price: 24000,
-    topSpeedKmh: 92, accelMs2: 11.5, len: 11.5, seats: 4, maxCarMassKg: 3600,
-    amphibious: false, deckY: 1.45, deckZ: -1.6,
-    desc: "Twin-outboard harbor patrol craft. Seats 4 & mounts 1 light 4x4 (Jimny, UAZ-452, Hilux, Wrangler) on the stern deck!"
+    topSpeedKmh: 94, accelMs2: 12.5, len: 14.8, width: 5.0, seats: 6,
+    maxPayloadKg: 4500, maxCarMassKg: 4500,
+    amphibious: false, deckY: 1.48, deckZ: -2.6,
+    walkBounds: { minX: -2.0, maxX: 2.0, minZ: -6.4, maxZ: 4.8 },
+    helmLocal: { x: 0, y: 2.1, z: 3.0 },
+    bays: [{ x: 0, z: -2.6, label: "Stern Bay" }],
+    desc: "14.8m × 5.0m twin-outboard harbor patrol craft. Seats 6, walkable rails & mounts 1 light 4x4 (up to 4.5t) on the aft deck!"
   },
   strela: {
     id: "strela", name: "Strela-X1 Offshore Speedboat", price: 38000,
-    topSpeedKmh: 155, accelMs2: 22.0, len: 8.5, seats: 1, maxCarMassKg: 0,
+    topSpeedKmh: 155, accelMs2: 22.0, len: 9.4, width: 2.5, seats: 1,
+    maxPayloadKg: 0, maxCarMassKg: 0,
     amphibious: false, deckY: 1.0, deckZ: 0,
-    desc: "Blistering 155 km/h hydroplane racing speedboat! Strictly 1 person only (NO vehicles) — fastest way across the archipelago."
+    walkBounds: null,
+    helmLocal: { x: 0, y: 1.1, z: -0.4 },
+    bays: [],
+    desc: "9.4m × 2.5m blistering 155 km/h hydroplane racing speedboat! Strictly 1 person only (NO vehicles) — fastest crossing on the map."
   },
   serna: {
     id: "serna", name: "Projekt 11770 'Serna' Tank Landing Barge", price: 68000,
-    topSpeedKmh: 68, accelMs2: 7.5, len: 19.0, seats: 6, maxCarMassKg: 75000,
-    amphibious: false, deckY: 1.95, deckZ: 1.5,
-    desc: "Heavy steel coastal landing craft with drop-down bow ramp. Carries ANY truck or main battle tank (up to 75 tons)!"
+    topSpeedKmh: 68, accelMs2: 7.5, len: 28.0, width: 9.2, seats: 8,
+    maxPayloadKg: 75000, maxCarMassKg: 75000,
+    amphibious: false, deckY: 1.95, deckZ: 1.2,
+    walkBounds: { minX: -4.0, maxX: 4.0, minZ: -11.5, maxZ: 12.5 },
+    helmLocal: { x: 0, y: 3.4, z: -9.8 },
+    bays: [
+      { x: 0, z: 6.2, label: "Fwd Bay" },
+      { x: 0, z: -3.4, label: "Aft Bay" }
+    ],
+    centerHeavyBay: { x: 0, z: 1.4, label: "Main Tank Well" },
+    desc: "28m × 9.2m heavy steel landing craft with hydraulic bow ramp & walkable catwalks. Carries 1 MBT (up to 75t) OR 2 cars nose-to-tail!"
   },
   zubr: {
     id: "zubr", name: "Projekt 12322 'Zubr' LCAC Hovercraft", price: 165000,
-    topSpeedKmh: 105, accelMs2: 13.0, len: 24.4, seats: 8, maxCarMassKg: 85000,
-    amphibious: true, deckY: 3.05, deckZ: 1.2,
-    desc: "Massive amphibious Soviet assault hovercraft! Glides over ocean waves AND coastal beaches while carrying the 68-ton PzKpfw 140A4 or T-72B!"
+    topSpeedKmh: 105, accelMs2: 11.8, len: 52.0, width: 22.0, seats: 12,
+    maxPayloadKg: 150000, maxCarMassKg: 150000,
+    amphibious: true, deckY: 3.10, deckZ: 0.0,
+    walkBounds: { minX: -9.2, maxX: 9.2, minZ: -18.5, maxZ: 21.5 },
+    helmLocal: { x: 7.5, y: 6.0, z: 7.5 },
+    bays: [
+      { x: -3.4, z:  11.0, label: "Port Fwd" },
+      { x:  3.4, z:  11.0, label: "Stbd Fwd" },
+      { x: -3.4, z:   0.0, label: "Port Mid" },
+      { x:  3.4, z:   0.0, label: "Stbd Mid" },
+      { x: -3.4, z: -11.0, label: "Port Aft" },
+      { x:  3.4, z: -11.0, label: "Stbd Aft" }
+    ],
+    desc: "Colossal 52m × 22m amphibious Soviet assault hovercraft! 150-TON / 6-BAY deck carries multiple MBTs & 4x4s, glides over waves & beaches!"
   }
 };
 KK.CHUNK_SIZE = 180;
