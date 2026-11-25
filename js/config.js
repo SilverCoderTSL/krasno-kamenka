@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.1.3";
-KK.VERSION_FULL = "v15.1.3 ONLINE";
+KK.VERSION = "v15.1.4";
+KK.VERSION_FULL = "v15.1.4 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -1415,10 +1415,10 @@ KK.VEHICLES = {
     baseSpringK: 122000, baseDamperC: 13800, baseAntiRoll: 28000, maxSteerDeg: 35, brakeForce: 62000,
     bedOffset: { x: 0, y: 1.15, z: -1.45 },
     wheels: [
-      { id: "FL", x: -0.98, y: 0.20, z:  1.80, steer: true,  axle: "front" },
-      { id: "FR", x:  0.98, y: 0.20, z:  1.80, steer: true,  axle: "front" },
-      { id: "RL", x: -0.98, y: 0.20, z: -1.80, steer: false, axle: "rear"  },
-      { id: "RR", x:  0.98, y: 0.20, z: -1.80, steer: false, axle: "rear"  }
+      { id: "FL", x: -0.95, y: 0.20, z:  1.80, steer: true,  axle: "front" },
+      { id: "FR", x:  0.95, y: 0.20, z:  1.80, steer: true,  axle: "front" },
+      { id: "RL", x: -0.95, y: 0.20, z: -1.80, steer: false, axle: "rear"  },
+      { id: "RR", x:  0.95, y: 0.20, z: -1.80, steer: false, axle: "rear"  }
     ],
     desc: "PT Pindad Komodo 4x4 Standard APC (5.65m × 2.25m × 2.15m, 7.3t). High-clearance monocoque armored 4x4 built for brutal tropical mountain passes!"
   },

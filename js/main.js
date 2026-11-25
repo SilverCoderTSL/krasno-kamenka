@@ -340,7 +340,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1.3 ONLINE! Island-Themed Piers (Glowing Savanna Terminal & Rustic/Dilapidated Docks) + 4 Buyable PT Pindad Vehicles (Komodo Standard/Recon/30mm Turret & Harimau 105mm Medium Tank)!');
+      this.ui.toast('Welcome to v15.1.4 ONLINE! Island-Themed Piers (Glowing Savanna Terminal & Rustic/Dilapidated Docks) + 4 Buyable PT Pindad Vehicles (Komodo Standard/Recon/30mm Turret & Harimau 105mm Medium Tank)!');
     }, 650);
   }
 
@@ -2110,7 +2110,10 @@ KK.Game = class Game {
     if (this.ownedVehicles.shilka) this.ownedVehicles.shilka.shilkaAmmo = 800;
     if (this.ownedVehicles.pzkpfw_140a4) { const p = this.ownedVehicles.pzkpfw_140a4; p.p140ApAmmo = 14; p.p140HeshAmmo = 10; p.p140ThermAmmo = 8; p.p140RlgAmmo = 8; p.p140AutoAmmo = 240; }
     const curVs = this.vehicle.vState;
-    if (curVs.vehicleId === "t72" || curVs.vehicleId === "harimau") {
+    if (curVs.vehicleId === "komodo_turret") {
+        curVs.btrAmmo = 180;
+        this.ui.toast("RESUPPLIED KOMODO CPWS 30mm: 180 rds (-$1,800)!");
+      } else if (curVs.vehicleId === "t72" || curVs.vehicleId === "harimau") {
       curVs.t72HeAmmo = 18; curVs.t72ApAmmo = 14; curVs.t72CoaxAmmo = 300; curVs.t72SmokeCharges = 4;
       if (curVs.upgrades.t72SeismicFcs) curVs.t72ThermAmmo = 10;
     } else if (curVs.vehicleId === "bm21") { curVs.bm21Rockets = 40; }
