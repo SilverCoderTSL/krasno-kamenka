@@ -66,20 +66,31 @@ KK.VehicleBuilder = {
   // Builds a custom faceted stealth-polyhedral 3D armor hull/turret from vertices & quad/tri faces
   _buildFacetedMesh(verts, faces, mat, uvScale = 0.28) {
     const pos = [], uvs = [];
+    // Compute mesh centroid so EVERY face is automatically wound outward (zero see-through backfaces!)
+    let cx = 0, cy = 0, cz = 0;
+    for (let i = 0; i < verts.length; i++) { cx += verts[i][0]; cy += verts[i][1]; cz += verts[i][2]; }
+    cx /= Math.max(1, verts.length); cy /= Math.max(1, verts.length); cz /= Math.max(1, verts.length);
+
     const pushTri = (ia, ib, ic) => {
-      const a = verts[ia], b = verts[ib], c = verts[ic];
+      let a = verts[ia], b = verts[ib], c = verts[ic];
+      let ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+      let vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const mx = (a[0] + b[0] + c[0]) / 3 - cx;
+      const my = (a[1] + b[1] + c[1]) / 3 - cy;
+      const mz = (a[2] + b[2] + c[2]) / 3 - cz;
+      if (nx * mx + ny * my + nz * mz < 0) {
+        const tmp = b; b = c; c = tmp;
+        nx = -nx; ny = -ny; nz = -nz;
+      }
       pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
-      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
-      const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
-      const nx = Math.abs(uy * vz - uz * vy);
-      const ny = Math.abs(uz * vx - ux * vz);
-      const nz = Math.abs(ux * vy - uy * vx);
+      const anx = Math.abs(nx), any = Math.abs(ny), anz = Math.abs(nz);
       const pts = [a, b, c];
       for (let k = 0; k < 3; k++) {
         const p = pts[k];
-        if (ny >= nx && ny >= nz) uvs.push(p[0] * uvScale + 0.5, p[2] * uvScale + 0.5);
-        else if (nx >= nz)        uvs.push(p[2] * uvScale + 0.5, p[1] * uvScale + 0.5);
-        else                      uvs.push(p[0] * uvScale + 0.5, p[1] * uvScale + 0.5);
+        if (any >= anx && any >= anz) uvs.push(p[0] * uvScale + 0.5, p[2] * uvScale + 0.5);
+        else if (anx >= anz)          uvs.push(p[2] * uvScale + 0.5, p[1] * uvScale + 0.5);
+        else                          uvs.push(p[0] * uvScale + 0.5, p[1] * uvScale + 0.5);
       }
     };
     for (const f of faces) {
@@ -241,7 +252,7 @@ KK.VehicleBuilder = {
     const chassis = new THREE.Group();
     root.add(chassis);
     const cockpitCfg = KK.CockpitBuilder ? KK.CockpitBuilder.getConfig(vehicleId) : null;
-    let cockpit = null, btrTurretPivot = null, btrGunGroup = null, btrMuzzleFlash = null, tankTurretPivot = null, tankGunPitch = null, tankBarrelSlide = null, tankMainFlash = null, tankCoaxFlash = null, trackSys = null, tankDriverHoodMesh = null, tankUpgVisuals = null, tankXrayAnim = null, gradTurretPivot = null, gradPodPitch = null, gradFlashMesh = null, shilkaTurretPivot = null, shilkaGunPitch = null, shilkaBarrels = null, shilkaRadarDish = null, shilkaFlashes = null, p140SturmGroup = null, p140ApsFlash = null, p140XrayAnim = null, p140RwsPivot = null, p140RwsGunPitch = null, p140RwsMuzzleTip = null, matMainBarrelHot = null, matAutoBarrelHot = null;
+    let cockpit = null, btrTurretPivot = null, btrGunGroup = null, btrMuzzleFlash = null, btrMuzzleTip = null, tankTurretPivot = null, tankGunPitch = null, tankBarrelSlide = null, tankMainFlash = null, tankCoaxFlash = null, trackSys = null, tankDriverHoodMesh = null, tankUpgVisuals = null, tankXrayAnim = null, gradTurretPivot = null, gradPodPitch = null, gradFlashMesh = null, shilkaTurretPivot = null, shilkaGunPitch = null, shilkaBarrels = null, shilkaRadarDish = null, shilkaFlashes = null, p140SturmGroup = null, p140ApsFlash = null, p140XrayAnim = null, p140RwsPivot = null, p140RwsGunPitch = null, p140RwsMuzzleTip = null, matMainBarrelHot = null, matAutoBarrelHot = null;
 
     const basePaintHex = (vState && vState.paintColor) ? vState.paintColor : spec.color;
     const basePaintColor = new THREE.Color(basePaintHex);
@@ -2903,32 +2914,56 @@ KK.VehicleBuilder = {
 
       // 7. VARIANT-SPECIFIC HERO ROOF SYSTEMS
       if (vehicleId === "komodo_std") {
-        // STANDARD APC: Full 360° Octagonal Armored Gunner Cupola + Ballistic Shield + Detailed 12.7mm SMB-2 HMG!
+        // STANDARD APC: WORKING 360° ROTATING & ELEVATING 12.7mm SMB-2 HMG CUPOLA!
+        btrTurretPivot = new THREE.Group();
+        btrTurretPivot.position.set(0, roofY, -0.22);
+        chassis.add(btrTurretPivot);
+
         const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.58, 0.20, 8), matArmorDk);
-        ring.position.set(0, roofY + 0.10, -0.22); chassis.add(ring);
-        // 3-panel angled gunner turret shield with ballistic viewport
+        ring.position.set(0, 0.10, 0); btrTurretPivot.add(ring);
+        // 3-panel angled gunner shield rotating with cupola
         const shCenter = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.58, 0.07), matCamo);
-        shCenter.position.set(0, roofY + 0.44, 0.26); shCenter.rotation.x = -0.14; chassis.add(shCenter);
+        shCenter.position.set(0, 0.44, 0.48); shCenter.rotation.x = -0.14; btrTurretPivot.add(shCenter);
         const shGlass = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.09), matGlass);
-        shGlass.position.set(0, roofY + 0.54, 0.25); shGlass.rotation.x = -0.14; chassis.add(shGlass);
+        shGlass.position.set(0, 0.54, 0.47); shGlass.rotation.x = -0.14; btrTurretPivot.add(shGlass);
         for (const sx of [-1, 1]) {
           const wing = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.065), matCamo);
-          wing.position.set(sx * 0.48, roofY + 0.42, 0.06); wing.rotation.y = -sx * 0.68; chassis.add(wing);
+          wing.position.set(sx * 0.48, 0.42, 0.28); wing.rotation.y = -sx * 0.68; btrTurretPivot.add(wing);
         }
-        // Hinged open armored roof hatch lid behind gunner
         const hatchLid = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.06, 8), matArmorDk);
-        hatchLid.position.set(0, roofY + 0.52, -0.74); hatchLid.rotation.x = 1.35; chassis.add(hatchLid);
-        // Pindad SMB-2 / M2HB 12.7mm Heavy Machine Gun (Receiver + Jacket + Heavy Barrel + Ammo Can + Brass Belt!)
-        const hmgRec = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.18, 0.68), matArmorDk);
-        hmgRec.position.set(0, roofY + 0.50, 0.34); chassis.add(hmgRec);
-        const hmgJkt = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.048, 0.42, 8), matArmorDk);
-        hmgJkt.rotation.x = Math.PI / 2; hmgJkt.position.set(0, roofY + 0.52, 0.86); chassis.add(hmgJkt);
-        const hmgBar = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.032, 1.12, 8), matSteel);
-        hmgBar.rotation.x = Math.PI / 2; hmgBar.position.set(0, roofY + 0.52, 1.32); chassis.add(hmgBar);
+        hatchLid.position.set(0, 0.52, -0.52); hatchLid.rotation.x = 1.35; btrTurretPivot.add(hatchLid);
+
+        // Elevating Pindad SMB-2 / M2HB 12.7mm Heavy Machine Gun (Glows cherry-red on sustained fire!)
+        btrGunGroup = new THREE.Group();
+        btrGunGroup.visible = true;
+        btrGunGroup.position.set(0, 0.54, 0.54);
+        btrTurretPivot.add(btrGunGroup);
+
+        const hmgRec = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.72), matArmorDk);
+        hmgRec.position.set(0, 0, 0.06); btrGunGroup.add(hmgRec);
+        const hmgJkt = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.052, 0.48, 10), matArmorDk);
+        hmgJkt.rotation.x = Math.PI / 2; hmgJkt.position.set(0, 0.02, 0.62); btrGunGroup.add(hmgJkt);
+        matAutoBarrelHot = matSteel.clone();
+        const hmgBar = new THREE.Mesh(new THREE.CylinderGeometry(0.030, 0.040, 1.38, 10), matAutoBarrelHot);
+        hmgBar.rotation.x = Math.PI / 2; hmgBar.position.set(0, 0.02, 1.24); hmgBar.castShadow = true; btrGunGroup.add(hmgBar);
+        const hmgFlashHider = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.036, 0.18, 8), matArmorDk);
+        hmgFlashHider.rotation.x = Math.PI / 2; hmgFlashHider.position.set(0, 0.02, 1.98); btrGunGroup.add(hmgFlashHider);
         const ammoCan = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.30), matArmorMd);
-        ammoCan.position.set(-0.20, roofY + 0.46, 0.30); chassis.add(ammoCan);
+        ammoCan.position.set(-0.20, -0.04, 0.02); btrGunGroup.add(ammoCan);
         const belt = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.14), matBrass);
-        belt.position.set(-0.11, roofY + 0.52, 0.30); chassis.add(belt);
+        belt.position.set(-0.11, 0.02, 0.02); btrGunGroup.add(belt);
+
+        btrMuzzleTip = new THREE.Object3D();
+        btrMuzzleTip.position.set(0, 0.02, 2.08);
+        btrGunGroup.add(btrMuzzleTip);
+
+        btrMuzzleFlash = new THREE.Mesh(
+          new THREE.ConeGeometry(0.24, 0.98, 7),
+          new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.94 })
+        );
+        btrMuzzleFlash.rotation.x = Math.PI / 2; btrMuzzleFlash.position.set(0, 0.02, 2.52); btrMuzzleFlash.visible = false;
+        btrGunGroup.add(btrMuzzleFlash);
+
         const whip = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.020, 2.2, 5), matArmorDk);
         whip.position.set(-0.80, roofY + 1.10, -2.18); chassis.add(whip);
       } else if (vehicleId === "komodo_recon") {
@@ -3002,28 +3037,36 @@ KK.VehicleBuilder = {
 
         btrGunGroup = new THREE.Group();
         btrGunGroup.visible = true;
-        btrGunGroup.position.set(0, 0.38, 0.76);
+        btrGunGroup.position.set(0, 0.38, 0.80);
         btrTurretPivot.add(btrGunGroup);
 
-        const mantlet = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.32, 0.48), matArmorDk);
+        const mantlet = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.34, 0.56), matArmorDk);
         btrGunGroup.add(mantlet);
-        const cradle = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.20, 0.72), matArmorMd);
-        cradle.position.set(0, 0.0, 0.46); btrGunGroup.add(cradle);
+        const cradle = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.22, 0.88), matArmorMd);
+        cradle.position.set(0, 0.02, 0.58); btrGunGroup.add(cradle);
+        // Boldly protruding 30mm M230LF / Bushmaster Autocannon Barrel (Glows cherry-red -> orange-red on fire!)
         matAutoBarrelHot = matSteel.clone();
-        const barrel30 = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.064, 2.48, 12), matAutoBarrelHot);
-        barrel30.rotation.x = Math.PI / 2; barrel30.position.set(0, 0.02, 1.38); barrel30.castShadow = true; btrGunGroup.add(barrel30);
-        // Cooling ribs + multi-baffle 30mm muzzle brake
-        for (let r = 0; r < 4; r++) {
-          const rib = new THREE.Mesh(new THREE.CylinderGeometry(0.066, 0.066, 0.05, 10), matArmorDk);
-          rib.rotation.x = Math.PI / 2; rib.position.set(0, 0.02, 0.92 + r * 0.18); btrGunGroup.add(rib);
+        const barrel30 = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.078, 2.90, 14), matAutoBarrelHot);
+        barrel30.rotation.x = Math.PI / 2; barrel30.position.set(0, 0.02, 1.70); barrel30.castShadow = true; btrGunGroup.add(barrel30);
+        for (let r = 0; r < 5; r++) {
+          const rib = new THREE.Mesh(new THREE.CylinderGeometry(0.084, 0.084, 0.06, 12), matArmorDk);
+          rib.rotation.x = Math.PI / 2; rib.position.set(0, 0.02, 1.04 + r * 0.22); btrGunGroup.add(rib);
         }
-        const mBrake = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.32), matArmorDk);
-        mBrake.position.set(0, 0.02, 2.70); btrGunGroup.add(mBrake);
+        const mBrake = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.40), matAutoBarrelHot);
+        mBrake.position.set(0, 0.02, 3.24); mBrake.castShadow = true; btrGunGroup.add(mBrake);
+        // Coaxial 7.62mm barrel poking beside the 30mm cannon
+        const coaxBar = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.92, 6), matSteel);
+        coaxBar.rotation.x = Math.PI / 2; coaxBar.position.set(-0.20, 0.02, 0.72); btrGunGroup.add(coaxBar);
+
+        btrMuzzleTip = new THREE.Object3D();
+        btrMuzzleTip.position.set(0, 0.02, 3.46);
+        btrGunGroup.add(btrMuzzleTip);
+
         btrMuzzleFlash = new THREE.Mesh(
-          new THREE.ConeGeometry(0.28, 1.15, 7),
-          new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.94 })
+          new THREE.ConeGeometry(0.32, 1.35, 7),
+          new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.95 })
         );
-        btrMuzzleFlash.rotation.x = Math.PI / 2; btrMuzzleFlash.position.set(0, 0.02, 3.30); btrMuzzleFlash.visible = false;
+        btrMuzzleFlash.rotation.x = Math.PI / 2; btrMuzzleFlash.position.set(0, 0.02, 4.05); btrMuzzleFlash.visible = false;
         btrGunGroup.add(btrMuzzleFlash);
       }
 
@@ -3964,7 +4007,7 @@ KK.VehicleBuilder = {
     }
 
     const rig = {
-      root, chassis, hoodPivot, cockpit, wheelAssemblies, cargoGroup, cargoMeshes, strapGroup, smokePuffs, spec, p140RwsGunPitch, p140RwsMuzzleTip,
+      root, chassis, hoodPivot, cockpit, wheelAssemblies, cargoGroup, cargoMeshes, strapGroup, smokePuffs, spec, p140RwsGunPitch, p140RwsMuzzleTip, btrMuzzleTip, btrGunGroup,
       matPaint, matTire, matDirtOverlay, matHeadlight, matTaillight, matBlinker, matReverse, matLedStrip,
       snorkelGroup, bullbarGroup, lightbarGroup, spotL, spotR, ledSpot, remoteHeadLight, hlGlows, ledGlow, flameMesh,
       hoodOpenTarget: 0, hoodOpenCurrent: 0, baseColor: basePaintColor,
@@ -3976,7 +4019,7 @@ KK.VehicleBuilder = {
         snorkelGroup.visible = !!state.upgrades.snorkel && !stw.snorkel;
         bullbarGroup.visible = !!state.upgrades.bullbar;
         lightbarGroup.visible = !!state.upgrades.ledLightbar;
-        if (btrGunGroup) btrGunGroup.visible = !!state.upgrades.btrTurret;
+        if (btrGunGroup) btrGunGroup.visible = (vehicleId === "komodo_turret" || vehicleId === "komodo_std") || !!state.upgrades.btrTurret;
         if (tankUpgVisuals && state.upgrades) {
           tankUpgVisuals.snorkel.visible = !!state.upgrades.t72Snorkel && !stw.t72Snorkel;
           tankUpgVisuals.emp.visible     = !!state.upgrades.t72EmpShield;
@@ -4051,7 +4094,7 @@ KK.VehicleBuilder = {
 
         if (cockpit) cockpit.update(dt, state);
         if (btrTurretPivot) {
-          if (state.hasBtrTurret !== undefined && btrGunGroup) btrGunGroup.visible = !!state.hasBtrTurret;
+          if (btrGunGroup) btrGunGroup.visible = (vehicleId === "komodo_turret" || vehicleId === "komodo_std") || (state.hasBtrTurret !== undefined ? !!state.hasBtrTurret : btrGunGroup.visible);
           if (typeof state.turretYaw === "number") btrTurretPivot.rotation.y = state.turretYaw;
           if (btrGunGroup && typeof state.gunPitch === "number") btrGunGroup.rotation.x = -Math.max(-0.14, Math.min(0.55, state.gunPitch));
           if (btrMuzzleFlash) btrMuzzleFlash.visible = (state.btrFlashTimer || 0) > 0;

@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.1.5";
-KK.VERSION_FULL = "v15.1.5 ONLINE";
+KK.VERSION = "v15.1.6";
+KK.VERSION_FULL = "v15.1.6 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -1686,6 +1686,8 @@ KK.createDefaultVehicleState = function(vehicleId) {
     st.t72HeAmmo = 22; st.t72ApAmmo = 16; st.t72CoaxAmmo = 400; st.t72SmokeCharges = 6; st.t72ShellType = "he";
   } else if (spec.id === "komodo_turret") {
     st.btrAmmo = 180;
+  } else if (spec.id === "komodo_std") {
+    st.btrAmmo = 300;
   }
   return KK.ensurePartsInitialized(st);
 };

@@ -370,7 +370,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1.5 ONLINE! Full Multiplayer Sync Update: James May Molotovs, 3.2x Rage Clarkson & Sheep, Synced Skinwalker Rescue, Remote Winch Cables, Ocean Boats & Zolotoy Tram!');
+      this.ui.toast('Welcome to v15.1.6 ONLINE! Full Multiplayer Sync Update: James May Molotovs, 3.2x Rage Clarkson & Sheep, Synced Skinwalker Rescue, Remote Winch Cables, Ocean Boats & Zolotoy Tram!');
     }, 650);
   }
 
@@ -601,7 +601,7 @@ KK.Game = class Game {
       const isT72 = (!this.onFoot && !this.ridingWithPeerId && (vid === "t72" || vid === "harimau" || isP140));
       const isBm21 = (!this.onFoot && !this.ridingWithPeerId && vid === "bm21");
       const isShilka = (!this.onFoot && !this.ridingWithPeerId && vid === "shilka");
-      const isArmedBtr = (!this.onFoot && !this.ridingWithPeerId && (vid === "komodo_turret" || (vid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
+      const isArmedBtr = (!this.onFoot && !this.ridingWithPeerId && (vid === "komodo_turret" || vid === "komodo_std" || (vid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
       const isArmed = isT72 || isBm21 || isShilka || isArmedBtr;
 
       if (e.button === 0) {
@@ -2143,6 +2143,9 @@ KK.Game = class Game {
     if (curVs.vehicleId === "komodo_turret") {
         curVs.btrAmmo = 180;
         this.ui.toast("RESUPPLIED KOMODO CPWS 30mm: 180 rds (-$1,800)!");
+      } else if (curVs.vehicleId === "komodo_std") {
+        curVs.btrAmmo = 300;
+        this.ui.toast("RESUPPLIED KOMODO 12.7mm SMB-2 HMG: 300 rds (-$1,800)!");
       } else if (curVs.vehicleId === "t72" || curVs.vehicleId === "harimau") {
       curVs.t72HeAmmo = 18; curVs.t72ApAmmo = 14; curVs.t72CoaxAmmo = 300; curVs.t72SmokeCharges = 4;
       if (curVs.upgrades.t72SeismicFcs) curVs.t72ThermAmmo = 10;
@@ -2302,6 +2305,16 @@ KK.Game = class Game {
       pivotLocal = new THREE.Vector3(Math.sin(yaw) * 2.08, 2.16, -0.38 + Math.cos(yaw) * 2.08);
       barrelLen = 6.35;
       evacLen = 3.08;
+    } else if (vid === "harimau") {
+      pivotLocal = new THREE.Vector3(Math.sin(yaw) * 1.56, 2.02, 0.14 + Math.cos(yaw) * 1.56);
+      barrelLen = 5.50;
+      evacLen = 2.42;
+    } else if (vid === "komodo_turret") {
+      pivotLocal = new THREE.Vector3(Math.sin(yaw) * 0.80, 2.53, -0.32 + Math.cos(yaw) * 0.80);
+      barrelLen = 3.46;
+    } else if (vid === "komodo_std") {
+      pivotLocal = new THREE.Vector3(Math.sin(yaw) * 0.54, 2.69, -0.22 + Math.cos(yaw) * 0.54);
+      barrelLen = 2.08;
     } else if (vid === "t72") {
       // Exact T-72B trunnion: turret(0,1.62,0.16) + gunPitch(0,0.44,1.56 rotated by yaw) -> tip +4.43m along barrel!
       pivotLocal = new THREE.Vector3(Math.sin(yaw) * 1.56, 2.06, 0.16 + Math.cos(yaw) * 1.56);
@@ -2694,17 +2707,27 @@ KK.Game = class Game {
   fireBtrTurret() {
     if (this.onFoot || this.ridingWithPeerId || this.ui.activeModal) return;
     const vs = this.vehicle.vState;
-    if (vs.vehicleId !== "komodo_turret" && (vs.vehicleId !== "btr80" || !vs.upgrades.btrTurret)) return;
+    const isKomodo30 = (vs.vehicleId === "komodo_turret");
+    const isKomodoMg = (vs.vehicleId === "komodo_std");
+    if (!isKomodo30 && !isKomodoMg && (vs.vehicleId !== "btr80" || !vs.upgrades.btrTurret)) return;
     if (this.btrFireCd > 0) return;
     if ((vs.btrAmmo || 0) <= 0) {
-      this.ui.toast("OUT OF 14.5mm AMMO! Visit Richard Hammond on his Desert Mesa to reload ($600)!", true);
+      this.ui.toast(isKomodo30 ? "OUT OF 30mm AMMO! Resupply at any Town Garage!" : (isKomodoMg ? "OUT OF 12.7mm HMG AMMO! Resupply at any Town Garage!" : "OUT OF 14.5mm AMMO! Visit Richard Hammond on his Desert Mesa to reload ($600)!"), true);
       return;
     }
-    this.btrFireCd = 0.20;
-    this.btrFlashTimer = 0.09;
+    this.btrFireCd = isKomodoMg ? 0.115 : (isKomodo30 ? 0.21 : 0.20);
+    this.btrFlashTimer = isKomodoMg ? 0.065 : 0.095;
     vs.btrAmmo--;
 
-    const muzzleLocal = new THREE.Vector3(0, 2.38, 0.92).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
+    let muzzleLocal;
+    if (this.vehicleRig && this.vehicleRig.btrMuzzleTip) {
+      this.vehicleRig.root.updateMatrixWorld(true);
+      const tipL = new THREE.Vector3();
+      this.vehicleRig.btrMuzzleTip.getWorldPosition(tipL);
+      muzzleLocal = new THREE.Vector3(tipL.x + this.world.originX, tipL.y, tipL.z + this.world.originZ);
+    } else {
+      muzzleLocal = new THREE.Vector3(0, 2.48, (isKomodo30 || isKomodoMg) ? 0.20 : 0.92).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
+    }
     const aimDir = new THREE.Vector3();
     this.camera.getWorldDirection(aimDir);
     aimDir.normalize();
@@ -2742,8 +2765,8 @@ KK.Game = class Game {
     this.vehicle.applyRecoilTorque(mzBtr.dirWorld, 0.35, 0.18, 0.32);
     this.particles.emitMuzzleShockwave(mzBtr.tipWorld, mzBtr.dirWorld, this.world, this.weather.weather, 0.50, false);
     this.barrelSmokeTimer = Math.max(this.barrelSmokeTimer, 2.8);
-    this.barrelHeat = Math.min(1.0, this.barrelHeat + 0.09);
-    this.autoBarrelHeat = Math.min(1.0, this.autoBarrelHeat + 0.075);
+    this.barrelHeat = Math.min(1.0, this.barrelHeat + (isKomodo30 ? 0.12 : 0.09));
+    this.autoBarrelHeat = Math.min(1.0, this.autoBarrelHeat + (isKomodo30 ? 0.115 : (isKomodoMg ? 0.078 : 0.085)));
 
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 25)) {
       this.clarksonFarm.triggerRage(this.ui, this.audio);
@@ -3207,7 +3230,7 @@ KK.Game = class Game {
       xrayActive: this.xrayActive,
       inCockpitCam: (!this.onFoot && !this.ridingWithPeerId && this.camMode === 3),
       isEmpty: this.onFoot || !!this.ridingWithPeerId,
-      hasBtrTurret: !!this.vehicle.vState.upgrades.btrTurret,
+      hasBtrTurret: (this.vehicle.vState.vehicleId === "komodo_turret" || this.vehicle.vState.vehicleId === "komodo_std" || !!this.vehicle.vState.upgrades.btrTurret),
       turretYaw: this.btrTurretYaw,
       rwsYaw: this.p140RwsYaw,
       rwsPitch: this.p140RwsPitch,
@@ -3370,7 +3393,7 @@ KK.Game = class Game {
     const isT72 = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && (curVid === "t72" || curVid === "harimau" || curVid === "pzkpfw_140a4"));
     const isBm21 = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && curVid === "bm21");
     const isShilka = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && curVid === "shilka");
-    const isArmedBtr = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && (curVid === "komodo_turret" || (curVid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
+    const isArmedBtr = (!this.onFoot && !this.ridingWithPeerId && !modalOpen && (curVid === "komodo_turret" || curVid === "komodo_std" || (curVid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
     const isArmed = isT72 || isBm21 || isShilka || isArmedBtr;
     if (!isArmed) {
       this.mouseAimHeld = false; this.mouseFireHeld = false; this.coaxFireHeld = false;
@@ -3395,7 +3418,7 @@ KK.Game = class Game {
         this.barrelSmokeCd = 0.085;
         const vidS = this.vehicle.vState.vehicleId;
         const smkInt = Math.min(1.0, this.barrelSmokeTimer / 3.5);
-        if (vidS === "t72" || vidS === "harimau" || vidS === "komodo_turret" || vidS === "pzkpfw_140a4" || vidS === "bm21" || vidS === "shilka" || (vidS === "btr80" && this.vehicle.vState.upgrades.btrTurret)) {
+        if (vidS === "t72" || vidS === "harimau" || vidS === "komodo_turret" || vidS === "komodo_std" || vidS === "pzkpfw_140a4" || vidS === "bm21" || vidS === "shilka" || (vidS === "btr80" && this.vehicle.vState.upgrades.btrTurret)) {
           const mzS = this._getActiveMuzzleTransform();
           const dW = mzS.dirWorld;
           this.particles.emitBarrelSmoke(mzS.tipWorld.x, mzS.tipWorld.y, mzS.tipWorld.z, dW.x, dW.y, dW.z, smkInt);
@@ -3547,6 +3570,19 @@ KK.Game = class Game {
             const thLbl = ["DAY", "TRI-FLIR", "RED NVD"][this.thermalMode || 0];
             const slewTag = (this.turretSlewErrorDeg || 0) > 2.2 ? `SLEW ${Math.round(this.turretSlewErrorDeg)}°` : "ON TARGET";
             ammoEl.textContent = `ZIELFALKEN-IV • ${slewTag} • LRF ${rngTxt}  |  ${shMap[vs.p140ShellType] || ""} [${rld}]  |  40mm: ${vs.p140AutoAmmo || 0}  |  ${thLbl}`;
+          } else if (curVid === "harimau") {
+            const vs = this.vehicle.vState;
+            const shLbl = vs.t72ShellType === "ap" ? `105mm M1060 APFSDS (${vs.t72ApAmmo || 0})` : `105mm M393 HE-FRAG (${vs.t72HeAmmo || 0})`;
+            const rld = this.t72ReloadTimer > 0 ? `BUSTLE LOAD: ${this.t72ReloadTimer.toFixed(1)}s` : "105mm READY";
+            const thLbl = ["DAY", "FLIR THERMAL", "GREEN NVG"][this.thermalMode || 0];
+            ammoEl.textContent = `COCKERILL 3105 • LRF: ${rngTxt}  |  ${shLbl} [${rld}]  |  7.62mm: ${vs.t72CoaxAmmo || 0}  |  ${thLbl} [6]`;
+          } else if (curVid === "komodo_turret") {
+            const vs = this.vehicle.vState;
+            const thLbl = ["DAY", "FLIR THERMAL", "GREEN NVG"][this.thermalMode || 0];
+            ammoEl.textContent = `CPWS GEN 2 • LRF: ${rngTxt}  |  30mm AUTOCANNON: ${vs.btrAmmo || 0} rds  |  ${thLbl} [6]`;
+          } else if (curVid === "komodo_std") {
+            const vs = this.vehicle.vState;
+            ammoEl.textContent = `KOMODO CUPOLA • LRF: ${rngTxt}  |  12.7mm SMB-2 HMG: ${vs.btrAmmo || 0} rds`;
           } else if (isT72) {
             const vs = this.vehicle.vState;
             const shLbl = vs.t72ShellType === "therm" ? `3BK-THERM (${vs.t72ThermAmmo || 0})` : (vs.t72ShellType === "ap" ? `3BM42 APFSDS (${vs.t72ApAmmo || 0})` : `3OF26 HE-FRAG (${vs.t72HeAmmo || 0})`);
@@ -3881,11 +3917,11 @@ KK.Game = class Game {
 
     // Smooth FOV zoom when holding Right-Click Gunner Aim in rearmed BTR-80!
     const aVid = this.vehicle.vState.vehicleId;
-    const isTankAim = (aVid === "t72" || aVid === "pzkpfw_140a4");
+    const isTankAim = (aVid === "t72" || aVid === "harimau" || aVid === "pzkpfw_140a4");
     const isBm21Aim = (aVid === "bm21");
     const isShilkaAim = (aVid === "shilka");
     const aimingGunner = (!this.onFoot && !this.ridingWithPeerId && !this.ui.activeModal && this.mouseAimHeld &&
-                          (isTankAim || isBm21Aim || isShilkaAim || (aVid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
+                          (isTankAim || isBm21Aim || isShilkaAim || aVid === "komodo_turret" || aVid === "komodo_std" || (aVid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
     const targetFov = aimingGunner ? (isTankAim ? 28 : (isBm21Aim ? 46 : 32)) : 62;
     if (Math.abs(this.camera.fov - targetFov) > 0.15) {
       this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 14);
@@ -3910,6 +3946,8 @@ KK.Game = class Game {
       else if (isTankAim)          opticLocal = rotTur(0, 1.62,  0.16, -0.46, 0.96, 1.82); // Clears T-72B turret front cheek 360°!
       else if (isShilkaAim) opticLocal = rotTur(0, 1.50, -0.05,  0.00, 0.96, 1.52); // Clears Shilka turret & radar 360°!
       else if (isBm21Aim)   opticLocal = rotTur(0, 2.36, -2.05,  0.00, 1.24, 1.70); // Clears BM-21 cab & 40-tube rack!
+      else if (aVid === "komodo_turret") opticLocal = rotTur(0, 2.15, -0.32,  0.42, 0.92, 0.85);
+      else if (aVid === "komodo_std")    opticLocal = rotTur(0, 2.15, -0.22,  0.00, 0.82, 0.62);
       else                  opticLocal = rotTur(0, 2.02,  0.92,  0.30, 0.76, 1.22); // Clears BTR-80 turret 360°!
       const opticPos = opticLocal.applyQuaternion(this.vehicle.quat).add(focusLocal);
 

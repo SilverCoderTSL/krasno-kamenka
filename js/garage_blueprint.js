@@ -187,7 +187,7 @@ KK.GarageBlueprint = {
           <button class="btn accent small" onclick="window.__GAME__.garageFullRepair(${totalRepairCost})">🔧 OVERHAUL ALL ($${totalRepairCost.toLocaleString()})</button>
           <button class="btn small" onclick="window.__GAME__.garageRefuel(${fuelCost})">⛽ REFUEL ($${fuelCost})</button>
           ${vs.vehicleId === "t72" ? `<button class="btn warn small" onclick="window.__GAME__.ui.selectBlueprintModule('addon_roof')">☢ T-72B CLASSIFIED UPGRADES</button>` : ""}
-          ${(vs.vehicleId === "t72" || vs.vehicleId === "harimau" || vs.vehicleId === "komodo_turret" || vs.vehicleId === "bm21" || vs.vehicleId === "shilka" || vs.vehicleId === "pzkpfw_140a4") ? `<button class="btn primary small" onclick="window.__GAME__.resupplyTankAmmo()">💣 RESUPPLY ORDNANCE ${vs.vehicleId === "pzkpfw_140a4" ? "(FREE)" : "($1,800)"}</button>` : ""}
+          ${(vs.vehicleId === "t72" || vs.vehicleId === "harimau" || vs.vehicleId === "komodo_turret" || vs.vehicleId === "komodo_std" || vs.vehicleId === "bm21" || vs.vehicleId === "shilka" || vs.vehicleId === "pzkpfw_140a4") ? `<button class="btn primary small" onclick="window.__GAME__.resupplyTankAmmo()">💣 RESUPPLY ORDNANCE ${vs.vehicleId === "pzkpfw_140a4" ? "(FREE)" : "($1,800)"}</button>` : ""}
         </div>
       </div>
 
