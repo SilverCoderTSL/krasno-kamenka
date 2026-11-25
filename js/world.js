@@ -2469,6 +2469,12 @@ KK.World = class World {
   _disposeChunkGroup(chunkObj) {
     if (!chunkObj || !chunkObj.group) return;
     this.rootGroup.remove(chunkObj.group);
+    if (chunkObj.group.children) {
+      for (let i = 0; i < chunkObj.group.children.length; i++) {
+        const ch = chunkObj.group.children[i];
+        if (ch && ch.isInstancedMesh && typeof ch.dispose === "function") ch.dispose();
+      }
+    }
     if (chunkObj.mesh && chunkObj.mesh.geometry) {
       if (this._chunkGeoPool && this._chunkGeoPool.length < 32) {
         this._chunkGeoPool.push(chunkObj.mesh.geometry);
@@ -3208,6 +3214,8 @@ KK.World = class World {
     }
     pos.needsUpdate = true;
     job.geo.computeVertexNormals();
+    job.geo.computeBoundingSphere();
+    job.geo.computeBoundingBox();
     return this._finalizeChunkFromGeo(job.cx, job.cz, job.geo, heights, job.roadSubset);
   }
 
@@ -3241,6 +3249,8 @@ KK.World = class World {
     }
     pos.needsUpdate = true;
     job.geo.computeVertexNormals();
+    job.geo.computeBoundingSphere();
+    job.geo.computeBoundingBox();
     return this._finalizeChunkFromGeo(cx, cz, job.geo, heights, job.roadSubset);
   }
 
@@ -3252,6 +3262,7 @@ KK.World = class World {
     group.position.set(startX + size * 0.5, 0, startZ + size * 0.5);
     const mesh = new THREE.Mesh(geo, this.matTerrain);
     mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
     group.add(mesh);
 
     const trees = [];
