@@ -732,7 +732,7 @@ KK.CryptidManager = class CryptidManager {
           vx: rp.vx || 0, vz: rp.vz || 0,
           speedKmh: Math.hypot(rp.vx || 0, rp.vz || 0) * 3.6,
           engineRunning: rp.engOn !== undefined ? !!rp.engOn : true,
-          headlights: rp.headlights, lightbar: rp.lightbar, hornActive: false
+          headlights: rp.headlights, lightbar: rp.lightbar, hornActive: !!rp.hornActive
         });
       }
     }

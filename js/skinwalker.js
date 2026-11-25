@@ -22,8 +22,81 @@ KK.SkinwalkerManager = class SkinwalkerManager {
     this.spawnCooldown = 0;
     this.phase = 0;
     this.isGrabbing = false;
+    this._netSyncCd = 0;
+    this._lastNetState = "dormant";
+    this.remoteSkinwalkers = new Map(); // peerId -> { rig, state, gx, gy, gz, yaw, tx, ty, tz, tyaw, phase, lastSeen }
 
     this._buildMesh();
+  }
+
+  _createSkinwalkerRig() {
+    const grp = new THREE.Group();
+    const matFur   = new THREE.MeshStandardMaterial({ color: 0x5c4330, roughness: 0.94 });
+    const matPale  = new THREE.MeshStandardMaterial({ color: 0x9c8e7c, roughness: 0.90 });
+    const matSkull = new THREE.MeshStandardMaterial({ color: 0xd9d2c5, roughness: 0.82 });
+    const matDark  = new THREE.MeshStandardMaterial({ color: 0x120d0c, roughness: 0.96 });
+    const matEye   = new THREE.MeshBasicMaterial({ color: 0xf4fcff });
+
+    const bodyPivot = new THREE.Group();
+    bodyPivot.position.y = 1.24;
+    grp.add(bodyPivot);
+
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.50, 1.56), matFur);
+    torso.castShadow = true; bodyPivot.add(torso);
+    for (let r = -0.45; r <= 0.45; r += 0.22) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.34, 0.06), matPale);
+      rib.position.set(0, -0.04, r); bodyPivot.add(rib);
+    }
+
+    const neckPivot = new THREE.Group();
+    neckPivot.position.set(0, 0.20, 0.72);
+    bodyPivot.add(neckPivot);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.74, 0.24), matFur);
+    neck.position.set(0, 0.34, 0.06); neck.rotation.x = 0.20; neckPivot.add(neck);
+
+    const headPivot = new THREE.Group();
+    headPivot.position.set(0, 0.72, 0.16);
+    neckPivot.add(headPivot);
+
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.50), matFur);
+    snout.position.set(0, 0, 0.16); headPivot.add(snout);
+    const skullFace = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.36), matSkull);
+    skullFace.position.set(0, 0.04, 0.26); headPivot.add(skullFace);
+    const maw = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.24), matDark);
+    maw.position.set(0, -0.10, 0.32); headPivot.add(maw);
+
+    for (const ex of [-0.085, 0.085]) {
+      const sock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.075, 0.05), matDark);
+      sock.position.set(ex, 0.07, 0.43); headPivot.add(sock);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), matEye);
+      eye.position.set(ex, 0.07, 0.455); headPivot.add(eye);
+    }
+    for (const ax of [-1, 1]) {
+      const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.032, 0.85, 5), matSkull);
+      ant.position.set(ax * 0.16, 0.42, 0.02); ant.rotation.z = -ax * 0.42; ant.rotation.x = -0.18;
+      headPivot.add(ant);
+      const tine = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.020, 0.42, 5), matSkull);
+      tine.position.set(ax * 0.28, 0.56, 0.14); tine.rotation.x = 0.55; tine.rotation.z = -ax * 0.22;
+      headPivot.add(tine);
+    }
+    const makeLeg = (lx, lz, isRear) => {
+      const piv = new THREE.Group();
+      piv.position.set(lx, -0.18, lz);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.62, 0.11), matFur);
+      upper.position.set(0, -0.30, isRear ? 0.08 : 0); upper.rotation.x = isRear ? -0.28 : 0.06; piv.add(upper);
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.68, 0.09), matDark);
+      lower.position.set(0, -0.82, isRear ? -0.08 : 0.02); lower.rotation.x = isRear ? 0.26 : -0.06; piv.add(lower);
+      bodyPivot.add(piv);
+      return piv;
+    };
+    const legFL = makeLeg(-0.22,  0.58, false);
+    const legFR = makeLeg( 0.22,  0.58, false);
+    const legRL = makeLeg(-0.22, -0.58, true);
+    const legRR = makeLeg( 0.22, -0.58, true);
+
+    grp.visible = false;
+    this.scene.add(grp);
+    return { mesh: grp, bodyPivot, headPivot, legFL, legFR, legRL, legRR, matEye };
   }
 
   _buildMesh() {
@@ -131,14 +204,61 @@ KK.SkinwalkerManager = class SkinwalkerManager {
     this.mesh.visible = true;
   }
 
-  applyHit(gx, gy, gz, audio) {
-    if (this.state === "dormant" || this.state === "flee") return { hit: false };
-    const rad = this.state === "grab" ? 12.0 : 4.5;
-    if (Math.hypot(this.gx - gx, this.gz - gz) < rad && Math.abs(this.gy - gy) < 8.0) {
-      this.repel(audio);
-      return { hit: true };
+  applyHit(gx, gy, gz, audio, network = null) {
+    if (this.state !== "dormant" && this.state !== "flee") {
+      const rad = this.state === "grab" ? 12.0 : 4.5;
+      if (Math.hypot(this.gx - gx, this.gz - gz) < rad && Math.abs(this.gy - gy) < 8.0) {
+        this.repel(audio);
+        return { hit: true };
+      }
+    }
+    // Check remote comrades' Skinwalkers so you can shoot them off your friend's window!
+    for (const [pid, rsw] of this.remoteSkinwalkers.entries()) {
+      if (rsw.state === "dormant" || rsw.state === "flee") continue;
+      const rad = rsw.state === "grab" ? 12.0 : 5.0;
+      if (Math.hypot(rsw.gx - gx, rsw.gz - gz) < rad && Math.abs(rsw.gy - gy) < 8.5) {
+        rsw.state = "flee";
+        if (audio) audio.playCryptidSound("skinwalker_shriek");
+        if (network) network.send({ type: "skinwalker_repel", ownerPeerId: pid });
+        return { hit: true, savedPeerId: pid };
+      }
     }
     return { hit: false };
+  }
+
+  syncRemote(peerId, msg, audio, localVehicle) {
+    if (!peerId || !msg) return;
+    if (msg.state === "dormant") {
+      this.removeRemote(peerId);
+      return;
+    }
+    let rsw = this.remoteSkinwalkers.get(peerId);
+    if (!rsw) {
+      rsw = {
+        rig: this._createSkinwalkerRig(),
+        state: msg.state, gx: msg.gx || 0, gy: msg.gy || 0, gz: msg.gz || 0, yaw: msg.yaw || 0,
+        tx: msg.gx || 0, ty: msg.gy || 0, tz: msg.gz || 0, tyaw: msg.yaw || 0,
+        phase: 0, lastSeen: performance.now()
+      };
+      this.remoteSkinwalkers.set(peerId, rsw);
+    }
+    const prevState = rsw.state;
+    rsw.state = msg.state;
+    rsw.tx = msg.gx; rsw.ty = msg.gy; rsw.tz = msg.gz; rsw.tyaw = msg.yaw || 0;
+    rsw.lastSeen = performance.now();
+    if ((rsw.state === "grab" || rsw.state === "flee") && prevState !== rsw.state && audio && localVehicle) {
+      if (Math.hypot(localVehicle.pos.x - rsw.tx, localVehicle.pos.z - rsw.tz) < 260) {
+        audio.playCryptidSound("skinwalker_shriek");
+      }
+    }
+  }
+
+  removeRemote(peerId) {
+    const rsw = this.remoteSkinwalkers.get(peerId);
+    if (rsw) {
+      this.scene.remove(rsw.rig.mesh);
+      this.remoteSkinwalkers.delete(peerId);
+    }
   }
 
   repel(audio) {
@@ -155,6 +275,7 @@ KK.SkinwalkerManager = class SkinwalkerManager {
     // Uncanny FLIR tell: Normal deer glow warm white; Skinwalker stays eerily cold with cyan eyes!
     if (!this.matEye) return;
     this.matEye.color.setHex(isFlir ? 0x00f5ff : 0xf4fcff);
+    for (const rsw of this.remoteSkinwalkers.values()) { if (rsw.rig && rsw.rig.matEye) rsw.rig.matEye.color.setHex(isFlir ? 0x00f5ff : 0xf4fcff); }
   }
 
   _findNearestBoulderOrCliff(px, pz) {
@@ -176,6 +297,7 @@ KK.SkinwalkerManager = class SkinwalkerManager {
     if (this.spawnCooldown > 0) this.spawnCooldown = Math.max(0, this.spawnCooldown - dt);
 
     const px = vehicle.pos.x, py = vehicle.pos.y, pz = vehicle.pos.z;
+    this._updateRemoteAndBroadcast(dt, px, pz, hazards, audio, game);
     const bw = this.world.getBiomeWeights(px, pz);
     const inWoods = (bw.taiga > 0.30 || bw.rust > 0.35);
     const inSanctuary = (game.clarksonFarm && game.clarksonFarm.isInsideSanctuary(px, pz, 30)) ||
@@ -311,5 +433,64 @@ KK.SkinwalkerManager = class SkinwalkerManager {
     this.world.toLocal(this.gx, this.gy, this.gz, this.mesh.position);
     this.mesh.rotation.set(0, this.yaw, 0);
     this.mesh.visible = true;
+  }
+
+  _updateRemoteAndBroadcast(dt, px, pz, hazards, audio, game) {
+    // 1. Broadcast local Skinwalker state while active (or once on returning dormant)
+    if (game && game.network && game.network.mode !== "offline") {
+      this._netSyncCd = Math.max(0, this._netSyncCd - dt);
+      const changed = (this.state !== this._lastNetState);
+      if ((this.state !== "dormant" && this._netSyncCd <= 0) || changed) {
+        this._netSyncCd = 0.12;
+        this._lastNetState = this.state;
+        game.network.send({
+          type: "skinwalker_sync",
+          state: this.state,
+          gx: +this.gx.toFixed(2), gy: +this.gy.toFixed(2), gz: +this.gz.toFixed(2),
+          yaw: +this.yaw.toFixed(2)
+        });
+      }
+    }
+
+    // 2. Interpolate & animate remote comrades' Skinwalkers (and let local flares repel them!)
+    const now = performance.now();
+    const lf = Math.min(1, dt * 10);
+    for (const [pid, rsw] of this.remoteSkinwalkers.entries()) {
+      if (now - rsw.lastSeen > 6000) { this.removeRemote(pid); continue; }
+      rsw.gx += (rsw.tx - rsw.gx) * lf;
+      rsw.gy += (rsw.ty - rsw.gy) * lf;
+      rsw.gz += (rsw.tz - rsw.gz) * lf;
+      rsw.yaw = rsw.tyaw;
+
+      if ((rsw.state === "disguised" || rsw.state === "stalk" || rsw.state === "grab") && hazards && hazards.flares) {
+        for (const fl of hazards.flares) {
+          if (Math.hypot(fl.gx - rsw.gx, fl.gz - rsw.gz) < 28) {
+            rsw.state = "flee";
+            if (audio) audio.playCryptidSound("skinwalker_shriek");
+            if (game && game.network) game.network.send({ type: "skinwalker_repel", ownerPeerId: pid });
+            break;
+          }
+        }
+      }
+
+      const rig = rsw.rig;
+      this.world.toLocal(rsw.gx, rsw.gy, rsw.gz, rig.mesh.position);
+      rig.mesh.rotation.set(0, rsw.yaw, 0);
+      rig.mesh.visible = Math.hypot(rsw.gx - px, rsw.gz - pz) < 320;
+      if (rsw.state === "grab") {
+        rig.bodyPivot.rotation.x = -1.28 + Math.sin(now * 0.038) * 0.16;
+        rig.bodyPivot.position.y = 1.65;
+        rig.headPivot.rotation.set(0.95, Math.sin(now * 0.04) * 0.25, 0);
+        rig.legFL.rotation.x = -0.95 + Math.sin(now * 0.045) * 0.45;
+        rig.legFR.rotation.x = -0.95 - Math.sin(now * 0.045) * 0.45;
+      } else {
+        rig.bodyPivot.rotation.x = 0; rig.bodyPivot.position.y = 1.24;
+        rig.headPivot.rotation.set(0.05, 0, 0);
+        rsw.phase += dt * (rsw.state === "flee" ? 15 : (rsw.state === "stalk" ? 9 : 0));
+        const swA = rsw.state === "disguised" ? 0 : Math.sin(rsw.phase) * 0.65;
+        rig.legFL.rotation.x = swA; rig.legRR.rotation.x = swA;
+        rig.legFR.rotation.x = -swA; rig.legRL.rotation.x = -swA;
+      }
+    }
   }
 };

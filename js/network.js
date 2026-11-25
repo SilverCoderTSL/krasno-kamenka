@@ -1072,6 +1072,18 @@ KK.LanNetwork = class LanNetwork {
       case "winch_pull":
         if (msg.targetPeerId === this.peerId && this.cb.onWinchPull) this.cb.onWinchPull(msg);
         break;
+      case "james_event":
+        if (msg.peerId !== this.peerId && this.cb.onJamesEvent) this.cb.onJamesEvent(msg);
+        break;
+      case "clarkson_event":
+        if (msg.peerId !== this.peerId && this.cb.onClarksonEvent) this.cb.onClarksonEvent(msg);
+        break;
+      case "skinwalker_sync":
+        if (msg.peerId !== this.peerId && this.cb.onSkinwalkerSync) this.cb.onSkinwalkerSync(msg);
+        break;
+      case "skinwalker_repel":
+        if (msg.ownerPeerId === this.peerId && this.cb.onSkinwalkerRepel) this.cb.onSkinwalkerRepel(msg);
+        break;
       case "convoy_create":
       case "convoy_join":
       case "convoy_complete":
@@ -1107,7 +1119,7 @@ KK.LanNetwork = class LanNetwork {
       entry.callsign = pkt.callsign || entry.callsign;
       entry.tx = pkt.x; entry.ty = pkt.y; entry.tz = pkt.z;
       entry.vx = pkt.vx || 0; entry.vz = pkt.vz || 0;
-      entry.trailer = pkt.tr || null;
+      entry.trailer = pkt.tr || null; entry.boat = pkt.boat || null;
       entry.tqx = pkt.qx; entry.tqy = pkt.qy; entry.tqz = pkt.qz; entry.tqw = pkt.qw;
       if (pkt.vid && pkt.vid !== entry.vehicleId) {
         entry.vehicleId = pkt.vid; entry.paintColor = pkt.col || entry.paintColor;
@@ -1124,7 +1136,7 @@ KK.LanNetwork = class LanNetwork {
     }
   }
 
-  broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0, gunPitch = 0, autoBarrelHeat = 0) {
+  broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0, gunPitch = 0, autoBarrelHeat = 0, activeBoat = null) {
     this.sendAccum += dt;
     if (!force && this.sendAccum < 0.10) return; // Broker-friendly 10 Hz over WSS (smoothly lerped!)
     this.sendAccum = 0;
@@ -1137,6 +1149,7 @@ KK.LanNetwork = class LanNetwork {
       type: "player_state", callsign: this.callsign,
       x: +vehicle.pos.x.toFixed(2), y: +vehicle.pos.y.toFixed(2), z: +vehicle.pos.z.toFixed(2),
       vx: +vehicle.vel.x.toFixed(2), vz: +vehicle.vel.z.toFixed(2),
+      boat: activeBoat ? { id: activeBoat.id, x: +activeBoat.gx.toFixed(1), y: +activeBoat.gy.toFixed(2), z: +activeBoat.gz.toFixed(1), yaw: +activeBoat.yaw.toFixed(2), spd: +activeBoat.speedKmh.toFixed(1) } : null,
       tr: trailer ? { id: trailer.trailerId, x: +trailer.pos.x.toFixed(2), y: +trailer.pos.y.toFixed(2), z: +trailer.pos.z.toFixed(2), yaw: +trailer.yaw.toFixed(2), p: +trailer.pitch.toFixed(2), r: +trailer.roll.toFixed(2), cc: trailer.cargoCount, ct: trailer.cargoType, car: (trailer.carriedCar && !trailer.carriedCar.peerId) ? { vid: trailer.carriedCar.vid, col: trailer.carriedCar.col, isT72Relic: !!trailer.carriedCar.isT72Relic, isBm21Relic: !!trailer.carriedCar.isBm21Relic, isShilkaRelic: !!trailer.carriedCar.isShilkaRelic } : null } : null,
       qx: +vehicle.quat.x.toFixed(3), qy: +vehicle.quat.y.toFixed(3), qz: +vehicle.quat.z.toFixed(3), qw: +vehicle.quat.w.toFixed(3),
       vid: vehicle.vState.vehicleId, col: vehicle.vState.paintColor,

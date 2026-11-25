@@ -158,6 +158,9 @@ KK.JamesMayBar = class JamesMayBar {
     game.onFoot = false; game.localAvatar.visible = false; game._saveProgress(true);
     this.jamesAngryTimer = 42.0;
     this.molotovCd = 1.1; // Gives you ~1s before the first burning bottle flies!
+    if (game && game.network) {
+      game.network.send({ type: "james_event", action: "steal", callsign: game.network.callsign });
+    }
     game.ui.toast('JAMES MAY: "OI!! THAT\'S MY DACIA SANDERO! YOU PILLOCK — EAT THIS MOLOTOV!!"', true);
   }
 
@@ -181,7 +184,7 @@ KK.JamesMayBar = class JamesMayBar {
     game.ui.toast('JAMES MAY: "Hello. I\'m out of ale! Grab a Beer Delivery contract [J] from Kamenka HQ and bring me some kegs!"');
   }
 
-  _throwMolotovAt(vehicle, audio) {
+  _throwMolotovAt(vehicle, audio, network = null) {
     const grp = new THREE.Group();
     const bottle = new THREE.Mesh(
       new THREE.CylinderGeometry(0.06, 0.08, 0.34, 8),
@@ -208,6 +211,13 @@ KK.JamesMayBar = class JamesMayBar {
     const vy = (ty - sy + 0.5 * g * flightT * flightT) / flightT;
 
     this.molotovs.push({ gx: sx, gy: sy, gz: sz, vx, vy, vz, life: 4.5, mesh: grp, flame });
+    if (network) {
+      network.send({
+        type: "james_event", action: "molotov",
+        sx: +sx.toFixed(2), sy: +sy.toFixed(2), sz: +sz.toFixed(2),
+        vx: +vx.toFixed(2), vy: +vy.toFixed(2), vz: +vz.toFixed(2)
+      });
+    }
     if (audio && audio.playWrench) audio.playWrench();
   }
 
@@ -252,7 +262,57 @@ KK.JamesMayBar = class JamesMayBar {
       }
       game.cameraShake = Math.max(game.cameraShake, 1.25);
       game.ui.toast('BOOM!! FUEL TANK IGNITED & EXPLODED!! Car burned out — tow to a Garage [O]!', true);
+      if (game.network) {
+        game.network.send({
+          type: "james_event", action: "boom", callsign: game.network.callsign,
+          x: +vehicle.pos.x.toFixed(1), y: +vehicle.pos.y.toFixed(1), z: +vehicle.pos.z.toFixed(1)
+        });
+      }
       game._saveProgress(true);
+    }
+  }
+
+  // v15.1.5 RECEIVE REMOTE JAMES MAY PUB CHAOS (Steal, Flying Molotovs & Fuel Detonations!)
+  applyRemoteEvent(msg, game) {
+    if (!msg || !msg.action) return;
+    if (msg.action === "steal") {
+      this.sanderoStolen = true;
+      if (this.parkedSanderoRig) this.parkedSanderoRig.root.visible = false;
+      this.jamesAngryTimer = Math.max(this.jamesAngryTimer, 42.0);
+      if (game && game.vehicle && Math.hypot(game.vehicle.pos.x - this.james.gx, game.vehicle.pos.z - this.james.gz) < 380) {
+        game.ui.toast(`JAMES MAY: "OI!! ${msg.callsign || "SOME PILLOCK"} STOLE MY DACIA SANDERO!! MOLOTOV TIME!!"`, true);
+      }
+    } else if (msg.action === "molotov") {
+      const grp = new THREE.Group();
+      const bottle = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.08, 0.34, 8),
+        new THREE.MeshStandardMaterial({ color: 0x3b6e30, roughness: 0.25, transparent: true, opacity: 0.85 })
+      );
+      grp.add(bottle);
+      const flame = new THREE.Mesh(
+        new THREE.ConeGeometry(0.14, 0.38, 7),
+        new THREE.MeshBasicMaterial({ color: 0xff6b1a, transparent: true, opacity: 0.95 })
+      );
+      flame.position.y = 0.26; grp.add(flame);
+      this.scene.add(grp);
+      this.molotovs.push({
+        gx: msg.sx, gy: msg.sy, gz: msg.sz,
+        vx: msg.vx, vy: msg.vy, vz: msg.vz,
+        life: 4.5, mesh: grp, flame, isRemote: true
+      });
+      this.jamesAngryTimer = Math.max(this.jamesAngryTimer, 12.0);
+    } else if (msg.action === "boom" && game) {
+      const bx = msg.x || 0, by = msg.y || 10, bz = msg.z || 0;
+      const d = game.vehicle ? Math.hypot(game.vehicle.pos.x - bx, game.vehicle.pos.z - bz) : 9999;
+      if (game.particles) {
+        game.particles.emitCrashBurst(bx, by + 1.2, bz, 3.4, "rock", game.weather.weather);
+        game.particles.emitCrashBurst(bx, by + 2.8, bz, 2.6, "sand", game.weather.weather);
+      }
+      if (d < 450) {
+        if (game.audio && game.audio.playGasStationExplosion) game.audio.playGasStationExplosion();
+        game.cameraShake = Math.max(game.cameraShake || 0, Math.max(0, 1 - d / 450) * 1.1);
+        game.ui.toast(`BOOM!! James May's Molotov ignited ${msg.callsign || "a comrade"}'s fuel tank!!`, true);
+      }
     }
   }
 
@@ -278,7 +338,7 @@ KK.JamesMayBar = class JamesMayBar {
       if (this.molotovCd > 0) this.molotovCd -= dt;
       if (this.molotovCd <= 0 && d < 68 && !vehicle.vState.burnedOut) {
         this.molotovCd = 3.6;
-        this._throwMolotovAt(vehicle, game ? game.audio : null);
+        this._throwMolotovAt(vehicle, game ? game.audio : null, game ? game.network : null);
       }
     }
 

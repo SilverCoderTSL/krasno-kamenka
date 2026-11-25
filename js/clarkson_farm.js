@@ -14,6 +14,7 @@ KK.ClarksonFarm = class ClarksonFarm {
     this.bleatTimer = 4.0;
     this.rageMode = false;
     this.rageTimer = 0;
+    this.rageTargetPeerId = null;
     this.yeetCooldown = 0;
 
     this.jeremy = {
@@ -242,18 +243,57 @@ KK.ClarksonFarm = class ClarksonFarm {
       const gy = this.world.getTerrainInfo(gx, gz, false).height;
       this.scene.add(grp);
       this.sheep.push({
-        gx, gy, gz, yaw: Math.random() * Math.PI * 2,
-        timer: 2 + Math.random() * 5, walking: false, hitCd: 0, mesh: grp
+        idx: i, baseGx: gx, baseGz: gz, gx, gy, gz,
+        knockX: 0, knockZ: 0, yaw: ang,
+        hitCd: 0, mesh: grp
       });
     }
   }
 
-  triggerRage(ui, audio) {
+  triggerRage(ui, audio, targetPeerId = null, broadcastGame = null, sheepIdx = -1, knockX = 0, knockZ = 0) {
     this.rageMode = true;
     this.rageTimer = 22.0;
+    this.rageTargetPeerId = targetPeerId; // null = local player, string = remote peerId!
     this.jeremy.parts.matEyeNormal.color.setHex(0xff1111);
     if (audio) audio.playClarksonRage();
-    if (ui) ui.toast('JEREMY CLARKSON: "YOU ABSOLUTE MUPPET!! YOU RAN OVER MY SHEEP!!"', true);
+    if (ui && !targetPeerId) ui.toast('JEREMY CLARKSON: "YOU ABSOLUTE MUPPET!! YOU RAN OVER MY SHEEP!!"', true);
+    if (broadcastGame && broadcastGame.network) {
+      broadcastGame.network.send({
+        type: "clarkson_event", action: "rage",
+        targetPeerId: broadcastGame.network.peerId,
+        callsign: broadcastGame.network.callsign,
+        sheepIdx, knockX: +knockX.toFixed(1), knockZ: +knockZ.toFixed(1)
+      });
+    }
+  }
+
+  applyRemoteEvent(msg, game) {
+    if (!msg || !msg.action) return;
+    if (msg.action === "rage") {
+      if (typeof msg.sheepIdx === "number" && this.sheep[msg.sheepIdx]) {
+        this.sheep[msg.sheepIdx].knockX = msg.knockX || 4;
+        this.sheep[msg.sheepIdx].knockZ = msg.knockZ || 4;
+      }
+      const d = game && game.vehicle ? Math.hypot(game.vehicle.pos.x - this.cfg.x, game.vehicle.pos.z - this.cfg.z) : 9999;
+      this.triggerRage(null, d < 420 && game ? game.audio : null, msg.peerId || msg.targetPeerId, null);
+      if (d < 420 && game && game.ui) {
+        game.ui.toast(`JEREMY CLARKSON: "${msg.callsign || "YOU MUPPET"} RAN OVER MY SHEEP!!" (3.2x RAGE MODE!)`, true);
+      }
+    } else if (msg.action === "yeet") {
+      this.rageMode = false;
+      this.rageTimer = 0;
+      this.rageTargetPeerId = null;
+      this.jeremy.parts.matEyeNormal.color.setHex(0x1a1e24);
+      const d = game && game.vehicle ? Math.hypot(game.vehicle.pos.x - (msg.x || this.cfg.x), game.vehicle.pos.z - (msg.z || this.cfg.z)) : 9999;
+      if (d < 480 && game) {
+        if (game.audio) { game.audio.playClarksonRage(); game.audio.playImpact(1.0); }
+        if (game.particles) game.particles.emitCrashBurst(msg.x || this.cfg.x, msg.y || 10, msg.z || this.cfg.z, 1.6, "gravel", "clear");
+        game.ui.toast(`JEREMY CLARKSON YEETED ${msg.callsign || "A COMRADE"} 400m OFF HIS FARM!!`, true);
+      }
+    } else if (msg.action === "tractor") {
+      this.tractorTaken = true;
+      if (this.parkedTractorMesh) this.parkedTractorMesh.visible = false;
+    }
   }
 
   repairPlayerVehicle(game) {
@@ -303,6 +343,7 @@ KK.ClarksonFarm = class ClarksonFarm {
     game.onFoot = false;
     game.localAvatar.visible = false;
     game._saveProgress(true);
+    if (game.network) game.network.send({ type: "clarkson_event", action: "tractor", callsign: game.network.callsign });
     game.ui.toast('JEREMY CLARKSON: "Careful with my Lamborghini!! It\'s a bit wide for the barn door!"');
   }
 
@@ -318,24 +359,23 @@ KK.ClarksonFarm = class ClarksonFarm {
         this.bleatTimer = 5.5 + Math.random() * 8.0;
         if (audio) audio.playSheepBleat();
       }
+      const epochS = Date.now() * 0.001;
       for (const sh of this.sheep) {
         if (sh.hitCd > 0) sh.hitCd -= dt;
-        sh.timer -= dt;
-        if (sh.timer <= 0) {
-          sh.walking = !sh.walking;
-          sh.yaw += (Math.random() - 0.5) * 2.4;
-          sh.timer = 2.5 + Math.random() * 5.0;
-        }
-        if (sh.walking) {
-          const nx = sh.gx + Math.sin(sh.yaw) * 1.4 * dt;
-          const nz = sh.gz + Math.cos(sh.yaw) * 1.4 * dt;
-          // Keep sheep comfortably inside the fenced pasture!
-          if (Math.hypot(nx - this.cfg.x, nz - this.cfg.z) < this.cfg.radius - 24) {
-            sh.gx = nx; sh.gz = nz;
-          } else {
-            sh.yaw += Math.PI * 0.7;
-          }
-        }
+        // Epoch-time deterministic pasture grazing (100% synced across all online players with ZERO bandwidth!)
+        const f1 = 0.09 + (sh.idx % 4) * 0.023;
+        const f2 = 0.07 + (sh.idx % 3) * 0.029;
+        const ph = sh.idx * 1.93;
+        const ox = Math.sin(epochS * f1 + ph) * 11.5;
+        const oz = Math.cos(epochS * f2 + ph * 1.3) * 11.5;
+        const vxS = Math.cos(epochS * f1 + ph) * 11.5 * f1;
+        const vzS = -Math.sin(epochS * f2 + ph * 1.3) * 11.5 * f2;
+        sh.knockX *= Math.exp(-dt * 0.45);
+        sh.knockZ *= Math.exp(-dt * 0.45);
+        sh.gx = sh.baseGx + ox + sh.knockX;
+        sh.gz = sh.baseGz + oz + sh.knockZ;
+        sh.yaw = Math.atan2(vxS, vzS);
+
         sh.gy = this.world.getTerrainInfo(sh.gx, sh.gz, false).height;
         this.world.toLocal(sh.gx, sh.gy, sh.gz, sh.mesh.position);
         sh.mesh.rotation.y = sh.yaw;
@@ -346,10 +386,9 @@ KK.ClarksonFarm = class ClarksonFarm {
         if (dHit < (vehicle.spec.bodyWidth * 0.65 + 0.65) && vehicle.speedKmh > 9 && sh.hitCd <= 0 && Math.abs(sh.gy - py) < 2.5) {
           sh.hitCd = 6.0;
           if (audio) { audio.playSheepBleat(); audio.playImpact(0.55); }
-          // Knock sheep sideways harmlessly into the grass — AND AWAKEN JEREMY'S WRATH!
-          sh.gx += (Math.random() - 0.5) * 7;
-          sh.gz += (Math.random() - 0.5) * 7;
-          this.triggerRage(ui, audio);
+          const kx = (Math.random() - 0.5) * 9, kz = (Math.random() - 0.5) * 9;
+          sh.knockX += kx; sh.knockZ += kz;
+          this.triggerRage(ui, audio, null, game, sh.idx, sh.knockX, sh.knockZ);
         }
       }
     } else {
@@ -365,36 +404,50 @@ KK.ClarksonFarm = class ClarksonFarm {
 
     if (this.rageMode) {
       this.rageTimer -= dt;
-      const dJ = Math.hypot(px - j.gx, pz - j.gz);
-      const ang = Math.atan2(px - j.gx, pz - j.gz);
+      let tx = px, tz = pz, chasingRemote = false;
+      if (this.rageTargetPeerId && game && game.network && game.network.remotePlayers) {
+        const rpT = game.network.remotePlayers.get(this.rageTargetPeerId);
+        if (rpT) { tx = rpT.gx; tz = rpT.gz; chasingRemote = true; }
+      }
+      const dTarget = Math.hypot(tx - j.gx, tz - j.gz);
+      const dLocal  = Math.hypot(px - j.gx, pz - j.gz);
+      const ang = Math.atan2(tx - j.gx, tz - j.gz);
       j.yaw = ang;
-      // Sprints at unstoppable 48 m/s!
-      j.gx += Math.sin(ang) * 48.0 * dt;
-      j.gz += Math.cos(ang) * 48.0 * dt;
+      if (dTarget > 2.5) {
+        j.gx += Math.sin(ang) * 48.0 * dt;
+        j.gz += Math.cos(ang) * 48.0 * dt;
+      }
       j.phase += dt * 18;
 
       const sw = Math.sin(j.phase) * 0.95;
       jp.legL.rotation.x = sw; jp.legR.rotation.x = -sw;
       jp.armL.rotation.x = -2.2 + sw * 0.5; jp.armR.rotation.x = -2.2 - sw * 0.5;
 
-      // Ground shake as giant furious Clarkson sprints toward you!
-      if (dJ < 120 && game) game.cameraShake = Math.max(game.cameraShake || 0, (1 - dJ / 120) * 0.65);
+      if (dLocal < 120 && game) game.cameraShake = Math.max(game.cameraShake || 0, (1 - dLocal / 120) * 0.65);
 
-      // MEGA CLARKSON YEET (launches car 400+ meters away!)
       const pGroundY = this.world.getTerrainInfo(px, pz, true).height;
-      if (dJ < 8.5 && (py - pGroundY) < 6.0 && this.yeetCooldown <= 0) {
+      if (!chasingRemote && dLocal < 8.5 && (py - pGroundY) < 6.0 && this.yeetCooldown <= 0) {
         this.yeetCooldown = 10.0;
         if (audio) { audio.playClarksonRage(); audio.playImpact(1.0); }
         const yeetAng = Math.atan2(px - this.cfg.x, pz - this.cfg.z) + (Math.random() - 0.5) * 0.6;
         vehicle.applyExternalImpulse(Math.sin(yeetAng) * 62, 54.0, Math.cos(yeetAng) * 62, (Math.random() - 0.5) * 12.0);
         if (particles) particles.emitCrashBurst(px, py, pz, 1.5, "gravel", "clear");
         if (ui) ui.toast('JEREMY CLARKSON: "POWEEERRRR!! GET OFF MY FARM!!" (YEETED 400m!)', true);
+        if (game && game.network) {
+          game.network.send({
+            type: "clarkson_event", action: "yeet",
+            callsign: game.network.callsign,
+            x: +px.toFixed(1), y: +py.toFixed(1), z: +pz.toFixed(1)
+          });
+        }
         this.rageMode = false;
         this.rageTimer = 0;
+        this.rageTargetPeerId = null;
         jp.matEyeNormal.color.setHex(0x1a1e24);
       }
       if (this.rageTimer <= 0) {
         this.rageMode = false;
+        this.rageTargetPeerId = null;
         jp.matEyeNormal.color.setHex(0x1a1e24);
       }
     } else {

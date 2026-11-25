@@ -167,6 +167,13 @@ KK.Game = class Game {
           this.milCamp.setLocation(snap.milCamp.x, snap.milCamp.z);
         }
         if (snap.bm21Camp && this.bm21Camp) this.bm21Camp.setLocation(snap.bm21Camp.x, snap.bm21Camp.z);
+        if (Array.isArray(snap.winches) && this.entities && this.entities.setRemoteWinch) {
+          for (const w of snap.winches) {
+            if (w && w.ownerPeerId && w.ownerPeerId !== this.network.peerId) {
+              this.entities.setRemoteWinch(w.ownerPeerId, Object.assign({ active: true }, w));
+            }
+          }
+        }
         if (snap.shilkaCamp && this.shilkaCamp) this.shilkaCamp.setLocation(snap.shilkaCamp.x, snap.shilkaCamp.z);
         if (Array.isArray(snap.craters)) {
           for (const cr of snap.craters) this.world.addCrater(cr.x, cr.z, cr.r, cr.d);
@@ -199,6 +206,26 @@ KK.Game = class Game {
       },
       onFenceBreak: (msg) => {
         if (msg.fenceId) this.world.smashFence(msg.fenceId, msg.dirX || 1, msg.dirZ || 0);
+      },
+      onJamesEvent: (msg) => {
+        if (this.jamesBar && this.jamesBar.applyRemoteEvent) this.jamesBar.applyRemoteEvent(msg, this);
+      },
+      onClarksonEvent: (msg) => {
+        if (this.clarksonFarm && this.clarksonFarm.applyRemoteEvent) this.clarksonFarm.applyRemoteEvent(msg, this);
+      },
+      onSkinwalkerSync: (msg) => {
+        if (this.skinwalker && this.skinwalker.syncRemote) this.skinwalker.syncRemote(msg.peerId, msg, this.audio, this.vehicle);
+      },
+      onSkinwalkerRepel: () => {
+        if (this.skinwalker) {
+          this.skinwalker.repel(this.audio);
+          this.ui.toast("A comrade shot/flared the Skinwalker off your vehicle!!", false);
+        }
+      },
+      onRemoteWinch: (msg) => {
+        if (msg && msg.peerId && msg.peerId !== this.network.peerId && this.entities && this.entities.setRemoteWinch) {
+          this.entities.setRemoteWinch(msg.peerId, msg);
+        }
       },
       onWinchPull: (msg) => {
         if (!this.vehicle || this.onFoot) return;
@@ -302,6 +329,9 @@ KK.Game = class Game {
       onPeerLeft: (pid, cs) => {
         const rp = this.network.remotePlayers.get(pid);
         if (rp) { if (rp.rig) this.scene.remove(rp.rig.root); if (rp.avatar) this.scene.remove(rp.avatar); if (rp.trailerRig) this.scene.remove(rp.trailerRig.root); }
+        if (this.entities && this.entities.removeRemoteWinch) this.entities.removeRemoteWinch(pid);
+        if (this.boats && this.boats.removeRemoteBoat) this.boats.removeRemoteBoat(pid);
+        if (this.skinwalker && this.skinwalker.removeRemote) this.skinwalker.removeRemote(pid);
         this.ui.addChatLine("DISPATCH", `${cs || pid} left the Oblast.`, true);
       },
       onConvoys: (convoys, evMsg) => {
@@ -340,7 +370,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1.4 ONLINE! Island-Themed Piers (Glowing Savanna Terminal & Rustic/Dilapidated Docks) + 4 Buyable PT Pindad Vehicles (Komodo Standard/Recon/30mm Turret & Harimau 105mm Medium Tank)!');
+      this.ui.toast('Welcome to v15.1.5 ONLINE! Full Multiplayer Sync Update: James May Molotovs, 3.2x Rage Clarkson & Sheep, Synced Skinwalker Rescue, Remote Winch Cables, Ocean Boats & Zolotoy Tram!');
     }, 650);
   }
 
@@ -2448,7 +2478,7 @@ KK.Game = class Game {
       if (hitPeer) break;
       const cHit = this.cryptids.applyCannonHit(rx, ry, rz, sh, this.audio, 140);
       if (cHit.hit) { endPt.set(rx, ry, rz); break; }
-      if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio).hit) { endPt.set(rx, ry, rz); break; }
+      if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network).hit) { endPt.set(rx, ry, rz); break; }
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, isAp140 ? 1.5 : 6.5, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 160, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       const gh = this.world.getTerrainInfo(rx, rz, false).height;
@@ -2511,7 +2541,7 @@ KK.Game = class Game {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
       const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 40);
       if (cHit.hit) { endPt.set(rx, ry, rz); this.particles.emitCrashBurst(rx, ry, rz, 1.1, "rock", this.weather.weather); break; }
-      if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio).hit) { endPt.set(rx, ry, rz); break; }
+      if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network).hit) { endPt.set(rx, ry, rz); break; }
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.5, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 42, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       const gh = this.world.getTerrainInfo(rx, rz, false).height;
@@ -2564,7 +2594,7 @@ KK.Game = class Game {
       const rz = muzzleG.z + aimDir.z * s;
       let hitP = false; if (this.network && this.network.remotePlayers) { for (const rp of this.network.remotePlayers.values()) { if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.4 && Math.abs((rp.gy || 0) + 1.2 - ry) < 2.8) { endPt.set(rx, ry, rz); hitP = true; break; } } } if (hitP) break;
       const cHit = this.cryptids.applyCannonHit(rx, ry, rz, shell, this.audio, 125);
-      if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio);
+      if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       if (cHit.hit) { endPt.set(rx, ry, rz); hitRes = cHit; break; }
@@ -2643,7 +2673,7 @@ KK.Game = class Game {
     for (let s = 8; s <= 240; s += 6) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
       const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer));
-      if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio);
+      if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       if (cHit.hit) { endPt.set(rx, ry, rz); hitRes = cHit; this.particles.emitCrashBurst(rx, ry, rz, 0.7, "rock", this.weather.weather); break; }
@@ -2688,7 +2718,7 @@ KK.Game = class Game {
       const ry = muzzleLocal.y + aimDir.y * s;
       const rz = muzzleLocal.z + aimDir.z * s;
       const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer));
-      if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio);
+      if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       if (cHit.hit) {
@@ -2886,7 +2916,7 @@ KK.Game = class Game {
     for (let s = 8; s <= 300; s += 6) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
       const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 23);
-      if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio);
+      if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
       if (cHit.hit) { endPt.set(rx, ry, rz); hitRes = cHit; this.particles.emitCrashBurst(rx, ry, rz, 0.85, "rock", this.weather.weather); break; }
@@ -3116,6 +3146,7 @@ KK.Game = class Game {
     if (this._winchPullNetCd > 0) this._winchPullNetCd = Math.max(0, this._winchPullNetCd - dt);
     if (this.entities && this.entities.updateWinchLine) {
       this.entities.updateWinchLine(this.vehicle, this.network.remotePlayers);
+      if (this.entities.updateRemoteWinches) this.entities.updateRemoteWinches(this.vehicle, this.network.peerId, this.network.remotePlayers);
     }
     if (this.boats) {
       const boatIn = (this.boats.activeBoat && !this.ui.activeModal && !(this.startMenu && this.startMenu.isOpen)) ? {
@@ -3125,6 +3156,7 @@ KK.Game = class Game {
         boost: !!(this.keys.ShiftLeft || this.keys.ShiftRight)
       } : null;
       this.boats.update(dt, boatIn, this.vehicle, this.particles, this.audio);
+      if (this.boats.updateRemoteBoats) this.boats.updateRemoteBoats(dt, this.network.remotePlayers, this.particles);
     }
     if (this.world.updateTram) this.world.updateTram(dt, this.vehicle, this.audio);
 
@@ -3567,7 +3599,7 @@ KK.Game = class Game {
       this.wpBeacon.visible = true;
     } else { this.wpBeacon.visible = false; }
 
-    this.network.broadcastPlayerState(dt, this.vehicle, this.playerFoot, this.onFoot, this.trailer, this.wipersOn, !!this.timedWork, this.btrTurretYaw, this.carriedByPeerId, false, this.barrelHeat, this.p140RwsYaw, this.p140RwsPitch, this.btrAimPitch, this.autoBarrelHeat);
+    this.network.broadcastPlayerState(dt, this.vehicle, this.playerFoot, this.onFoot, this.trailer, this.wipersOn, !!this.timedWork, this.btrTurretYaw, this.carriedByPeerId, false, this.barrelHeat, this.p140RwsYaw, this.p140RwsPitch, this.btrAimPitch, this.autoBarrelHeat, this.boats ? this.boats.activeBoat : null);
     const lerpF = Math.min(1, dt * 12);
     for (const rp of this.network.remotePlayers.values()) {
       rp.gx += (rp.tx - rp.gx) * lerpF; rp.gy += (rp.ty - rp.gy) * lerpF; rp.gz += (rp.tz - rp.gz) * lerpF;

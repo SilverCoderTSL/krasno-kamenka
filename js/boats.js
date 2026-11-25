@@ -15,6 +15,7 @@ KK.BoatManager = class BoatManager {
     this.spawnedBoats = [];
     this.activeBoat = null;
     this.wavePhase = 0;
+    this.remoteBoats = new Map(); // peerId -> { id, mesh, fans, gx, gy, gz, yaw }
   }
 
   getPortPadWorldPos(pt) {
@@ -307,6 +308,59 @@ KK.BoatManager = class BoatManager {
         vehicle.angVel.set(0, 0, 0);
         vehicle.quat.setFromEuler(new THREE.Euler(wavePitch, b.yaw, bankRoll, "YXZ"));
       }
+    }
+  }
+
+  // v15.1.5 SYNC REMOTE PLAYERS' OCEAN BOATS & ZUBR HOVERCRAFT!
+  removeRemoteBoat(peerId) {
+    const rb = this.remoteBoats.get(peerId);
+    if (rb) {
+      this.scene.remove(rb.mesh);
+      this.remoteBoats.delete(peerId);
+    }
+  }
+
+  updateRemoteBoats(dt, remotePlayersMap, particles) {
+    if (!remotePlayersMap) return;
+    const activeIds = new Set();
+    const lf = Math.min(1, dt * 10);
+    for (const [pid, rp] of remotePlayersMap.entries()) {
+      const bData = rp.boat;
+      if (!bData || !bData.id || !KK.BOATS[bData.id]) {
+        this.removeRemoteBoat(pid);
+        continue;
+      }
+      activeIds.add(pid);
+      let rb = this.remoteBoats.get(pid);
+      if (!rb || rb.id !== bData.id) {
+        this.removeRemoteBoat(pid);
+        const built = this._buildBoatMesh(bData.id);
+        this.scene.add(built.grp);
+        rb = { id: bData.id, mesh: built.grp, fans: built.fans, gx: bData.x, gy: bData.y, gz: bData.z, yaw: bData.yaw || 0 };
+        this.remoteBoats.set(pid, rb);
+      }
+      rb.gx += (bData.x - rb.gx) * lf;
+      rb.gy += (bData.y - rb.gy) * lf;
+      rb.gz += (bData.z - rb.gz) * lf;
+      let dy = (bData.yaw || 0) - rb.yaw;
+      while (dy > Math.PI) dy -= Math.PI * 2;
+      while (dy < -Math.PI) dy += Math.PI * 2;
+      rb.yaw += dy * lf;
+
+      this.world.toLocal(rb.gx, rb.gy, rb.gz, rb.mesh.position);
+      const wavePitch = Math.sin(this.wavePhase * 1.15 + rb.gz * 0.03) * 0.035;
+      rb.mesh.rotation.set(wavePitch, rb.yaw, 0);
+      if (rb.fans && rb.fans.length > 0) {
+        const fSpd = 8 + Math.min(26, (bData.spd || 0) * 0.3);
+        for (const fn of rb.fans) fn.rotation.z += dt * fSpd;
+      }
+      if ((bData.spd || 0) > 14 && particles && Math.random() < 0.45) {
+        const len = (KK.BOATS[rb.id] && KK.BOATS[rb.id].len) || 12;
+        particles.emitWaterSplash(rb.gx - Math.sin(rb.yaw) * len * 0.42, rb.gy + 0.25, rb.gz - Math.cos(rb.yaw) * len * 0.42, 1.1);
+      }
+    }
+    for (const pid of Array.from(this.remoteBoats.keys())) {
+      if (!activeIds.has(pid)) this.removeRemoteBoat(pid);
     }
   }
 };

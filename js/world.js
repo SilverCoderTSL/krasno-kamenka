@@ -748,7 +748,8 @@ KK.World = class World {
     if (!tr || !tr.mesh) return;
     const sideLen = tr.radius * 2;
     const perim = sideLen * 4;
-    tr.progress = (tr.progress + tr.speed * dt) % perim;
+    const epochS = Date.now() * 0.001;
+    tr.progress = (epochS * tr.speed) % perim;
 
     let lx = 0, lz = 0, yaw = 0;
     const p = tr.progress;
@@ -796,10 +797,10 @@ KK.World = class World {
     // Animate Zolotoy City NPC Traffic Cars & Walking Pedestrians when player is near Zolotoy City!
     if (vehicle && Math.hypot(vehicle.pos.x - tr.cx, vehicle.pos.z - tr.cz) < 1300) {
       if (this.cityTraffic) {
-        for (const car of this.cityTraffic) {
-          car.pos += car.dir * car.speed * dt;
-          if (car.pos > 400) car.pos = -400;
-          else if (car.pos < -400) car.pos = 400;
+        for (let ci = 0; ci < this.cityTraffic.length; ci++) {
+          const car = this.cityTraffic[ci];
+          const rawOff = (epochS * car.speed * car.dir + ci * 67) % 800;
+          car.pos = -400 + ((rawOff + 800) % 800);
           const lx = car.isNS ? (car.lane + car.laneOff) : car.pos;
           const lz = car.isNS ? car.pos : (car.lane - car.laneOff);
           car.mesh.position.set(lx, 0, lz);
@@ -815,10 +816,12 @@ KK.World = class World {
         }
       }
       if (this.cityPeds) {
-        for (const ped of this.cityPeds) {
-          ped.pos += ped.dir * ped.speed * dt;
-          if (ped.pos > 390) ped.dir = -1;
-          else if (ped.pos < -390) ped.dir = 1;
+        for (let pi = 0; pi < this.cityPeds.length; pi++) {
+          const ped = this.cityPeds[pi];
+          const span = 780;
+          const cyc = ((epochS * ped.speed + pi * 53) % (span * 2) + span * 2) % (span * 2);
+          ped.dir = cyc < span ? 1 : -1;
+          ped.pos = cyc < span ? (-390 + cyc) : (390 - (cyc - span));
           const lx = ped.isNS ? (ped.lane + ped.side) : ped.pos;
           const lz = ped.isNS ? ped.pos : (ped.lane + ped.side);
           ped.mesh.position.set(lx, 0, lz);

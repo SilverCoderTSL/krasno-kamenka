@@ -1,14 +1,18 @@
-# Krasno-Kamenka Oblast (v15.1.2 ONLINE — Island-Themed Piers & PT Pindad Tactical Fleet)
+# Krasno-Kamenka Oblast (v15.1.5 ONLINE — Multiplayer Chaos & World Sync Update)
 
-## What's New in Version 15.1.2 ONLINE
-1. **Island-Varied Ocean Ports (`js/world.js`):**
-   - **Zolotoy Savanna:** Massive modernized container terminal (`44 m × 68 m`) with twin red/white gantry cranes, illuminated glass port authority building, glowing neon pier edges & floodlight masts that light up at night!
-   - **Ostrov Tropika & Coral Cay:** Rustic wooden stilt piers with corrugated-roof harbor warungs and warm hanging lanterns.
-   - **Severnyy Arctic:** Frozen polar icebreaker dock with ice-crusted concrete & red-orange polar gantry.
-   - **Site-140 Black Rock:** Dilapidated tilted quarantine pier with rusted steel bunker, crooked mast & radioactive green warning beacon.
-   - **Mainland:** Rugged Soviet industrial concrete ports.
-2. **4 New Buyable PT Pindad Vehicles in the Garage (`js/config.js`, `js/vehicle_builder.js`, `js/cockpit.js`, `js/main.js`):**
-   - **Pindad Komodo 4x4 (Standard APC — $48,000):** `5.65 m × 2.25 m × 2.15 m`, `7.3 t`, 215 HP turbodiesel, `440 mm` ground clearance.
-   - **Pindad Komodo 4x4 (Reconnaissance — $62,000):** `5.50 m × 2.30 m × 2.20 m`, `8.0 t`, telescoping EO/FLIR surveillance mast, dual whip antennas & built-in FLIR Thermal / NVG (`[6]`).
-   - **Pindad Komodo 4x4 (CPWS 30mm Turret — $94,000):** `5.65 m × 2.25 m × 2.15 m`, `8.2 t`, armed with a **John Cockerill CPWS 30mm Remote Autocannon Turret** (rotates/elevates, red-hot barrel glow, toggle RMB scope & FLIR `[6]`).
-   - **Pindad Harimau / Kaplan MT ($215,000):** `7.0 m × 3.2 m × 2.9 m`, `31.5 t` tropical medium tank! `711 HP / 2,714 Nm` Caterpillar C13 diesel (`70 km/h`), **Cockerill 3105 turret with 105mm rifled gun** (`5.0 s` bustle autoloader, HE/APFSDS), independent 2-axis 7.62mm roof MG, smoke grenades (`[G]`), and hunter-killer FLIR (`[6]`).
+## What's Synced in Version 15.1.5 ONLINE
+1. **James May's Pub Chaos & Molotovs (`js/james_may_bar.js`, `js/network.js`, `js/main.js`):**
+   - Stealing the parked Dacia Sandero, angry James May hurling flaming Molotov cocktails, burning fire pools, and catastrophic fuel-tank explosions now broadcast to all players in the lobby!
+2. **Jeremy Clarkson's 3.2× Rage, Yeet & 14 Sheep (`js/clarkson_farm.js`, `js/network.js`, `js/main.js`):**
+   - All 14 grazing sheep use deterministic epoch-time grazing (100% synced positions with zero bandwidth!).
+   - Running over a sheep triggers colossal red-eyed Clarkson for **everyone**—friends watch giant Jeremy sprint after the culprit and yeet them 400 m into orbit, and borrowing the Lamborghini Tractor hides it for the whole server.
+3. **Multiplayer Skinwalker & Co-Op Rescue (`js/skinwalker.js`, `js/network.js`, `js/main.js`):**
+   - Active Skinwalkers sync to nearby peers (`skinwalker_sync`), so friends watch the pale-eyed stag stalk out of the Taiga and latch onto your driver window—and can **shoot it or toss a road flare to repel it and save you**!
+4. **Remote Players' Thick 3D Winch Cables (`js/ai_entities.js`, `js/main.js`):**
+   - Hooked `onRemoteWinch` & snapshot replay so everyone sees every player's glowing 3D yellow-orange winch rope and anchor hook during co-op recoveries.
+5. **Synced Ocean Boats & Zubr Hovercraft (`js/boats.js`, `js/network.js`, `js/main.js`):**
+   - Active boat state (`id`, position, yaw, speed) rides along in `player_state` so friends see your Zubr hovercraft (with spinning propulsor fans), Serna barge, Patrol boat, or Strela-X1 speedboat carving waves across the archipelago!
+6. **Epoch-Synced Zolotoy City Tram, Traffic & Pedestrians (`js/world.js`):**
+   - Zolotoy City's electric tram, 12 NPC traffic cars, and 28 sidewalk pedestrians now run on synchronized epoch time (`Date.now() * 0.001`)—identical positions across all clients for zero network cost.
+7. **Remote Horn Cryptid Spook (`js/cryptids.js`):**
+   - Fixed remote players' `hornActive` flag so a comrade blasting their horn (or the 140A4 Dreadnought War-Horn) genuinely attracts or spooks cryptids for the whole lobby!

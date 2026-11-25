@@ -36,6 +36,11 @@ KK.EntityManager = class EntityManager {
     this._winchYAxis = new THREE.Vector3(0, 1, 0);
     this._winchPts = [];
     for (let i = 0; i <= 12; i++) this._winchPts.push(new THREE.Vector3());
+    this._ropeGeo = ropeGeo;
+    this._ropeMat = ropeMat;
+    this._hookGeo = new THREE.TorusGeometry(0.18, 0.055, 8, 14);
+    this._hookMat = new THREE.MeshStandardMaterial({ color: 0xff3b30, emissive: 0xff3b30, emissiveIntensity: 0.65, roughness: 0.35, metalness: 0.7 });
+    this.remoteWinches = new Map(); // peerId -> { group, segs, hook, data }
 
     this.matDeerFur   = new THREE.MeshStandardMaterial({ color: 0x6e4b30, roughness: 0.9 });
     this.matDeerBelly = new THREE.MeshStandardMaterial({ color: 0xc9b498, roughness: 0.9 });
@@ -507,6 +512,86 @@ KK.EntityManager = class EntityManager {
     }
     this.winchHook.position.copy(endL);
     this.winchHook.lookAt(startL);
+  }
+
+  // v15.1.5 REMOTE PLAYERS' THICK 3D WINCH CABLES!
+  setRemoteWinch(peerId, msg) {
+    if (!peerId) return;
+    if (!msg || !msg.active) {
+      this.removeRemoteWinch(peerId);
+      return;
+    }
+    let rw = this.remoteWinches.get(peerId);
+    if (!rw) {
+      const grp = new THREE.Group();
+      const segs = [];
+      for (let s = 0; s < 12; s++) {
+        const seg = new THREE.Mesh(this._ropeGeo, this._ropeMat);
+        seg.frustumCulled = false;
+        grp.add(seg); segs.push(seg);
+      }
+      const hook = new THREE.Mesh(this._hookGeo, this._hookMat);
+      hook.frustumCulled = false;
+      grp.add(hook);
+      this.scene.add(grp);
+      rw = { group: grp, segs, hook, data: msg };
+      this.remoteWinches.set(peerId, rw);
+    } else {
+      rw.data = msg;
+    }
+  }
+
+  removeRemoteWinch(peerId) {
+    const rw = this.remoteWinches.get(peerId);
+    if (rw) {
+      this.scene.remove(rw.group);
+      this.remoteWinches.delete(peerId);
+    }
+  }
+
+  updateRemoteWinches(localVehicle, localPeerId, remotePlayersMap) {
+    if (!this.remoteWinches || this.remoteWinches.size === 0 || !remotePlayersMap) return;
+    const dir = new THREE.Vector3();
+    for (const [pid, rw] of this.remoteWinches.entries()) {
+      const owner = remotePlayersMap.get(pid);
+      if (!owner) { this.removeRemoteWinch(pid); continue; }
+      const d = rw.data;
+      let endG = d.anchorPos ? new THREE.Vector3(d.anchorPos.x, d.anchorPos.y, d.anchorPos.z) : null;
+      if (d.targetPeerId) {
+        if (d.targetPeerId === localPeerId && localVehicle) {
+          endG = new THREE.Vector3(localVehicle.pos.x, localVehicle.pos.y + 0.85, localVehicle.pos.z);
+        } else {
+          const tp = remotePlayersMap.get(d.targetPeerId);
+          if (tp) endG = new THREE.Vector3(tp.gx, tp.gy + 0.85, tp.gz);
+        }
+      }
+      if (!endG) { rw.group.visible = false; continue; }
+      rw.group.visible = true;
+      const startL = this.world.toLocal(owner.gx, owner.gy + 0.85, owner.gz, new THREE.Vector3());
+      const endL   = this.world.toLocal(endG.x, endG.y, endG.z, new THREE.Vector3());
+      const dist = startL.distanceTo(endL);
+      const sagAmp = Math.max(0.08, Math.min(2.2, ((d.length || dist) - dist) * 0.18));
+      for (let i = 0; i <= 12; i++) {
+        const t = i / 12;
+        const sag = Math.sin(t * Math.PI) * sagAmp;
+        this._winchPts[i].set(
+          startL.x + (endL.x - startL.x) * t,
+          startL.y + (endL.y - startL.y) * t - sag,
+          startL.z + (endL.z - startL.z) * t
+        );
+      }
+      for (let s = 0; s < 12; s++) {
+        const a = this._winchPts[s], b = this._winchPts[s + 1];
+        dir.subVectors(b, a);
+        const len = Math.max(0.02, dir.length());
+        const seg = rw.segs[s];
+        seg.position.copy(a).addScaledVector(dir, 0.5);
+        seg.scale.set(1, len + 0.04, 1);
+        seg.quaternion.setFromUnitVectors(this._winchYAxis, dir.normalize());
+      }
+      rw.hook.position.copy(endL);
+      rw.hook.lookAt(startL);
+    }
   }
 
   setThermalMode(isFlir) {
