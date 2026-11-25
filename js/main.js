@@ -73,6 +73,8 @@ KK.Game = class Game {
     if (this.ownedVehicles && this.ownedVehicles.shilka) this.shilkaCamp.setRelicVisible(false);
 
     this.photoMode = false;
+    this.friendsList = {};
+    try { this.friendsList = JSON.parse(localStorage.getItem("kk_friends_v1") || "{}") || {}; } catch (e) { this.friendsList = {}; }
     this.pendingScreenshot = false;
     this.turretFrozen = false;
     this.remoteDustEnabled = true;
@@ -141,6 +143,7 @@ KK.Game = class Game {
         if (el) { el.textContent = txt; el.className = "lan-pill " + (online ? "online" : "offline"); }
         this._syncDevFlagshipAccess();
       if (this.startMenu && this.startMenu.isOpen) this.startMenu.renderTab();
+        if (this.ui && this.ui.activeModal === "players") this.ui.renderOnlinePlayers();
       },
       onWelcome: (msg) => {
         if (msg.isHost && msg.roomCode) {
@@ -206,6 +209,22 @@ KK.Game = class Game {
       },
       onFenceBreak: (msg) => {
         if (msg.fenceId) this.world.smashFence(msg.fenceId, msg.dirX || 1, msg.dirZ || 0);
+      },
+      onCashTransfer: (msg) => {
+        const amt = Math.floor(Number(msg.amount) || 0);
+        if (amt < 1000) return;
+        this.money += amt;
+        if (this.audio) this.audio.playCash();
+        this._saveProgress(true);
+        const from = msg.senderCallsign || "A comrade";
+        this.ui.toast(`RECEIVED $${amt.toLocaleString()} from ${from}!`);
+        this.ui.addChatLine("BANK", `${from} sent you $${amt.toLocaleString()}!`, true);
+        if (this.ui.activeModal === "players") this.ui.renderOnlinePlayers();
+      },
+      onFriendNotify: (msg) => {
+        const from = msg.senderCallsign || "A comrade";
+        this.ui.toast(`★ ${from} added you as a Friend! Press [TAB] to add them back.`);
+        this.ui.addChatLine("SOCIAL", `${from} added you as a Friend!`, true);
       },
       onJamesEvent: (msg) => {
         if (this.jamesBar && this.jamesBar.applyRemoteEvent) this.jamesBar.applyRemoteEvent(msg, this);
@@ -370,7 +389,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.1.7 ONLINE! Full Multiplayer Sync Update: James May Molotovs, 3.2x Rage Clarkson & Sheep, Synced Skinwalker Rescue, Remote Winch Cables, Ocean Boats & Zolotoy Tram!');
+      this.ui.toast('Welcome to v15.1.8 ONLINE! Press [TAB] for Online Players (Add Friends & Send Cash, $1,000 min) + Razor-Accurate Roadside Fence Hitboxes!');
     }, 650);
   }
 
@@ -690,7 +709,7 @@ KK.Game = class Game {
         if (this.photoMode) { this.togglePhotoMode(); return; }
         return;
       }
-      if (this.ui.activeModal) { if (code === "KeyE" && this.ui.activeModal === "inventory") this.ui.closeModal(); return; }
+      if (this.ui.activeModal) { if (code === "KeyE" && this.ui.activeModal === "inventory") this.ui.closeModal(); else if (code === "Tab" && this.ui.activeModal === "players") { e.preventDefault(); this.ui.closeModal(); } return; }
 
       // 1. UNIVERSAL INTERACT [F] (Shift+F always force-exits/enters vehicle!)
       if (code === "KeyF") {
@@ -709,7 +728,8 @@ KK.Game = class Game {
       else if (code === "KeyM") this.ui.openModal("map");
       else if (code === "KeyJ") this.ui.openModal("contracts");
       else if (code === "KeyO") this.ui.openModal("env");
-      else if (code === "Tab") { e.preventDefault(); this.togglePhotoMode(); }
+      else if (code === "Tab") { e.preventDefault(); this.ui.openModal("players"); }
+      else if (code === "F8") { e.preventDefault(); this.togglePhotoMode(); }
       else if (code === "F9" || code === "Digit9") { e.preventDefault(); this.captureScreenshot(); }
       else if (code === "KeyT") { if (!this.vehicle.winch.active) this.attachWinch(); }
       else if (code === "KeyV" && this.boats && this.boats.activeBoat) {
@@ -2805,10 +2825,55 @@ KK.Game = class Game {
     return rel.z > (halfL - 0.55) && rel.z < (halfL + 2.35);
   }
 
+  toggleFriend(peerId, callsign) {
+    const label = String(callsign || peerId || "Driver").trim();
+    const key = label.toLowerCase();
+    if (this.friendsList[key]) {
+      delete this.friendsList[key];
+      this.ui.toast(`Removed ${label} from Friends.`);
+    } else {
+      this.friendsList[key] = { callsign: label, addedAt: Date.now() };
+      this.ui.toast(`★ Added ${label} to your Friends list!`);
+      if (peerId && this.network && this.network.mode !== "offline") {
+        this.network.send({ type: "friend_notify", targetPeerId: peerId, senderCallsign: this.network.callsign });
+      }
+    }
+    try { localStorage.setItem("kk_friends_v1", JSON.stringify(this.friendsList)); } catch (e) {}
+    if (this.ui.activeModal === "players") this.ui.renderOnlinePlayers();
+  }
+
+  sendCashToPeer(peerId, callsign, rawAmount) {
+    const amt = Math.floor(Number(rawAmount) || 0);
+    if (amt < 1000) {
+      this.ui.toast("Minimum cash transfer is $1,000!", true);
+      return;
+    }
+    if (this.money < amt) {
+      this.ui.toast(`Not enough cash! You have $${Math.floor(this.money).toLocaleString()}.`, true);
+      return;
+    }
+    if (!this.network || this.network.mode === "offline") {
+      this.ui.toast("Must be online to send cash!", true);
+      return;
+    }
+    this.money -= amt;
+    if (this.audio) this.audio.playCash();
+    this._saveProgress(true);
+    this.network.send({
+      type: "cash_transfer",
+      targetPeerId: peerId,
+      senderCallsign: this.network.callsign,
+      amount: amt
+    });
+    this.ui.toast(`Sent $${amt.toLocaleString()} to ${callsign || peerId}!`);
+    this.ui.addChatLine("BANK", `Sent $${amt.toLocaleString()} to ${callsign || peerId}.`, true);
+    if (this.ui.activeModal === "players") this.ui.renderOnlinePlayers();
+  }
+
   togglePhotoMode() {
     this.photoMode = !this.photoMode;
     document.body.classList.toggle("photo-mode", this.photoMode);
-    if (!this.photoMode) this.ui.toast("Photo Mode [Tab]: OFF (HUD Restored)");
+    if (!this.photoMode) this.ui.toast("Photo Mode [F8]: OFF (HUD Restored)");
   }
 
   captureScreenshot() {

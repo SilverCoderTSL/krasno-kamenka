@@ -1,18 +1,10 @@
-# Krasno-Kamenka Oblast (v15.1.5 ONLINE — Multiplayer Chaos & World Sync Update)
+# Krasno-Kamenka Oblast (v15.1.8 ONLINE — [TAB] Online Players, Friends, Cash Transfer & Thin Fence Hitboxes)
 
-## What's Synced in Version 15.1.5 ONLINE
-1. **James May's Pub Chaos & Molotovs (`js/james_may_bar.js`, `js/network.js`, `js/main.js`):**
-   - Stealing the parked Dacia Sandero, angry James May hurling flaming Molotov cocktails, burning fire pools, and catastrophic fuel-tank explosions now broadcast to all players in the lobby!
-2. **Jeremy Clarkson's 3.2× Rage, Yeet & 14 Sheep (`js/clarkson_farm.js`, `js/network.js`, `js/main.js`):**
-   - All 14 grazing sheep use deterministic epoch-time grazing (100% synced positions with zero bandwidth!).
-   - Running over a sheep triggers colossal red-eyed Clarkson for **everyone**—friends watch giant Jeremy sprint after the culprit and yeet them 400 m into orbit, and borrowing the Lamborghini Tractor hides it for the whole server.
-3. **Multiplayer Skinwalker & Co-Op Rescue (`js/skinwalker.js`, `js/network.js`, `js/main.js`):**
-   - Active Skinwalkers sync to nearby peers (`skinwalker_sync`), so friends watch the pale-eyed stag stalk out of the Taiga and latch onto your driver window—and can **shoot it or toss a road flare to repel it and save you**!
-4. **Remote Players' Thick 3D Winch Cables (`js/ai_entities.js`, `js/main.js`):**
-   - Hooked `onRemoteWinch` & snapshot replay so everyone sees every player's glowing 3D yellow-orange winch rope and anchor hook during co-op recoveries.
-5. **Synced Ocean Boats & Zubr Hovercraft (`js/boats.js`, `js/network.js`, `js/main.js`):**
-   - Active boat state (`id`, position, yaw, speed) rides along in `player_state` so friends see your Zubr hovercraft (with spinning propulsor fans), Serna barge, Patrol boat, or Strela-X1 speedboat carving waves across the archipelago!
-6. **Epoch-Synced Zolotoy City Tram, Traffic & Pedestrians (`js/world.js`):**
-   - Zolotoy City's electric tram, 12 NPC traffic cars, and 28 sidewalk pedestrians now run on synchronized epoch time (`Date.now() * 0.001`)—identical positions across all clients for zero network cost.
-7. **Remote Horn Cryptid Spook (`js/cryptids.js`):**
-   - Fixed remote players' `hornActive` flag so a comrade blasting their horn (or the 140A4 Dreadnought War-Horn) genuinely attracts or spooks cryptids for the whole lobby!
+## What's New in Version 15.1.8 ONLINE
+1. **`[TAB]` Online Players List, Add Friend & Send Cash (`index.html`, `js/ui.js`, `js/network.js`, `js/main.js`):**
+   - Press **`[TAB]`** anytime to toggle the **Online Players** roster showing every connected driver, their vehicle/boat, live distance, and current island/biome.
+   - Click **`+ ADD FRIEND`** beside any player to save them to your Friends list (`localStorage`) and notify them live.
+   - Send cash directly to any online player using the custom amount box or `$1K` / `$5K` quick buttons (**`$1,000` minimum**).
+   - **Photo Mode** (hide HUD) moved cleanly to **`[F8]`** (Screenshots stay on `[F9]` / `[9]`).
+2. **Fixed Oversized Fence & Guardrail Hitboxes (`js/world.js`, `js/physics.js`):**
+   - Replaced the old `2.35 m` circular fence collision radius (which protruded meters into the road) with an **exact thin Oriented Bounding Box (OBB)** (`0.32 m` thick aligned to each rail's actual heading) against your vehicle's true body width. You can now skim inches past guardrails and ranch fences without clipping invisible air, while still smashing cleanly through them on real contact.

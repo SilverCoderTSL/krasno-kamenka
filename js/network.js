@@ -1084,6 +1084,12 @@ KK.LanNetwork = class LanNetwork {
       case "skinwalker_repel":
         if (msg.ownerPeerId === this.peerId && this.cb.onSkinwalkerRepel) this.cb.onSkinwalkerRepel(msg);
         break;
+      case "cash_transfer":
+        if (msg.targetPeerId === this.peerId && this.cb.onCashTransfer) this.cb.onCashTransfer(msg);
+        break;
+      case "friend_notify":
+        if (msg.targetPeerId === this.peerId && this.cb.onFriendNotify) this.cb.onFriendNotify(msg);
+        break;
       case "convoy_create":
       case "convoy_join":
       case "convoy_complete":

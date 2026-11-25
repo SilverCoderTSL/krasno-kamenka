@@ -961,24 +961,36 @@ KK.VehiclePhysics = class VehiclePhysics {
       }
     }
 
-    // 1B. BREAKABLE ROADSIDE FENCES & GUARDRAILS!
+    // 1B. BREAKABLE ROADSIDE FENCES & GUARDRAILS (v15.1.8 Exact Thin OBB Hitbox!)
     if (world.activeFences && world.activeFences.length > 0) {
-      const fVehRad = Math.max(spec.bodyWidth, spec.bodyLen * 0.46) * 0.52;
+      const fVehRad = spec.bodyWidth * 0.44;
       const fList = world.activeFences;
       for (let fi = 0; fi < fList.length; fi++) {
         const fn = fList[fi];
         if (fn.broken) continue;
         const dx = this.pos.x - fn.x, dz = this.pos.z - fn.z;
-        const sumR = fVehRad + fn.r;
-        if (Math.abs(dx) > sumR || Math.abs(dz) > sumR) continue;
-        if (dx * dx + dz * dz >= sumR * sumR) continue;
-        if (Math.abs(this.pos.y - fn.y) > 2.4) continue;
+        const broad = fVehRad + (fn.halfLen || 2.65) + 0.5;
+        if (Math.abs(dx) > broad || Math.abs(dz) > broad) continue;
+        if (Math.abs(this.pos.y - fn.y) > 2.2) continue;
+
+        // Transform vehicle offset into fence's local (along-rail, perpendicular) coordinates!
+        const ux = fn.ux !== undefined ? fn.ux : 1;
+        const uz = fn.uz !== undefined ? fn.uz : 0;
+        const hLen = fn.halfLen || 2.65;
+        const hThk = fn.halfThick || 0.16;
+        const along = dx * ux + dz * uz;
+        const perp  = -dx * uz + dz * ux;
+        const clA = Math.max(-hLen, Math.min(hLen, along));
+        const clP = Math.max(-hThk, Math.min(hThk, perp));
+        const offA = along - clA, offP = perp - clP;
+        const d2 = offA * offA + offP * offP;
+        if (d2 >= fVehRad * fVehRad) continue;
 
         const curSpd = Math.hypot(this.vel.x, this.vel.z);
         if (curSpd > 2.8) {
           // SMASH straight through the wooden ranch fence or metal guardrail!
           fn.broken = true;
-          const dragKeep = fn.isMetal ? 0.86 : 0.93;
+          const dragKeep = fn.isMetal ? 0.88 : 0.94;
           this.vel.x *= dragKeep;
           this.vel.z *= dragKeep;
           const fDmg = (fn.isMetal ? 3.5 : 1.2) * (upg.bullbar ? 0.25 : 1.0);
@@ -986,12 +998,18 @@ KK.VehiclePhysics = class VehiclePhysics {
           this.emit("fence_break", { fenceId: fn.id, isMetal: fn.isMetal, x: fn.x, y: fn.y, z: fn.z, dirX: this.vel.x, dirZ: this.vel.z });
           this.emit("crash_burst", { x: fn.x, y: fn.y + 0.7, z: fn.z, strength: 0.45, surface: "gravel" });
         } else {
-          // Gentle slow bump nudges car back off intact fence
-          const d = Math.hypot(dx, dz) || 1;
-          const pen = (sumR - d) * 0.5;
-          this.pos.x += (dx / d) * pen;
-          this.pos.z += (dz / d) * pen;
-          this.vel.x *= 0.6; this.vel.z *= 0.6;
+          // Gentle slow bump pushes car cleanly off the thin rail normal!
+          const d = Math.sqrt(d2);
+          let nxW = -uz * (perp >= 0 ? 1 : -1), nzW = ux * (perp >= 0 ? 1 : -1);
+          if (d > 0.001) {
+            const locNx = offA / d, locNp = offP / d;
+            nxW = locNx * ux - locNp * uz;
+            nzW = locNx * uz + locNp * ux;
+          }
+          const pen = Math.max(0.05, (fVehRad - d) * 0.55);
+          this.pos.x += nxW * pen;
+          this.pos.z += nzW * pen;
+          this.vel.x *= 0.65; this.vel.z *= 0.65;
         }
       }
     }

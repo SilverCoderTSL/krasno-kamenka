@@ -3101,7 +3101,7 @@ KK.World = class World {
           }
           group.add(fGrp);
           this.fenceMeshMap.set(fenceId, { mesh: fGrp, chunkKey });
-          fences.push({ id: fenceId, x: fx, y: fy, z: fz, r: 2.35, isMetal, broken: false });
+          fences.push({ id: fenceId, x: fx, y: fy, z: fz, ux, uz, halfLen: 2.65, halfThick: 0.16, r: 2.8, isMetal, broken: false });
         }
       }
     }

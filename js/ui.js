@@ -137,12 +137,14 @@ KK.UIManager = class UIManager {
       account: "DRIVER ACCOUNT, PASSWORD & LEADERBOARD",
       coop_pit: "CO-OP PIT CREW & FIELD ASSISTANCE",
       inventory: "ON-FOOT FIELD INVENTORY [E]",
-      harbor: "OCEAN PORT — BOAT DOCK & HOVERCRAFT SUMMON"
+      harbor: "OCEAN PORT — BOAT DOCK & HOVERCRAFT SUMMON",
+      players: "ONLINE PLAYERS — FRIENDS & CASH TRANSFER [TAB]"
     };
     document.getElementById("modal-title").textContent = titles[name] || "MENU";
     if (name === "garage") this.renderGarage();
     if (name === "contracts") this.renderContracts();
     if (name === "harbor") this.renderHarbor();
+    if (name === "players") this.renderOnlinePlayers();
     if (name === "map") { if (this.mapCtrl) this.mapCtrl.open(); else this.renderMap(); }
     if (name === "field_repair") this.renderFieldRepair();
     if (name === "coop_pit") this.renderCoopPitCrew();
@@ -621,6 +623,118 @@ KK.UIManager = class UIManager {
       { id: "james_beer_run", title: "Captain Slow's Craft Beer Run (To James May's Pub)", fromTown: 0, toTown: 0, toBar: true, cargoType: "beer", units: 3, reward: 7800, desc: "Haul 3 kegs of cold craft ale 1.3 km West from Kamenka HQ to James May's Pub! Smooth driving keeps the beer intact." },
       { id: "james_beer_long", title: "Alpine Oktoberfest Keg Convoy (Cherny Les -> James May's Pub)", fromTown: 4, toTown: 0, toBar: true, cargoType: "beer", units: 5, reward: 32500, desc: "Long-haul 25 km beer convoy across forests & bridges to resupply Captain Slow's Pub!" }
     ];
+  }
+
+  renderOnlinePlayers() {
+    const el = document.getElementById("players-content");
+    if (!el) return;
+    const g = this.game;
+    const net = g.network;
+    const friends = g.friendsList || {};
+    const myX = g.onFoot ? g.playerFoot.x : g.vehicle.pos.x;
+    const myZ = g.onFoot ? g.playerFoot.z : g.vehicle.pos.z;
+    const myRig = (KK.VEHICLES[g.activeVehicleId] && KK.VEHICLES[g.activeVehicleId].name) || g.activeVehicleId;
+    const myBiome = g.world ? g.world.getBiomeName(myX, myZ) : "Oblast";
+
+    // Merge roster + remotePlayers so every connected driver appears cleanly!
+    const peerMap = new Map();
+    if (net && Array.isArray(net.roster)) {
+      for (const r of net.roster) {
+        if (!r || !r.peerId || r.peerId === net.peerId) continue;
+        peerMap.set(r.peerId, { peerId: r.peerId, callsign: r.callsign || r.peerId, isHost: !!r.isHost, rp: null });
+      }
+    }
+    if (net && net.remotePlayers) {
+      for (const [pid, rp] of net.remotePlayers.entries()) {
+        const cur = peerMap.get(pid) || { peerId: pid, callsign: rp.callsign || pid, isHost: false, rp: null };
+        cur.callsign = rp.callsign || cur.callsign;
+        cur.rp = rp;
+        peerMap.set(pid, cur);
+      }
+    }
+
+    const totalOnline = 1 + peerMap.size;
+    const roomBadge = (net && net.mode !== "offline")
+      ? `<span style="padding:2px 8px;border-radius:4px;background:#163d2d;color:#2de08b;font-family:monospace;font-size:11px;font-weight:800;">ONLINE • ROOM ${net.roomCode || "LIVE"} (${totalOnline} DRIVER${totalOnline === 1 ? "" : "S"})</span>`
+      : `<span style="padding:2px 8px;border-radius:4px;background:#3a2818;color:#ffd166;font-family:monospace;font-size:11px;font-weight:800;">OFFLINE SOLO — JOIN OR HOST IN [O] OPTIONS</span>`;
+
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+    // Row 0: Local Player (YOU)
+    let rowsHtml = `
+      <div class="card" style="padding:10px 12px;border:1px solid #2de08b88;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div>
+          <b style="font-size:15px;color:#2de08b;">${esc((net && net.callsign) || "YOU")}</b>
+          <span style="margin-left:6px;padding:1px 6px;border-radius:4px;background:#2de08b;color:#081016;font-size:10px;font-weight:900;">YOU</span>
+          ${net && net.isHost ? '<span style="margin-left:4px;padding:1px 6px;border-radius:4px;background:#ffd166;color:#081016;font-size:10px;font-weight:900;">HOST</span>' : ""}
+          <div class="small muted" style="margin-top:3px;">${esc(myRig)} &nbsp;•&nbsp; ${esc(myBiome)}</div>
+        </div>
+        <div style="font-family:monospace;font-size:15px;font-weight:800;color:#2de08b;">$${Math.floor(g.money).toLocaleString()}</div>
+      </div>`;
+
+    if (peerMap.size === 0) {
+      rowsHtml += `
+        <div class="card" style="padding:16px;text-align:center;color:#9ab0c4;border:1px dashed #2b3e52;margin-bottom:10px;">
+          No other drivers connected right now. Share your Room Code from <b>[O] Options</b> so friends can join!
+        </div>`;
+    } else {
+      for (const p of peerMap.values()) {
+        const rp = p.rp;
+        const safePid = esc(p.peerId);
+        const safeCs  = esc(p.callsign);
+        const fKey    = String(p.callsign || p.peerId).trim().toLowerCase();
+        const isFr    = !!friends[fKey];
+        const vName   = rp ? ((KK.VEHICLES[rp.vehicleId] && KK.VEHICLES[rp.vehicleId].name) || rp.vehicleId) : "Connecting...";
+        const boatTag = (rp && rp.boat && KK.BOATS && KK.BOATS[rp.boat.id]) ? ` • ⚓ ${KK.BOATS[rp.boat.id].name}` : "";
+        const distM   = rp ? Math.hypot(rp.gx - myX, rp.gz - myZ) : null;
+        const distTxt = distM !== null ? (distM >= 1000 ? `${(distM / 1000).toFixed(1)} km away` : `${Math.round(distM)} m away`) : "Syncing...";
+        const locTxt  = (rp && g.world) ? g.world.getBiomeName(rp.gx, rp.gz) : "";
+        const inpId   = "cash-amt-" + p.peerId.replace(/[^a-zA-Z0-9_-]/g, "");
+
+        rowsHtml += `
+          <div class="card" style="padding:10px 12px;border:1px solid ${isFr ? '#ffd166' : '#2b3e52'};margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="min-width:210px;flex:1;">
+              <b style="font-size:15px;color:#f0f6fc;">${safeCs}</b>
+              ${p.isHost ? '<span style="margin-left:5px;padding:1px 6px;border-radius:4px;background:#ffd166;color:#081016;font-size:10px;font-weight:900;">HOST</span>' : ""}
+              ${isFr ? '<span style="margin-left:5px;padding:1px 6px;border-radius:4px;background:#2b4a2f;color:#80ed99;font-size:10px;font-weight:800;">★ FRIEND</span>' : ""}
+              <div class="small muted" style="margin-top:3px;">${esc(vName)}${esc(boatTag)}</div>
+              <div class="small" style="color:#80faff;margin-top:2px;">${distTxt}${locTxt ? " • " + esc(locTxt) : ""}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <button class="btn small ${isFr ? 'warn' : 'accent'}" onclick="window.__GAME__.toggleFriend('${safePid}', '${safeCs}')">
+                ${isFr ? '★ UNFRIEND' : '+ ADD FRIEND'}
+              </button>
+              <div style="display:flex;align-items:center;gap:4px;background:#0d1620;padding:4px 6px;border-radius:6px;border:1px solid #26394d;">
+                <span class="small" style="color:#ffd166;font-weight:800;">$</span>
+                <input id="${inpId}" type="number" min="1000" step="500" value="1000" style="width:78px;background:#142230;color:#f0f6fc;border:1px solid #304963;border-radius:4px;padding:3px 5px;font-family:monospace;font-size:12px;" />
+                <button class="btn primary small" onclick="window.__GAME__.sendCashToPeer('${safePid}', '${safeCs}', document.getElementById('${inpId}').value)">SEND</button>
+                <button class="btn small" title="Quick-send $1,000" onclick="window.__GAME__.sendCashToPeer('${safePid}', '${safeCs}', 1000)">$1K</button>
+                <button class="btn small" title="Quick-send $5,000" onclick="window.__GAME__.sendCashToPeer('${safePid}', '${safeCs}', 5000)">$5K</button>
+              </div>
+            </div>
+          </div>`;
+      }
+    }
+
+    // Saved Friends Summary
+    const frEntries = Object.values(friends);
+    const frSummary = frEntries.length > 0
+      ? frEntries.map((f) => `<span style="display:inline-block;padding:2px 8px;margin:2px;border-radius:12px;background:#192b3c;border:1px solid #2e4a63;color:#cfe4f5;font-size:11px;font-family:monospace;">★ ${esc(f.callsign)}</span>`).join("")
+      : `<span class="small muted">None yet — click <b>+ ADD FRIEND</b> beside any online driver!</span>`;
+
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <div>${roomBadge}</div>
+        <div class="small muted">Cash transfer minimum: <b style="color:#ffd166;">$1,000</b> &nbsp;•&nbsp; Press <b>[TAB]</b> or <b>[ESC]</b> to close</div>
+      </div>
+      ${rowsHtml}
+      <div class="card" style="padding:10px 12px;margin-top:8px;border:1px solid #24384c;">
+        <div class="small" style="color:#ffd166;font-weight:800;margin-bottom:4px;">SAVED FRIENDS (${frEntries.length})</div>
+        <div>${frSummary}</div>
+      </div>
+      <div class="small muted" style="margin-top:8px;">
+        Tip: Photo Mode (hide HUD) is now on <b>[F8]</b> • Screenshot stays on <b>[F9]</b> or <b>[9]</b>.
+      </div>`;
   }
 
   renderHarbor() {
