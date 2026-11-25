@@ -233,6 +233,7 @@ KK.OceanCryptidManager = class OceanCryptidManager {
     mistRing.rotation.x = -Math.PI / 2; mistRing.position.y = 1.6;
     grp.add(mistRing);
 
+    grp.scale.setScalar(1.55);
     grp.visible = false;
     this.scene.add(grp);
     return {
@@ -326,6 +327,7 @@ KK.OceanCryptidManager = class OceanCryptidManager {
     const botLobe = new THREE.Mesh(new THREE.BoxGeometry(0.30, 4.8, 2.2), matBelly);
     botLobe.position.set(0, -2.0, -1.1); botLobe.rotation.x = 0.42; caudal.add(botLobe);
 
+    grp.scale.setScalar(1.85);
     grp.visible = false;
     this.scene.add(grp);
     return {
@@ -409,6 +411,7 @@ KK.OceanCryptidManager = class OceanCryptidManager {
       tentacles.push({ root: tRoot, segs, ang, rad, slamPhase: 0, slamming: false });
     }
 
+    grp.scale.setScalar(1.75);
     grp.visible = false;
     this.scene.add(grp);
     return {
@@ -497,7 +500,7 @@ KK.OceanCryptidManager = class OceanCryptidManager {
       const dx = gx - ym.gx, dz = gz - ym.gz;
       const c = Math.cos(-ym.yaw), s = Math.sin(-ym.yaw);
       const lx = dx * c + dz * s, lz = -dx * s + dz * c;
-      if (Math.abs(lx) < 26 && Math.abs(lz) < 138 && gy > ym.gy - 5 && gy < ym.gy + 54) {
+      if (Math.abs(lx) < 40 && Math.abs(lz) < 214 && gy > ym.gy - 8 && gy < ym.gy + 84) {
         if (network && !network.isHost && network.mode !== "offline") {
           network.send({ type: "ocean_cryptid_hit", target: "yamato", dmg, ax: +attackerX.toFixed(1), az: +attackerZ.toFixed(1) });
         }
@@ -519,7 +522,7 @@ KK.OceanCryptidManager = class OceanCryptidManager {
     // 2. SOUTHERN MEGALODON (~34m)
     const mg = this.megalodon;
     if (mg.state === "fin_stalk" || mg.state === "lunge_ram") {
-      if (Math.hypot(gx - mg.gx, gz - mg.gz) < 20 && Math.abs(gy - mg.gy) < 12) {
+      if (Math.hypot(gx - mg.gx, gz - mg.gz) < 36 && Math.abs(gy - mg.gy) < 22) {
         if (network && !network.isHost && network.mode !== "offline") {
           network.send({ type: "ocean_cryptid_hit", target: "megalodon", dmg });
         }
@@ -536,11 +539,11 @@ KK.OceanCryptidManager = class OceanCryptidManager {
     // 3. NORTHERN ABYSSAL KRAKEN (Head + 8 Breaching Tentacles)
     const kr = this.kraken;
     if (kr.state === "tentacle_ring" || kr.state === "breach_slam") {
-      let hitKr = (Math.hypot(gx - kr.gx, gz - kr.gz) < 22 && gy > kr.gy - 6 && gy < kr.gy + 42);
+      let hitKr = (Math.hypot(gx - kr.gx, gz - kr.gz) < 38 && gy > kr.gy - 10 && gy < kr.gy + 72);
       if (!hitKr) {
         for (const t of kr.tentacles) {
-          const tx = kr.gx + Math.cos(t.ang) * t.rad;
-          const tz = kr.gz + Math.sin(t.ang) * t.rad;
+          const tx = kr.gx + Math.cos(t.ang) * (t.rad * 1.75);
+          const tz = kr.gz + Math.sin(t.ang) * (t.rad * 1.75);
           if (Math.hypot(gx - tx, gz - tz) < 7.5 && gy > kr.gy - 5 && gy < kr.gy + 38) { hitKr = true; break; }
         }
       }
@@ -872,12 +875,12 @@ KK.OceanCryptidManager = class OceanCryptidManager {
       }
 
       // SOLID COLD-STEEL HULL BOUNCE (Ramming the Yamato bounces your boat off — it stays 100% passive!)
-      if (ab && ym.state !== "departing" && dYm < 165) {
+      if (ab && ym.state !== "departing" && dYm < 255) {
         const dx = ab.gx - ym.gx, dz = ab.gz - ym.gz;
         const c = Math.cos(-ym.yaw), s = Math.sin(-ym.yaw);
         const lx = dx * c + dz * s, lz = -dx * s + dz * c;
-        const hx = 21.0 + (ab.spec.width || 6) * 0.5;
-        const hz = 132.0 + (ab.spec.len || 12) * 0.5;
+        const hx = 32.5 + (ab.spec.width || 6) * 0.5;
+        const hz = 205.0 + (ab.spec.len || 12) * 0.5;
         if (Math.abs(lx) < hx && Math.abs(lz) < hz) {
           const pushX = (lx >= 0 ? 1 : -1);
           const nx = pushX * Math.cos(ym.yaw), nz = -pushX * Math.sin(ym.yaw);
@@ -935,7 +938,7 @@ KK.OceanCryptidManager = class OceanCryptidManager {
       }
       if (ab && mg.state === "lunge_ram" && mg.hitCd <= 0) {
         const dMg = Math.hypot(ab.gx - mg.gx, ab.gz - mg.gz);
-        if (dMg < (ab.spec.len * 0.42 + 9.0)) {
+        if (dMg < (ab.spec.len * 0.42 + 17.0)) {
           mg.hitCd = 5.5;
           const rAng = Math.atan2(ab.gx - mg.gx, ab.gz - mg.gz);
           const force = ab.spec.amphibious ? 12.0 : 24.0;
@@ -979,8 +982,8 @@ KK.OceanCryptidManager = class OceanCryptidManager {
             slamBend = -0.35 + 1.55 * ((t.slamPhase - 0.55) / 0.45); // SLAM down toward water!
           } else {
             t.slamming = false;
-            const sx = kr.gx + Math.cos(t.ang) * (t.rad - 18);
-            const sz = kr.gz + Math.sin(t.ang) * (t.rad - 18);
+            const sx = kr.gx + Math.cos(t.ang) * ((t.rad - 18) * 1.75);
+            const sz = kr.gz + Math.sin(t.ang) * ((t.rad - 18) * 1.75);
             this._spawnWaterSpout(sx, sz, 34, 7.0);
             const dSlam = Math.hypot(localP.x - sx, localP.z - sz);
             if (dSlam < 320) {

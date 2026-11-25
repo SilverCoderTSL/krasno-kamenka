@@ -49,6 +49,7 @@ KK.World = class World {
 
     this._snapPortsToRealShorelines();
     this._buildRoadNetwork();
+    this._buildGpCircuitSegments();
     this._buildRiverNetwork();
     this._computeTownAndLandmarkElevations();
     this._initSharedAssets();
@@ -61,6 +62,7 @@ KK.World = class World {
     this._buildZolotoyMetropolis();
     this._buildOceanPorts();
     this._buildIslandSetpieces();
+    this._buildLighthouses();
     this._extractBuildingColliders();
     this.updateChunks(0, 0, true);
   }
@@ -305,11 +307,9 @@ KK.World = class World {
           const dx = (b.x - a.x) / dist, dz = (b.z - a.z) / dist;
           const nx = -dz, nz = dx;
           if (isTropikaHell) {
-            // INDONESIAN NÜRBURGRING-FROM-HELL: Extreme multi-harmonic switchbacks & mountain hairpins!
-            const midPin = Math.abs(t - 0.5) < 0.08 ? (Math.abs(t - 0.5) / 0.08) : 1.0;
-            const w1 = Math.sin(t * Math.PI * 11.0 + ia) * Math.min(920, dist * 0.11);
-            const w2 = Math.cos(t * Math.PI * 23.0 - ib) * Math.min(340, dist * 0.042);
-            const wobble = (w1 + w2) * env * midPin;
+            const w1 = Math.sin(t * Math.PI * 5.0 + ia * 0.7) * Math.min(460, dist * 0.085);
+            const w2 = Math.sin(t * Math.PI * 9.0 - ib * 0.5) * Math.min(140, dist * 0.028);
+            const wobble = (w1 + w2) * env;
             px += nx * wobble; pz += nz * wobble;
           } else if (isModernHwy) {
             const wobble = Math.sin(t * Math.PI * 2.0) * Math.min(260, dist * 0.018) * env;
@@ -1207,6 +1207,42 @@ KK.World = class World {
     }
   }
 
+  _buildLighthouses() {
+    this.lighthouses = [];
+    if (!KK.LIGHTHOUSES) return;
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const matRock  = new THREE.MeshStandardMaterial({ color: 0x45494e, roughness: 0.94 });
+    const matWhite = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.55 });
+    const matRed   = new THREE.MeshStandardMaterial({ color: 0xc92a2a, roughness: 0.55 });
+    const matIron  = new THREE.MeshStandardMaterial({ color: 0x1e242b, roughness: 0.65, metalness: 0.55 });
+    const matGlass = new THREE.MeshBasicMaterial({ color: 0xfff3b0 });
+    const matBeam  = new THREE.MeshBasicMaterial({ color: 0xfff6c2, transparent: true, opacity: 0.16, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (let i = 0; i < KK.LIGHTHOUSES.length; i++) {
+      const lh = KK.LIGHTHOUSES[i], h = lh.height || 48;
+      const grp = new THREE.Group();
+      grp.position.set(lh.x, seaL, lh.z);
+      const rock = new THREE.Mesh(new THREE.CylinderGeometry(11.5, 19.5, 9.5, 10), matRock); rock.position.y = 2.0; grp.add(rock);
+      const basePad = new THREE.Mesh(new THREE.CylinderGeometry(7.2, 8.2, 2.2, 12), matIron); basePad.position.y = 7.4; grp.add(basePad);
+      const bandH = (h - 10) / 5;
+      for (let b = 0; b < 5; b++) {
+        const seg = new THREE.Mesh(new THREE.CylinderGeometry(4.6 - (b + 1) * 0.42, 4.6 - b * 0.42, bandH + 0.08, 12), b % 2 === 0 ? matWhite : matRed);
+        seg.position.y = 8.5 + b * bandH + bandH * 0.5; grp.add(seg);
+      }
+      const lanY = 8.5 + (h - 10);
+      const deck = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.2, 0.9, 12), matIron); deck.position.y = lanY; grp.add(deck);
+      const lantern = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.1, 4.2, 10), matGlass); lantern.position.y = lanY + 2.5; grp.add(lantern);
+      const dome = new THREE.Mesh(new THREE.ConeGeometry(2.8, 3.4, 10), matRed); dome.position.y = lanY + 6.2; grp.add(dome);
+      const beamPivot = new THREE.Group(); beamPivot.position.y = lanY + 2.5;
+      for (const dir of [-1, 1]) {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(16, 175, 12, 1, true), matBeam);
+        cone.rotation.z = dir * Math.PI * 0.5; cone.position.x = dir * 88; beamPivot.add(cone);
+      }
+      beamPivot.visible = false; grp.add(beamPivot);
+      this.rootGroup.add(grp);
+      this.lighthouses.push({ data: lh, grp, beamPivot, lantern, phase: i * 1.3 });
+    }
+  }
+
   _extractBuildingColliders() {
     this.rootGroup.updateMatrixWorld(true);
     const box = new THREE.Box3();
@@ -1257,6 +1293,13 @@ KK.World = class World {
     this.matGlacierIce = new THREE.MeshStandardMaterial({ color: 0xbce6ff, emissive: 0x123854, roughness: 0.28, metalness: 0.15 });
     this.geoPalmSeg = new THREE.CylinderGeometry(0.18, 0.26, 2.8, 6);
     this.geoPalmFrond = new THREE.BoxGeometry(0.62, 0.06, 3.6);
+    this.matBanyanBark = new THREE.MeshStandardMaterial({ color: 0x5c422c, roughness: 0.95 });
+    this.matBanyanLeaf = new THREE.MeshStandardMaterial({ color: 0x146b2e, roughness: 0.84 });
+    this.matBamboo     = new THREE.MeshStandardMaterial({ color: 0x6ba832, roughness: 0.72 });
+    this.matFern       = new THREE.MeshStandardMaterial({ color: 0x228b3b, roughness: 0.86, side: THREE.DoubleSide });
+    this.geoBanyanTop  = new THREE.DodecahedronGeometry(3.4, 0);
+    this.geoBambooStalk = new THREE.CylinderGeometry(0.11, 0.14, 9.5, 5);
+    this.geoFernBush   = new THREE.ConeGeometry(1.5, 1.8, 5);
     this.geoAcaciaCanopy = new THREE.CylinderGeometry(3.8, 2.2, 0.95, 8);
     this.geoIceSpire = new THREE.ConeGeometry(1.1, 7.8, 6);
     // v15.0.2 Savanna Golden Tall Grass Tufts & Red-Clay Termite Mounds!
@@ -1430,7 +1473,30 @@ KK.World = class World {
     }
   }
 
-  // Query Smooth High-Grip Tarmac Proving Grounds & Oval Track
+  _buildGpCircuitSegments() {
+    this.gpCircuits = [];
+    if (!KK.SMOOTH_TARMAC_ZONES) return;
+    for (const tz of KK.SMOOTH_TARMAC_ZONES) {
+      if (!tz.isGpCircuit || !tz.waypoints || tz.waypoints.length < 4) continue;
+      const wp = tz.waypoints, n = wp.length, samples = [], subPerSeg = 12;
+      for (let i = 0; i < n; i++) {
+        const p0 = wp[(i - 1 + n) % n], p1 = wp[i], p2 = wp[(i + 1) % n], p3 = wp[(i + 2) % n];
+        for (let s = 0; s < subPerSeg; s++) {
+          const t = s / subPerSeg, t2 = t * t, t3 = t2 * t;
+          const x = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+          const z = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+          samples.push([x, z]);
+        }
+      }
+      const segs = [], pad = tz.trackWidth + 46;
+      for (let i = 0; i < samples.length; i++) {
+        const a = samples[i], b = samples[(i + 1) % samples.length];
+        segs.push({ x0: a[0], z0: a[1], x1: b[0], z1: b[1], minX: Math.min(a[0], b[0]) - pad, maxX: Math.max(a[0], b[0]) + pad, minZ: Math.min(a[1], b[1]) - pad, maxZ: Math.max(a[1], b[1]) + pad, idx: i });
+      }
+      this.gpCircuits.push({ zone: tz, segs, samples });
+    }
+  }
+
   getSmoothTarmacInfo(gx, gz) {
     if (!KK.SMOOTH_TARMAC_ZONES) return null;
     for (const tz of KK.SMOOTH_TARMAC_ZONES) {
@@ -1441,15 +1507,26 @@ KK.World = class World {
       const lx = dx * c - dz * s;
       const lz = dx * s + dz * c;
 
-      // Distance from smooth oval racetrack centerline (normalized ellipse radius = 1.0)
-      const ellR = Math.hypot(lx / tz.rx, lz / tz.rz);
-      const avgR = (tz.rx + tz.rz) * 0.5;
-      const distFromTrack = Math.abs(ellR - 1.0) * avgR;
       const halfTrack = tz.trackWidth * 0.5;
-
-      // Also include a wide central skidpad & access straight on the East side toward HQ!
-      const onSkidpad = (Math.abs(lx) < 95 && Math.abs(lz) < 65);
-      const onAccess = (lx >= 0 && lx <= tz.rx + 18 && Math.abs(lz) <= 9.5);
+      let distFromTrack = 99999;
+      if (tz.isGpCircuit && this.gpCircuits) {
+        const gp = this.gpCircuits.find((g) => g.zone === tz);
+        if (gp) {
+          for (let si = 0; si < gp.segs.length; si++) {
+            const sg = gp.segs[si];
+            if (lx < sg.minX || lx > sg.maxX || lz < sg.minZ || lz > sg.maxZ) continue;
+            const vx = sg.x1 - sg.x0, vz = sg.z1 - sg.z0, l2 = vx * vx + vz * vz;
+            const t = l2 > 0 ? Math.max(0, Math.min(1, ((lx - sg.x0) * vx + (lz - sg.z0) * vz) / l2)) : 0;
+            const d = Math.hypot(lx - (sg.x0 + vx * t), lz - (sg.z0 + vz * t));
+            if (d < distFromTrack) distFromTrack = d;
+          }
+        }
+      } else {
+        const ellR = Math.hypot(lx / tz.rx, lz / tz.rz);
+        distFromTrack = Math.abs(ellR - 1.0) * ((tz.rx + tz.rz) * 0.5);
+      }
+      const onSkidpad = tz.isGpCircuit ? (lx > -520 && lx < 140 && lz > -465 && lz < -395) : (Math.abs(lx) < 95 && Math.abs(lz) < 65);
+      const onAccess = !tz.isGpCircuit && (lx >= 0 && lx <= tz.rx + 18 && Math.abs(lz) <= 9.5);
       const onTrack = distFromTrack <= halfTrack;
       const onKerb = !onTrack && distFromTrack <= (halfTrack + 2.0);
       const onShoulder = distFromTrack <= (halfTrack + 36) || (Math.abs(lx) < 135 && Math.abs(lz) < 105);
@@ -2133,6 +2210,13 @@ KK.World = class World {
     if (KK.SettlementBuilder) {
       KK.SettlementBuilder.updateAnimations(dt, isNight, this.settlementAnims, this.townNightLights);
     }
+    if (this.lighthouses) {
+      for (let i = 0; i < this.lighthouses.length; i++) {
+        const lh = this.lighthouses[i];
+        lh.beamPivot.visible = !!isNight;
+        if (isNight) lh.beamPivot.rotation.y += dt * 0.72;
+      }
+    }
   }
 
   // ==========================================================================
@@ -2323,18 +2407,36 @@ KK.World = class World {
     const matWarn   = new THREE.MeshStandardMaterial({ color: 0xffb703, roughness: 0.6 });
 
     if (KK.SMOOTH_TARMAC_ZONES) {
+      const matStand = new THREE.MeshStandardMaterial({ color: 0x3b444e, roughness: 0.78 });
+      const matRedGP = new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.45 });
       for (const tz of KK.SMOOTH_TARMAC_ZONES) {
         const g = new THREE.Group();
         const c = Math.cos(tz.yaw), s = Math.sin(tz.yaw);
-        const gx = tz.cx + c * tz.rx, gz = tz.cz + s * tz.rx;
+        const lxG = tz.isGpCircuit ? -240 : tz.rx;
+        const lzG = tz.isGpCircuit ? -500 : 0;
+        const gx = tz.cx + lxG * c + lzG * s;
+        const gz = tz.cz - lxG * s + lzG * c;
         g.position.set(gx, tz._baseH || 10, gz);
         g.rotation.y = -tz.yaw + Math.PI * 0.5;
-        for (const sx of [-9.5, 9.5]) {
-          const p = new THREE.Mesh(new THREE.BoxGeometry(0.9, 8.5, 0.9), matPillar);
-          p.position.set(sx, 4.25, 0); g.add(p);
+        const span = tz.isGpCircuit ? 12.0 : 9.5;
+        for (const sx of [-span, span]) {
+          const p = new THREE.Mesh(new THREE.BoxGeometry(1.0, 9.5, 1.0), matPillar);
+          p.position.set(sx, 4.75, 0); g.add(p);
         }
-        const top = new THREE.Mesh(new THREE.BoxGeometry(20.5, 1.8, 1.2), matBanner);
-        top.position.set(0, 8.2, 0); g.add(top);
+        const top = new THREE.Mesh(new THREE.BoxGeometry(span * 2 + 2.2, 2.2, 1.4), tz.isGpCircuit ? matRedGP : matBanner);
+        top.position.set(0, 9.2, 0); g.add(top);
+        if (tz.isGpCircuit) {
+          for (let tier = 0; tier < 4; tier++) {
+            const st = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.4, 92), matStand);
+            st.position.set(-22 - tier * 3.2, 1.2 + tier * 1.4, 0); g.add(st);
+          }
+          const roof = new THREE.Mesh(new THREE.BoxGeometry(16, 0.6, 94), matPillar);
+          roof.position.set(-26, 10.5, 0); g.add(roof);
+          const pitBox = new THREE.Mesh(new THREE.BoxGeometry(11, 5.2, 84), matStand);
+          pitBox.position.set(22, 2.6, 0); g.add(pitBox);
+          const pitTrim = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.9, 84.4), matRedGP);
+          pitTrim.position.set(22, 5.4, 0); g.add(pitTrim);
+        }
         this.rootGroup.add(g);
       }
     }
@@ -3162,7 +3264,7 @@ KK.World = class World {
     const isArcChunk  = (bCenter.arctic || 0) > 0.40;
     const isRadChunk  = (bCenter.radioactive || 0) > 0.40;
     const isOceanChunk = (bCenter.ocean || 0) > 0.88;
-    const treeCount = isOceanChunk ? 0 : (isTropChunk ? 18 : (isSavChunk ? 7 : (isArcChunk ? 6 : (isVolcChunk ? 3 : (isDesertChunk ? 5 : Math.floor(8 + bCenter.taiga * 15 + bCenter.rust * 4))))));
+    const treeCount = isOceanChunk ? 0 : (isTropChunk ? 26 : (isSavChunk ? 7 : (isArcChunk ? 6 : (isVolcChunk ? 3 : (isDesertChunk ? 5 : Math.floor(8 + bCenter.taiga * 15 + bCenter.rust * 4))))));
     const chunkKey = cx + "," + cz;
 
     // v15.3.2 INSTANCED SAVANNA TALL GRASS & TERMITE MOUNDS (Identical look, 34 -> 3 draw calls!)
@@ -3247,19 +3349,42 @@ KK.World = class World {
       const ryBase = info.height - 0.15;
 
       if (isTropChunk) {
-        const lean = 0.14 + this.hash2(cx + t, cz - t) * 0.16;
         const rotY = this.hash2(t * 7, cx + cz) * Math.PI * 2;
-        _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, rotY, 0); _pDummy.scale.set(scale * 1.05, scale * 1.15, scale * 1.05); _pDummy.updateMatrix();
-        addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, 0, 1.35, 0, 0, 0, lean * 0.5);
-        addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, -lean * 1.4, 4.0, 0, 0, 0, lean);
-        addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, -lean * 3.8, 6.5, 0, 0, 0, lean * 1.2);
-        const crownX = -lean * 5.2, crownY = 7.9;
-        for (let f = 0; f < 6; f++) {
-          const fa = (f / 6) * Math.PI * 2;
-          addInstPart("palm_f", this.geoPalmFrond, this.matPalmLeaf, treeId, false, crownX + Math.sin(fa) * 1.5, crownY - 0.15, Math.cos(fa) * 1.5, 0.34, fa, 0);
+        const species = t % 4;
+        if (species === 0) {
+          const lean = 0.14 + this.hash2(cx + t, cz - t) * 0.16;
+          _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, rotY, 0); _pDummy.scale.set(scale * 1.05, scale * 1.15, scale * 1.05); _pDummy.updateMatrix();
+          addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, 0, 1.35, 0, 0, 0, lean * 0.5);
+          addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, -lean * 1.4, 4.0, 0, 0, 0, lean);
+          addInstPart("palm_t", this.geoPalmSeg, this.matPalmTrunk, treeId, false, -lean * 3.8, 6.5, 0, 0, 0, lean * 1.2);
+          const crownX = -lean * 5.2, crownY = 7.9;
+          for (let f = 0; f < 6; f++) {
+            const fa = (f / 6) * Math.PI * 2;
+            addInstPart("palm_f", this.geoPalmFrond, this.matPalmLeaf, treeId, false, crownX + Math.sin(fa) * 1.5, crownY - 0.15, Math.cos(fa) * 1.5, 0.34, fa, 0);
+          }
+          this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "palm", rx, ry: ryBase, rz, scale, rotY, lean });
+          colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.42 * scale, h: 9.0 * scale, kind: "tree", broken: false });
+        } else if (species === 1) {
+          _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, rotY, 0); _pDummy.scale.set(scale * 1.15, scale * 1.2, scale * 1.15); _pDummy.updateMatrix();
+          addInstPart("ban_t", this.geoTrunk, this.matBanyanBark, treeId, false, 0, 0, 0, 0, 0, 0, 1.35, 0.85, 1.35);
+          addInstPart("ban_c", this.geoBanyanTop, this.matBanyanLeaf, treeId, false, 0, 9.2, 0, 0, 0, 0, 1.35, 0.78, 1.35);
+          addInstPart("ban_c", this.geoBanyanTop, this.matBanyanLeaf, treeId, false, 2.2, 8.0, 1.4, 0, 0, 0, 0.92, 0.65, 0.92);
+          this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "acacia", rx, ry: ryBase, rz, scale, rotY });
+          colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.68 * scale, h: 11.0 * scale, kind: "tree", broken: false });
+        } else if (species === 2) {
+          _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, rotY, 0); _pDummy.scale.set(scale, scale * 1.15, scale); _pDummy.updateMatrix();
+          for (let b = 0; b < 4; b++) {
+            const ba = (b / 4) * Math.PI * 2;
+            addInstPart("bamb_s", this.geoBambooStalk, this.matBamboo, treeId, false, Math.cos(ba) * 0.55, 4.7, Math.sin(ba) * 0.55, Math.sin(ba) * 0.08, 0, Math.cos(ba) * 0.08);
+          }
+          addInstPart("bamb_f", this.geoPalmFrond, this.matBamboo, treeId, false, 0, 9.2, 0, 0.25, 0, 0, 1.1, 1, 0.8);
+          this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "palm", rx, ry: ryBase, rz, scale, rotY });
+          colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.55 * scale, h: 9.5 * scale, kind: "tree", broken: false });
+        } else {
+          _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, rotY, 0); _pDummy.scale.set(scale * 1.2, scale, scale * 1.2); _pDummy.updateMatrix();
+          addInstPart("fern_b", this.geoFernBush, this.matFern, treeId, false, 0, 0.85, 0);
+          addInstPart("fern_b", this.geoFernBush, this.matPalmLeaf, treeId, false, 0.9, 0.65, 0.6, 0, 1.2, 0, 0.78, 0.72, 0.78);
         }
-        this.treeMeshMap.set(treeId, { instRefs: [], chunkKey, group, style: "palm", rx, ry: ryBase, rz, scale, rotY, lean });
-        colliders.push({ id: treeId, x: gx, y: info.height, z: gz, r: 0.42 * scale, h: 9.0 * scale, kind: "tree", broken: false });
       } else if (isSavChunk) {
         const rotY = this.hash2(t * 11, cx - cz) * Math.PI * 2;
         _pDummy.position.set(rx, ryBase, rz); _pDummy.rotation.set(0, rotY, 0); _pDummy.scale.set(scale * 1.1, scale * 1.0, scale * 1.1); _pDummy.updateMatrix();

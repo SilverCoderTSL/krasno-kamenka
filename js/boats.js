@@ -307,7 +307,7 @@ KK.BoatManager = class BoatManager {
     return { hitRamp: false, hitWall: false };
   }
 
-  // v15.4.3 ANYONE CAN DRIVE: Claim a friend's remote ship into local control when pressing [SPACE]!
+  // v15.4.3 ANYONE CAN DRIVE: Claim a friend's remote ship into local control when pressing [P]!
   claimRemoteBoatForHelm(remoteBoat) {
     if (!remoteBoat || !remoteBoat.id || !KK.BOATS[remoteBoat.id]) return null;
     let existing = this.spawnedBoats.find((b) => b.id === remoteBoat.id);
@@ -1029,7 +1029,7 @@ KK.BoatManager = class BoatManager {
     vehicle.vel.set(0, 0, 0);
     vehicle.angVel.set(0, 0, 0);
     if (audio && audio.playWrench) audio.playWrench();
-    if (ui) ui.toast(`🔒 IGNITION OFF — Auto-locked ${vehicle.spec.name} into [${entry.label}]! Press [F] to step out & [SPACE] to drive ship!`);
+    if (ui) ui.toast(`🔒 IGNITION OFF — Auto-locked ${vehicle.spec.name} into [${entry.label}]! Press [F] to step out & [P] to drive ship!`);
     return entry;
   }
 
@@ -1039,6 +1039,12 @@ KK.BoatManager = class BoatManager {
     const idx = (boat.deckVehicles || []).findIndex((d) => d.key === "local");
     if (idx < 0) return false;
     boat.deckVehicles.splice(idx, 1);
+    vehicle.vel.set(boat.vx || 0, 0, boat.vz || 0);
+    vehicle.angVel.set(0, 0, 0);
+    const wRadU = (vehicle.spec && vehicle.spec.wheelRadius) ? vehicle.spec.wheelRadius : 0.44;
+    const rHgtU = (vehicle.vState && vehicle.vState.tuning && vehicle.vState.tuning.rideHeight) ? vehicle.vState.tuning.rideHeight : 0.34;
+    const minDeckY = boat.gy + boat.spec.deckY + wRadU + rHgtU + 0.12;
+    if (vehicle.pos.y < minDeckY) vehicle.pos.y = minDeckY;
     if (audio && audio.playWrench) audio.playWrench();
     if (ui) {
       if (boat.deckLocked) {
@@ -1196,9 +1202,9 @@ KK.BoatManager = class BoatManager {
     boat.anchored = !boat.anchored;
     if (audio && audio.playAnchorClank) audio.playAnchorClank();
     if (boat.spec.amphibious) {
-      if (ui) ui.toast(boat.anchored ? "AIR CUSHION DUMPED [SPACE]: Hovercraft settled flat as a motionless landing pad!" : "AIR CUSHION INFLATED [SPACE]: Turbines spooled — ready to glide!");
+      if (ui) ui.toast(boat.anchored ? "AIR CUSHION DUMPED [P]: Hovercraft settled flat as a motionless landing pad!" : "AIR CUSHION INFLATED [P]: Turbines spooled — ready to glide!");
     } else {
-      if (ui) ui.toast(boat.anchored ? "ANCHOR DROPPED [SPACE]: Vessel holding station!" : "ANCHOR WEIGHED [SPACE]: All ahead ready!");
+      if (ui) ui.toast(boat.anchored ? "ANCHOR DROPPED [P]: Vessel holding station!" : "ANCHOR WEIGHED [P]: All ahead ready!");
     }
   }
 
@@ -1364,7 +1370,10 @@ KK.BoatManager = class BoatManager {
 
       const localEntry = this.getLocalMountedEntry(b);
       if (localEntry && vehicle) {
-        this.boatLocalToWorld(b, localEntry.x, sp.deckY + 0.06, localEntry.z, this._tmpV);
+        const wRadV = (vehicle.spec && vehicle.spec.wheelRadius) ? vehicle.spec.wheelRadius : 0.44;
+        const rHgtV = (vehicle.vState && vehicle.vState.tuning && vehicle.vState.tuning.rideHeight) ? vehicle.vState.tuning.rideHeight : 0.34;
+        const deckCarLift = wRadV + rHgtV + 0.10;
+        this.boatLocalToWorld(b, localEntry.x, sp.deckY + deckCarLift, localEntry.z, this._tmpV);
         vehicle.pos.copy(this._tmpV);
         vehicle.vel.set(b.vx, 0, b.vz);
         vehicle.angVel.set(0, 0, 0);

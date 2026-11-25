@@ -424,7 +424,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.4.3 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v15.5 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -455,6 +455,9 @@ KK.Game = class Game {
     }
     if (d.ownedTrailers && typeof d.ownedTrailers === "object") {
       this.ownedTrailers = Object.assign({}, d.ownedTrailers);
+    }
+    if (d.ownedBoats && typeof d.ownedBoats === "object") {
+      this.ownedBoats = Object.assign({ patrol: false, strela: false, serna: false, zubr: false }, d.ownedBoats);
     }
     if (d.ownedVehicles && typeof d.ownedVehicles === "object") {
       const nextOwned = {};
@@ -837,6 +840,10 @@ KK.Game = class Game {
         if (!e.repeat) this.toggleVehicleIgnition();
       }
       else if (code === "KeyP") {
+        if (this.boats && this.boats.activeBoat) {
+          if (!e.repeat) this.boats.toggleAnchor(this.boats.activeBoat, this.ui, this.audio);
+          return;
+        }
         this.vehicle.parkingBrake = !this.vehicle.parkingBrake;
         this.audio.playWrench();
         this.ui.toast(this.vehicle.parkingBrake ? "Parking Brake [P]: LOCKED" : "Parking Brake [P]: RELEASED");
@@ -964,6 +971,7 @@ KK.Game = class Game {
     if (this.money < b.price) { this.ui.toast(`Need $${b.price.toLocaleString()} to unlock ${b.name}!`, true); return; }
     this.money -= b.price;
     this.ownedBoats[boatId] = true;
+    this._saveProgress();
     if (this.audio) this.audio.playCash();
     this._saveProgress(true);
     this.ui.renderHarbor();
@@ -998,7 +1006,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.4.3 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v15.5 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1022,7 +1030,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.4.3 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v15.5 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -3249,7 +3257,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.4.3.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v15.5.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -3909,7 +3917,7 @@ KK.Game = class Game {
 
     const focusLocal = this.world.toLocal(focusGx, focusGy, focusGz, new THREE.Vector3());
     this.weather.update(dt, focusLocal, this.audio);
-    this.hazards.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network);
+    this.hazards.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network, this.boats);
     this.cryptids.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network, this.hazards);
     if (this.oceanCryptids) this.oceanCryptids.update(dt, this.vehicle, this.boats, this.particles, this.audio, this.ui, this.network, this.hazards);
     this.clarksonFarm.update(dt, this.vehicle, this.particles, this.audio, this.ui, this);
@@ -4442,7 +4450,7 @@ KK.Game = class Game {
       const lkBtn = hasDeck ? `<button class="btn ${b.deckLocked ? 'warn' : 'primary'}" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_lock')">${b.deckLocked ? '⬇ OPEN RAMP [U]' : '⬆ CLOSE RAMP [U]'}</button>` : '';
       const exBtn = `<button class="btn" onmousedown="event.stopPropagation()" onclick="window.__GAME__.boatDeckAction('toggle_helm')">🚶 EXIT HELM [SPACE]</button>`;
       setDeckBar(`helm_${b.id}_${b.deckLocked}`, lkBtn + exBtn);
-      el.textContent = `⚓ ${b.spec.name} • [WASD] Drive • [U] Ramp • [L/K] Lights • [C] Cam • [SPACE] Exit Helm`;
+      el.textContent = `⚓ ${b.spec.name} • [WASD] Drive • [P] Anchor • [U] Ramp • [L/K] Lights • [C] Cam • [SPACE] Exit Helm`;
       el.classList.remove("hidden");
       return;
     }

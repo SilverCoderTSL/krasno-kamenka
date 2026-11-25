@@ -51,7 +51,7 @@ KK.EntityManager = class EntityManager {
     this.matFish      = new THREE.MeshStandardMaterial({ color: 0x56cfe1, roughness: 0.25, metalness: 0.55 });
     this.matFishFin   = new THREE.MeshStandardMaterial({ color: 0xff9f1c, roughness: 0.50 });
 
-    for (let i = 0; i < 16; i++) this._spawnDeer(i, 2400, 300);
+    for (let i = 0; i < 28; i++) this._spawnDeer(i, 2400, 300);
     // v15.0.2 Island-Specific Wildlife!
     this.matZebraW = new THREE.MeshStandardMaterial({ color: 0xf2f4f8, roughness: 0.88 });
     this.matZebraB = new THREE.MeshStandardMaterial({ color: 0x181a1f, roughness: 0.90 });
@@ -64,14 +64,14 @@ KK.EntityManager = class EntityManager {
     this.matRadWolf = new THREE.MeshStandardMaterial({ color: 0x2b3328, roughness: 0.95 });
     this.matRadEye  = new THREE.MeshBasicMaterial({ color: 0x9eff2a });
 
-    for (let i = 0; i < 10; i++) this._spawnIslandAnimal("zebra", i, -68000, 61000);
-    for (let i = 0; i < 7;  i++) this._spawnIslandAnimal("giraffe", i, -68000, 61000);
-    for (let i = 0; i < 10; i++) this._spawnIslandAnimal("macaw", i, 69000, 62000);
-    for (let i = 0; i < 8;  i++) this._spawnIslandAnimal("boar", i, 69000, 62000);
-    for (let i = 0; i < 8;  i++) this._spawnIslandAnimal("polarBear", i, -65000, -67000);
-    for (let i = 0; i < 6;  i++) this._spawnIslandAnimal("radWolf", i, 68000, -68000);
-    for (let i = 0; i < 12; i++) this._spawnGoat(i, -12000, -16000);
-    for (let i = 0; i < 10; i++) this._spawnCamel(i, 2400, 6200);
+    for (let i = 0; i < 18; i++) this._spawnIslandAnimal("zebra", i, -68000, 61000);
+    for (let i = 0; i < 12; i++) this._spawnIslandAnimal("giraffe", i, -68000, 61000);
+    for (let i = 0; i < 18; i++) this._spawnIslandAnimal("macaw", i, 69000, 62000);
+    for (let i = 0; i < 16; i++) this._spawnIslandAnimal("boar", i, 69000, 62000);
+    for (let i = 0; i < 14; i++) this._spawnIslandAnimal("polarBear", i, -65000, -67000);
+    for (let i = 0; i < 12; i++) this._spawnIslandAnimal("radWolf", i, 68000, -68000);
+    for (let i = 0; i < 20; i++) this._spawnGoat(i, -12000, -16000);
+    for (let i = 0; i < 18; i++) this._spawnCamel(i, 2400, 6200);
     for (let i = 0; i < 20; i++) this._spawnFish(i);
     this.seaCreatures = [];
     this._initSeaEcosystem();

@@ -14,6 +14,9 @@ KK.HazardManager = class HazardManager {
     this.fallingRocks = [];    // Tumbling rocks on mountain passes & Southern Touge!
     this.avalancheChunks = []; // Cascading snow wall on snowy peaks!
     this.tornado = null;       // Rare realistic twisting funnel cloud!
+    this.hurricane = null;     // v15.5 Cat 1-5 Ocean Hurricane (strictly at sea!)
+    this.hurricaneCheckTimer = 75.0;
+    this.avalancheWaves = [];  // v15.5 Staggered 3-wave avalanche queue!
 
     this.lavaTimer = 4.0;
     this.rockTimer = 5.0;
@@ -32,6 +35,25 @@ KK.HazardManager = class HazardManager {
     this.matSnowBall = new THREE.MeshStandardMaterial({ color: 0xeef6fc, roughness: 0.9 });
 
     this._buildTornadoMesh();
+    this._buildHurricaneMesh();
+  }
+
+  _buildHurricaneMesh() {
+    const grp = new THREE.Group();
+    const rings = [];
+    const matCloud = new THREE.MeshBasicMaterial({ color: 0x3b4d5e, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
+    const matSpray = new THREE.MeshBasicMaterial({ color: 0xcbe8f5, transparent: true, opacity: 0.24, side: THREE.DoubleSide, depthWrite: false });
+    for (let i = 0; i < 6; i++) {
+      const rIn = 32 + i * 16, rOut = rIn + 24;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(rIn, rOut, 24), i < 2 ? matSpray : matCloud);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = i < 2 ? (2.5 + i * 4.5) : (26 + i * 14);
+      grp.add(ring);
+      rings.push(ring);
+    }
+    grp.visible = false;
+    this.scene.add(grp);
+    this.hurricaneVisual = { grp, rings, phase: 0 };
   }
 
   _buildTornadoMesh() {
@@ -122,24 +144,12 @@ KK.HazardManager = class HazardManager {
     const ulen = Math.hypot(ux, uz) || 1;
     ux /= ulen; uz /= ulen;
 
-    const startX = px + ux * 62;
-    const startZ = pz + uz * 62;
-    for (let i = 0; i < 9; i++) {
-      if (this.avalancheChunks.length >= 16) break;
-      const lat = (i - 4) * 5.2;
-      const sx = startX - uz * lat + (Math.random() - 0.5) * 4;
-      const sz = startZ + ux * lat + (Math.random() - 0.5) * 4;
-      const sy = this.world.getTerrainInfo(sx, sz, false).height + 1.8;
-      const m = new THREE.Mesh(this.geoSnowBall, this.matSnowBall);
-      const sc = 0.8 + Math.random() * 1.1;
-      m.scale.set(sc, sc * 0.85, sc);
-      this.scene.add(m);
-      this.avalancheChunks.push({
-        gx: sx, gy: sy, gz: sz,
-        vx: -ux * (17 + Math.random() * 7),
-        vy: 1.5,
-        vz: -uz * (17 + Math.random() * 7),
-        life: 6.5, mesh: m, radius: 1.6 * sc
+    // v15.5 MASSIVE 3-WAVE AVALANCHE (21-24 Snow & Ice Boulders in 3 Staggered Waves!)
+    for (let w = 0; w < 3; w++) {
+      this.avalancheWaves.push({
+        delay: w * 2.2,
+        px, pz, ux, uz,
+        count: 7 + (w === 1 ? 1 : 0)
       });
     }
     if (audio) audio.playThunder();
@@ -233,7 +243,7 @@ KK.HazardManager = class HazardManager {
     }
   }
 
-  update(dt, vehicle, weatherSys, particles, audio, ui, network) {
+  update(dt, vehicle, weatherSys, particles, audio, ui, network, boats = null) {
     const px = vehicle.pos.x, py = vehicle.pos.y, pz = vehicle.pos.z;
     const b = this.world.getBiomeWeights(px, pz);
     const isAuth = (!network || network.mode === "offline" || network.isHost);
@@ -328,21 +338,21 @@ KK.HazardManager = class HazardManager {
     if (inMtnOrTouge) {
       const stormBoost = (weatherSys.weather === "storm" || weatherSys.weather === "rain") ? 2.0 : 1.0;
       this.rockTimer -= dt * stormBoost;
-      if (this.rockTimer <= 0 && this.fallingRocks.length < 6) {
-        this.rockTimer = 5.5 + Math.random() * 6.5;
-        const eps = 14;
+      if (this.rockTimer <= 0 && this.fallingRocks.length < 3) {
+        this.rockTimer = 18.0 + Math.random() * 14.0;
+        const eps = 16;
         const hE = this.world.getTerrainInfo(px + eps, pz, false).height;
         const hW = this.world.getTerrainInfo(px - eps, pz, false).height;
         const hS = this.world.getTerrainInfo(px, pz + eps, false).height;
         const hN = this.world.getTerrainInfo(px, pz - eps, false).height;
         let ux = hE - hW, uz = hS - hN;
         const slope = Math.hypot(ux, uz);
-        if (slope > 2.2) {
+        if (slope > 4.2) {
           ux /= slope; uz /= slope;
           const ahead = new THREE.Vector3(0, 0, 1).applyQuaternion(vehicle.quat);
-          const rx = px + ahead.x * 28 + ux * 42 + (Math.random() - 0.5) * 18;
-          const rz = pz + ahead.z * 28 + uz * 42 + (Math.random() - 0.5) * 18;
-          const ry = this.world.getTerrainInfo(rx, rz, false).height + 3.5;
+          const rx = px + ahead.x * 34 + ux * 54 + (Math.random() - 0.5) * 10;
+          const rz = pz + ahead.z * 34 + uz * 54 + (Math.random() - 0.5) * 10;
+          const ry = this.world.getTerrainInfo(rx, rz, false).height + 2.2;
           const m = new THREE.Mesh(this.geoFallRock, this.matFallRock);
           const sc = 0.7 + Math.random() * 0.9;
           m.scale.set(sc, sc * 0.85, sc);
@@ -399,6 +409,30 @@ KK.HazardManager = class HazardManager {
         }
       }
     }
+    for (let wi = this.avalancheWaves.length - 1; wi >= 0; wi--) {
+      const wv = this.avalancheWaves[wi];
+      wv.delay -= dt;
+      if (wv.delay <= 0) {
+        const startX = wv.px + wv.ux * 66, startZ = wv.pz + wv.uz * 66;
+        for (let k = 0; k < wv.count; k++) {
+          if (this.avalancheChunks.length >= 36) break;
+          const lat = (k - wv.count * 0.5) * 5.6;
+          const sx = startX - wv.uz * lat + (Math.random() - 0.5) * 4.5;
+          const sz = startZ + wv.ux * lat + (Math.random() - 0.5) * 4.5;
+          const sy = this.world.getTerrainInfo(sx, sz, false).height + 2.0;
+          const m = new THREE.Mesh(this.geoSnowBall, this.matSnowBall);
+          const sc = 0.85 + Math.random() * 1.25;
+          m.scale.set(sc, sc * 0.85, sc);
+          this.scene.add(m);
+          this.avalancheChunks.push({
+            gx: sx, gy: sy, gz: sz,
+            vx: -wv.ux * (15 + Math.random() * 7), vy: 0, vz: -wv.uz * (15 + Math.random() * 7),
+            r: 1.65 * sc, life: 13.0, mesh: m
+          });
+        }
+        this.avalancheWaves.splice(wi, 1);
+      }
+    }
     for (let i = this.avalancheChunks.length - 1; i >= 0; i--) {
       const av = this.avalancheChunks[i];
       av.life -= dt; av.vy -= 16.0 * dt;
@@ -424,7 +458,7 @@ KK.HazardManager = class HazardManager {
     if (isAuth) {
       if (!this.tornado) {
         this.tornadoCheckTimer -= dt;
-        if (this.tornadoCheckTimer <= 0) {
+        if (this.tornadoCheckTimer <= 0 && (!this.world.isDryInland || this.world.isDryInland(px, pz, 8.0, 4.0))) {
           this.tornadoCheckTimer = 80 + Math.random() * 70;
           const chance = weatherSys.weather === "storm" ? 0.42 : (weatherSys.weather === "overcast" || weatherSys.weather === "rain" ? 0.16 : 0.06);
           const allP = this._collectAllPlayers(vehicle, network);
@@ -518,6 +552,71 @@ KK.HazardManager = class HazardManager {
       }
     } else {
       this.tornadoVisual.grp.visible = false;
+    }
+
+    // 6. v15.5 CATEGORY 1-5 OCEAN HURRICANES (Strictly Open Sea — Tests Ships!)
+    const ab = boats ? boats.activeBoat : null;
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const fxH = ab ? ab.gx : px, fzH = ab ? ab.gz : pz;
+    const bSea = this.world.getBiomeWeights(fxH, fzH);
+    const inOpenSea = (bSea.ocean || 0) > 0.72;
+
+    if (isAuth) {
+      if (!this.hurricane) {
+        this.hurricaneCheckTimer -= dt;
+        if (this.hurricaneCheckTimer <= 0) {
+          this.hurricaneCheckTimer = 65 + Math.random() * 75;
+          if (inOpenSea && Math.random() < (weatherSys.weather === "storm" ? 0.65 : 0.32)) {
+            const cat = 1 + Math.floor(Math.random() * 5);
+            const ang = Math.random() * Math.PI * 2;
+            const hx = fxH + Math.cos(ang) * 260, hz = fzH + Math.sin(ang) * 260;
+            if ((this.world.getBiomeWeights(hx, hz).ocean || 0) > 0.75) {
+              this.hurricane = {
+                gx: hx, gz: hz,
+                vx: (fxH - hx) * 0.032, vz: (fzH - hz) * 0.032,
+                cat, radius: 190 + cat * 42, life: 52 + cat * 10
+              };
+              if (ui) ui.toast(`🌀 CATEGORY ${cat} OCEAN HURRICANE FORMING AHEAD! Brace your helm & watch your roll!`, true);
+            }
+          }
+        }
+      } else {
+        this.hurricane.life -= dt;
+        this.hurricane.gx += this.hurricane.vx * dt;
+        this.hurricane.gz += this.hurricane.vz * dt;
+        if (this.hurricane.life <= 0 || (this.world.getBiomeWeights(this.hurricane.gx, this.hurricane.gz).ocean || 0) < 0.45) {
+          this.hurricane = null;
+        }
+      }
+    }
+
+    if (this.hurricane && this.hurricaneVisual) {
+      const hv = this.hurricaneVisual;
+      hv.grp.visible = true;
+      hv.phase += dt * (1.2 + this.hurricane.cat * 0.45);
+      this.world.toLocal(this.hurricane.gx, seaL, this.hurricane.gz, hv.grp.position);
+      const scH = 0.85 + this.hurricane.cat * 0.24;
+      hv.grp.scale.set(scH, 1.0, scH);
+      for (let i = 0; i < hv.rings.length; i++) hv.rings[i].rotation.z = hv.phase * (i % 2 === 0 ? 1 : -0.75);
+
+      if (ab) {
+        const dxH = ab.gx - this.hurricane.gx, dzH = ab.gz - this.hurricane.gz;
+        const dH = Math.hypot(dxH, dzH);
+        if (dH < this.hurricane.radius) {
+          const intens = (1.0 - dH / this.hurricane.radius) * (0.45 + this.hurricane.cat * 0.34);
+          const tx = -dzH / Math.max(1, dH), tz = dxH / Math.max(1, dH);
+          const massDamp = ab.spec.len > 36 ? 0.55 : (ab.spec.len > 20 ? 0.78 : 1.15);
+          ab.vx += tx * intens * 14.0 * massDamp * dt;
+          ab.vz += tz * intens * 14.0 * massDamp * dt;
+          ab.roll += Math.sin(hv.phase * 2.4) * intens * 0.36 * massDamp * dt;
+          ab.pitch += Math.cos(hv.phase * 1.9) * intens * 0.20 * massDamp * dt;
+          if (particles && Math.random() < 0.45) {
+            particles.emitWaterSplash(ab.gx + (Math.random() - 0.5) * 18, seaL + 0.5, ab.gz + (Math.random() - 0.5) * 18, 1.6 + intens);
+          }
+        }
+      }
+    } else if (this.hurricaneVisual) {
+      this.hurricaneVisual.grp.visible = false;
     }
   }
 };

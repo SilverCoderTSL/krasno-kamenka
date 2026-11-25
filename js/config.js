@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.4.3";
-KK.VERSION_FULL = "v15.4.3 ONLINE";
+KK.VERSION = "v15.5";
+KK.VERSION_FULL = "v15.5 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -137,7 +137,12 @@ KK.TOWNS = [
   { id: 18, name: "Steppe Logistics Park", survivability: "HIGH", survScore: 88, survColor: "#ffd166", survNote: "Modern refinery & heavy freight suburb • Concrete viaducts", biome: "savanna", x: -79600, z: 56200, hasGarage: true, hasDock: true, isIsland: true, desc: "High-capacity industrial park built for heavy KamAZ & MAZ-537 highway freight." },
   { id: 19, name: "Savanna Marina Port", survivability: "HIGH", survScore: 92, survColor: "#ffd166", survNote: "Modern waterfront suburb & deep-water container port", biome: "savanna", x: -64800, z: 67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Sleek coastal marina suburb with paved boat ramps and highway access to Zolotoy City." },
   { id: 20, name: "Poligon-9 Gunnery Range", survivability: "LOW", survScore: 34, survColor: "#8ecae6", survNote: "Frozen tank proving ground • Target hulks & heavy ice runway", biome: "arctic", x: -65200, z: -67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Wide open arctic weapons testing range with target tank hulks, concrete blast walls & ice runway." },
-  { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -74600, z: -74800, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" }
+  { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -74600, z: -74800, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" },
+  // v15.5 OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
+  { id: 22, name: "Kampung Nelayan (West Coast)", survivability: "MODERATE", survScore: 66, survColor: "#2de08b", survNote: "Crowded stilt fishing village • Flooded rutted dirt lanes", biome: "tropical", x: 61800, z: 62600, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense coastal stilt village packed with wooden boats, warungs & mud-choked lanes." },
+  { id: 23, name: "Desa Lereng Api (Volcano Ridge)", survivability: "LOW", survScore: 44, survColor: "#ff9f1c", survNote: "High mountain switchback village on Gunung Api's slope", biome: "tropical", x: 73400, z: 57200, hasGarage: true, hasDock: true, isIsland: true, desc: "Steep terraced clove-farm village clinging to Gunung Api's winding volcanic hairpins." },
+  { id: 24, name: "Bukit Bambu (Bamboo Pass)", survivability: "MODERATE", survScore: 58, survColor: "#ffd166", survNote: "Misty bamboo-forest highland pass • Broken washboard tracks", biome: "tropical", x: 75800, z: 64200, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense bamboo-grove crossroads linking the volcanic summit road to the southern lake." },
+  { id: 25, name: "Ujung Karang (South Cape)", survivability: "MODERATE", survScore: 60, survColor: "#ffd166", survNote: "Remote southern jungle cape • Crumbling mud tracks & cliff drops", biome: "tropical", x: 70400, z: 70600, hasGarage: true, hasDock: true, isIsland: true, desc: "Bustling southern jungle cape village with terrible pothole-ridden dirt roads & lush rainforest." }
 ];
 
 KK.ROAD_LINKS = [
@@ -146,8 +151,8 @@ KK.ROAD_LINKS = [
   [3, 4], [3, 8], [4, 6], [4, 7],
   [5, 6], [6, 7],
   [0, 9], [2, 9], [5, 9],
-  // Ostrov Tropika (Indonesian Winding Nürburgring-Hell Mountain Loop!)
-  [10, 15], [15, 16], [10, 16],
+  // v15.5 Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
+  [10, 22], [22, 15], [15, 25], [25, 16], [16, 24], [24, 23], [23, 10], [15, 23], [15, 24],
   // Zolotoy Savanna (Modernized Pristine Highway Network!)
   [11, 17], [11, 18], [11, 19], [17, 19], [18, 19],
   // Severnyy Proving Ground (Arctic Polar Military Roads!)
@@ -368,20 +373,39 @@ KK.MUD_ZONES = [
 // ============================================================================
 KK.SMOOTH_TARMAC_ZONES = [
   {
-    id: "krasny_ring_autobahn",
-    name: "Krasny-Ring Smooth Tarmac Proving Grounds",
-    cx: -1450, cz: -850,
-    rx: 560, rz: 310,
-    trackWidth: 16.0,
-    yaw: -0.22,
-    desc: "Glass-smooth freshly paved oval & speedway circuit with red/white apex curbs and zero potholes — open up your GT-R, Evo, or WRX to 220+ km/h!"
+    id: "zolotoy_gp_circuit",
+    name: "Zolotoy International Grand Prix Circuit",
+    cx: -61800, cz: 63600,
+    rx: 1120, rz: 740,
+    trackWidth: 20.0,
+    yaw: 0.12,
+    isGpCircuit: true,
+    waypoints: [
+      [-920, -480], [ 380, -520], [ 960, -340], [1080,  -40],
+      [ 820,  220], [ 360,  120], [ 120,  340], [ 520,  580],
+      [  60,  680], [-420,  520], [-260,  180], [-680,  260],
+      [-1040,  40], [-1020, -280]
+    ],
+    desc: "Massive 5.6 km Zolotoy Savanna Grand Prix Circuit with 1.3 km pit straight, sweeping S-curves, double-apex hairpins, red/white curbs & grandstands — push 300+ km/h!"
   }
+];
+
+KK.LIGHTHOUSES = [
+  { id: "lh_central_e",  name: "Vostochny Reef Lighthouse",   x:  51500, z:  28500, height: 48 },
+  { id: "lh_central_w",  name: "Zapadny Shoal Lighthouse",    x: -51200, z:  29400, height: 48 },
+  { id: "lh_south_mid",  name: "Southern Strait Lighthouse",  x:   1800, z:  56500, height: 50 },
+  { id: "lh_north_w",    name: "Borey Ice-Edge Lighthouse",   x: -36500, z: -53500, height: 50 },
+  { id: "lh_north_e",    name: "Site-140 Warning Lighthouse", x:  38200, z: -54200, height: 48 },
+  { id: "lh_tropika_n",  name: "Selat Tropika Lighthouse",    x:  62500, z:  24500, height: 46 },
+  { id: "lh_savanna_s",  name: "Cape Zolotoy Lighthouse",     x: -44500, z:  54500, height: 46 }
 ];
 
 // ============================================================================
 // SHATTERED HELL-ROAD ZONES (Extreme Craters, Washboard & Broken Concrete Slabs!)
 // ============================================================================
 KK.BAD_ROAD_ZONES = [
+  { id: "tropika_mud_pass",   name: "Tropika Highland Mud-Slide Pass", x: 69400, z: 60400, radius: 1900, severity: 0.82 },
+  { id: "tropika_volc_ruts",  name: "Gunung Api Broken Hairpins",      x: 74200, z: 61800, radius: 1700, severity: 0.78 },
   {
     id: "devils_washbasin",
     name: "Devil's Washbasin (Shattered Hell-Road)",

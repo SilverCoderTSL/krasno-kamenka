@@ -5,6 +5,32 @@
 window.KK = window.KK || {};
 
 KK.VehicleBuilder = {
+  _tireBrandMatCache: {},
+  _getTireSidewallMat(brandId) {
+    const key = brandId || "volgaworks";
+    if (this._tireBrandMatCache[key]) return this._tireBrandMatCache[key];
+    const br = (KK.TIRE_BRANDS && KK.TIRE_BRANDS[key]) || { short: "VOLGA", color: "#9db4c4" };
+    const cv = document.createElement("canvas"); cv.width = 256; cv.height = 256;
+    const ctx = cv.getContext("2d");
+    ctx.clearRect(0, 0, 256, 256);
+    ctx.beginPath(); ctx.arc(128, 128, 124, 0, Math.PI * 2); ctx.arc(128, 128, 76, 0, Math.PI * 2, true);
+    ctx.fillStyle = "#1c1f24"; ctx.fill();
+    ctx.strokeStyle = br.color || "#9db4c4"; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.arc(128, 128, 114, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = br.color || "#9db4c4"; ctx.font = "900 18px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const label = (br.short || "VOLGA").toUpperCase();
+    for (const baseAng of [0, Math.PI]) {
+      ctx.save(); ctx.translate(128, 128); ctx.rotate(baseAng);
+      const step = 0.14, startA = -((label.length - 1) * step) * 0.5;
+      for (let i = 0; i < label.length; i++) { ctx.save(); ctx.rotate(startA + i * step); ctx.fillText(label[i], 0, -96); ctx.restore(); }
+      ctx.restore();
+    }
+    for (const lx of [32, 224]) { ctx.save(); ctx.translate(lx, 128); ctx.rotate(Math.PI / 4); ctx.fillRect(-5, -5, 10, 10); ctx.restore(); }
+    const tex = new THREE.CanvasTexture(cv);
+    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.85, metalness: 0.08, side: THREE.DoubleSide });
+    this._tireBrandMatCache[key] = mat;
+    return mat;
+  },
   _glowTexWarm: null,
   _glowTexCool: null,
 
@@ -4044,6 +4070,11 @@ KK.VehicleBuilder = {
       } else {
         const tire = new THREE.Mesh(new THREE.CylinderGeometry(wRad, wRad, wWid, 20), matTire);
         tire.rotation.z = Math.PI / 2; tire.castShadow = true; tireRubberGroup.add(tire);
+        const brandMat = this._getTireSidewallMat(vState && vState.tireBrand);
+        const swRing = new THREE.Mesh(new THREE.RingGeometry(wRad * 0.56, wRad * 0.99, 20), brandMat);
+        swRing.rotation.y = sideSign > 0 ? Math.PI / 2 : -Math.PI / 2;
+        swRing.position.x = sideSign * (wWid * 0.506);
+        tireRubberGroup.add(swRing);
 
         const lugGeo = new THREE.BoxGeometry(wWid * 0.92, 0.048 * rScale, wRad * 0.19);
         for (let l = 0; l < 12; l++) {
