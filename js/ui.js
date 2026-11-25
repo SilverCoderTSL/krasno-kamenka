@@ -1364,8 +1364,9 @@ KK.UIManager = class UIManager {
       const kts = Math.round((activeBoat.speedKmh || 0) / 1.852);
       const hdg = Math.round(((Math.atan2(Math.sin(activeBoat.yaw), -Math.cos(activeBoat.yaw)) * 180 / Math.PI) + 360) % 360);
       const thr = activeBoat.throttleCmd || 0;
+      const boatCr = !!(game.boatCruiseOn && !activeBoat.anchored);
       const tele = activeBoat.anchored ? (sp.amphibious ? "CUSHION OFF" : "ANCHORED")
-        : (thr > 0.1 ? (activeBoat.boostCmd ? "FLANK" : "AHEAD") : (thr < -0.1 ? "ASTERN" : "STOP"));
+        : (boatCr ? `CRUISE ${Math.round((game.boatCruiseKmh || 0) / 1.852)}K` : (thr > 0.1 ? (activeBoat.boostCmd ? "FLANK" : "AHEAD") : (thr < -0.1 ? "ASTERN" : "STOP")));
       const depthTxt = activeBoat.isBeached ? "BEACHED" : (activeBoat.waterDepth < 3.5 ? `SHOAL ${activeBoat.waterDepth.toFixed(1)}m` : `${Math.round(activeBoat.waterDepth)}m`);
       const loadT = (game.boats.getPayloadKg(activeBoat, game.network ? game.network.remotePlayers : null) / 1000).toFixed(1);
       const maxT = Math.round((sp.maxPayloadKg || 0) / 1000);
@@ -1390,6 +1391,7 @@ KK.UIManager = class UIManager {
       const bNav = getEl("helm-badge-nav"); if (bNav) bNav.classList.toggle("on", !!activeBoat.navLightsOn);
       const bSpot = getEl("helm-badge-spot"); if (bSpot) bSpot.classList.toggle("on", !!activeBoat.spotLightOn);
       const bAnc = getEl("helm-badge-anc"); if (bAnc) bAnc.classList.toggle("warn", !!activeBoat.anchored);
+      const bCr = getEl("helm-badge-cruise"); if (bCr) bCr.classList.toggle("on", boatCr);
 
       setTxt("hud-coords", `${(activeBoat.gx / 1000).toFixed(2)}km, ${(activeBoat.gz / 1000).toFixed(2)}km | SEA HELM`);
       setTxt("hud-cash", "$" + Math.floor(game.money).toLocaleString());
@@ -1433,7 +1435,7 @@ KK.UIManager = class UIManager {
       setTxt("hud-gear", v.gear === -1 ? "R" : (v.gear === 0 ? "N" : String(v.gear)));
       setTxt("hud-rpm", Math.round(v.rpm) + " RPM");
       setTxt("hud-boost", v.boostPsi.toFixed(1) + " PSI");
-      setTxt("hud-drivemode", v.driveMode + (v.rearLock ? " +RLOCK" : "") + (v.frontLock ? " +FLOCK" : ""));
+      setTxt("hud-drivemode", v.driveMode + (v.rearLock ? " +RLOCK" : "") + (v.frontLock ? " +FLOCK" : "") + (game.carCruiseOn ? ` • CC ${Math.round(game.carCruiseKmh)}` : ""));
       const rpmPct = Math.min(100, (v.rpm / eng.redlineRpm) * 100);
       const rpmBar = document.getElementById("hud-rpm-bar");
       if (rpmBar) { rpmBar.style.width = rpmPct + "%"; rpmBar.style.background = rpmPct > 86 ? "#ef476f" : "#00e5ff"; }

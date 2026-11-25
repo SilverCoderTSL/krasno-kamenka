@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.2";
-KK.VERSION_FULL = "v15.2 ONLINE";
+KK.VERSION = "v15.3";
+KK.VERSION_FULL = "v15.3 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -1467,7 +1467,7 @@ KK.VEHICLES = {
       { id: "RL", x: -1.00, y: 0.20, z: -1.78, steer: false, axle: "rear"  },
       { id: "RR", x:  1.00, y: 0.20, z: -1.78, steer: false, axle: "rear"  }
     ],
-    desc: "PT Pindad Komodo 4x4 Recon (5.50m × 2.30m × 2.20m, 8.0t). Telescoping thermal/EO surveillance mast, VHF/HF comms & built-in FLIR Thermal / NVG [6]!"
+    desc: "PT Pindad Komodo 4x4 Recon (5.50m × 2.30m × 2.20m, 8.0t). Telescoping thermal/EO surveillance mast, VHF/HF comms & built-in FLIR Thermal / NVG [Z]!"
   },
   komodo_turret: {
     id: "komodo_turret", brand: "pindad", name: "Pindad Komodo 4x4 (CPWS 30mm Turret)", category: "Indonesian 4x4 Autocannon Combat Car",
@@ -1487,7 +1487,7 @@ KK.VEHICLES = {
       { id: "RL", x: -1.00, y: 0.20, z: -1.80, steer: false, axle: "rear"  },
       { id: "RR", x:  1.00, y: 0.20, z: -1.80, steer: false, axle: "rear"  }
     ],
-    desc: "PT Pindad Komodo 4x4 armed with a John Cockerill CPWS 30mm Remote Autocannon Turret (8.2t)! Right-click toggle scope, Left-click 30mm fire & FLIR [6]!"
+    desc: "PT Pindad Komodo 4x4 armed with a John Cockerill CPWS 30mm Remote Autocannon Turret (8.2t)! Right-click toggle scope, Left-click 30mm fire & FLIR [Z]!"
   },
   harimau: {
     id: "harimau", brand: "pindad", name: "Pindad Harimau (Kaplan MT 105mm)", category: "Indonesian-Turkish 31.5t Medium Tank",
@@ -1516,7 +1516,7 @@ KK.VEHICLES = {
       { id: "L6", x: -1.36, y: 0.14, z: -2.55, steer: false, axle: "rear"  },
       { id: "R6", x:  1.36, y: 0.14, z: -2.55, steer: false, axle: "rear"  }
     ],
-    desc: "PT Pindad Harimau / Kaplan MT (7.0m × 3.2m × 2.9m, 31.5t). 711 HP Cat C13 diesel (70 km/h!), Cockerill 3105 105mm autoloader (5.0s reload!), 7.62mm MG, Smoke [G] & Hunter-Killer FLIR [6]!"
+    desc: "PT Pindad Harimau / Kaplan MT (7.0m × 3.2m × 2.9m, 31.5t). 711 HP Cat C13 diesel (70 km/h!), Cockerill 3105 105mm autoloader (5.0s reload!), 7.62mm MG, Smoke [G] & Hunter-Killer FLIR [Z]!"
   }
 };
 

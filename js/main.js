@@ -59,6 +59,7 @@ KK.Game = class Game {
     this.remoteBoatMount = null;  // { ownerPeerId, boatId, bayIdx, bx, bz, deckY } — car mounted on friend's ship!
     this._pendingCashTx = new Map();
     this.cryptids = new KK.CryptidManager(this.scene, this.world);
+    this.oceanCryptids = KK.OceanCryptidManager ? new KK.OceanCryptidManager(this.scene, this.world) : null;
     this.hazards = new KK.HazardManager(this.scene, this.world);
     this.clarksonFarm = new KK.ClarksonFarm(this.scene, this.world);
     this.jamesBar = new KK.JamesMayBar(this.scene, this.world);
@@ -113,6 +114,10 @@ KK.Game = class Game {
     this.t72CoaxCd = 0;
     this.t72CoaxFlash = 0;
     this.thermalMode = 0; // 0 = Day, 1 = FLIR White-Hot Thermal, 2 = 1PN51 Green IR Night Vision
+    this.carCruiseOn = false;
+    this.carCruiseKmh = 60;
+    this.boatCruiseOn = false;
+    this.boatCruiseKmh = 60;
     this.smokeClouds = [];
     this.lastLaserDist = "---";
     this.tracers = [];
@@ -200,6 +205,12 @@ KK.Game = class Game {
       },
       onCryptidCounter: (msg) => {
         if (this.network.isHost && msg.kind) this.cryptids.applyRemoteCounter(msg.kind, msg.amt || 0.25);
+      },
+      onOceanCryptidSync: (msg) => {
+        if (!this.network.isHost && msg.data && this.oceanCryptids) this.oceanCryptids.applySyncState(msg.data);
+      },
+      onOceanCryptidHit: (msg) => {
+        if (this.network.isHost && this.oceanCryptids) this.oceanCryptids.applyRemoteHit(msg, this.audio, this.ui);
       },
       onFlareThrow: (msg) => {
         if (this.hazards) this.hazards.spawnFlare(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, true);
@@ -404,7 +415,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.2 ONLINE! Realistic Full-Scale 52m Zubr (150t / 6 Bays), Multi-Crew Walkable Decks, Shipmaster Lock [U], Anchor [Space], Nav/Searchlights, Marine Audio, Nautical HUD & Zero-Lag 60 FPS Ocean/Trailers!');
+      this.ui.toast('Welcome to v15.3 ONLINE! 3 Detailed Ocean Cryptids: The Possessed 263m Yamato Battleship (Passive -> 3x 460mm Salvos if Shot!), El Gran Maja (34m Southern Megalodon) & The Bloop (120m Northern Kraken)!');
     }, 650);
   }
 
@@ -768,6 +779,15 @@ KK.Game = class Game {
           this.vehicle.winch.active = false; this.vehicle.winch.targetPeerId = null;
           this.network.send({ type: "winch_update", active: false }); this.ui.toast("Winch cable released!");
         }
+      }
+      else if (code === "Digit7") {
+        if (!e.repeat) this.toggleCruiseControl();
+      }
+      else if (code === "Equal" || code === "NumpadAdd") {
+        this.adjustCruiseSpeed(10);
+      }
+      else if (code === "Minus" || code === "NumpadSubtract") {
+        this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
         const vidG = this.vehicle.vState.vehicleId;
@@ -2400,6 +2420,7 @@ KK.Game = class Game {
       this.weather.opticMode = mode === 0 ? 0 : (mode === 1 ? 1 : (isRedNvd ? 3 : 2));
     }
     if (this.cryptids && this.cryptids.setThermalMode) this.cryptids.setThermalMode(mode === 1);
+    if (this.oceanCryptids && this.oceanCryptids.setThermalMode) this.oceanCryptids.setThermalMode(mode === 1);
     if (this.entities && this.entities.setThermalMode) this.entities.setThermalMode(mode === 1);
     if (this.townNpcs && this.townNpcs.setThermalMode) this.townNpcs.setThermalMode(mode === 1);
     if (this.skinwalker && this.skinwalker.setThermalMode) this.skinwalker.setThermalMode(mode === 1);
@@ -2604,6 +2625,14 @@ KK.Game = class Game {
     if (this.skinwalker) this.skinwalker.repel(this.audio);
   }
 
+  _hitOceanCryptids(rx, ry, rz, dmg = 22) {
+    if (!this.oceanCryptids) return { hit: false };
+    const ab = this.boats ? this.boats.activeBoat : null;
+    const ax = ab ? ab.gx : this.vehicle.pos.x;
+    const az = ab ? ab.gz : this.vehicle.pos.z;
+    return this.oceanCryptids.applyWeaponHit(rx, ry, rz, dmg, ax, az, this.network ? this.network.peerId : "__local__", this.audio, this.ui, this.network);
+  }
+
   fireP140MainCannon() {
     if (this.onFoot || this.ridingWithPeerId || this.ui.activeModal) return;
     const vs = this.vehicle.vState;
@@ -2662,7 +2691,7 @@ KK.Game = class Game {
         }
       }
       if (hitPeer) break;
-      const cHit = this.cryptids.applyCannonHit(rx, ry, rz, sh, this.audio, 140);
+      let cHit = this.cryptids.applyCannonHit(rx, ry, rz, sh, this.audio, 140); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 65);
       if (cHit.hit) { endPt.set(rx, ry, rz); break; }
       if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network).hit) { endPt.set(rx, ry, rz); break; }
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, isAp140 ? 1.5 : 6.5, this, false)) { endPt.set(rx, ry, rz); break; }
@@ -2725,7 +2754,7 @@ KK.Game = class Game {
     let endPt = muzzleG.clone().addScaledVector(aimDir, 360);
     for (let s = 8; s <= 360; s += 6) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
-      const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 40);
+      let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 40); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 28);
       if (cHit.hit) { endPt.set(rx, ry, rz); this.particles.emitCrashBurst(rx, ry, rz, 1.1, "rock", this.weather.weather); break; }
       if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network).hit) { endPt.set(rx, ry, rz); break; }
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.5, this, false)) { endPt.set(rx, ry, rz); break; }
@@ -2786,7 +2815,7 @@ KK.Game = class Game {
       const ry = muzzleG.y + aimDir.y * s;
       const rz = muzzleG.z + aimDir.z * s;
       let hitP = false; if (this.network && this.network.remotePlayers) { for (const rp of this.network.remotePlayers.values()) { if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.4 && Math.abs((rp.gy || 0) + 1.2 - ry) < 2.8) { endPt.set(rx, ry, rz); hitP = true; break; } } } if (hitP) break;
-      const cHit = this.cryptids.applyCannonHit(rx, ry, rz, shell, this.audio, 125);
+      let cHit = this.cryptids.applyCannonHit(rx, ry, rz, shell, this.audio, 125); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 52);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
@@ -2865,7 +2894,7 @@ KK.Game = class Game {
     let hitRes = { hit: false };
     for (let s = 8; s <= 240; s += 6) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
-      const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer));
+      let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer)); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 14);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
@@ -2921,7 +2950,7 @@ KK.Game = class Game {
       const rx = muzzleLocal.x + aimDir.x * s;
       const ry = muzzleLocal.y + aimDir.y * s;
       const rz = muzzleLocal.z + aimDir.z * s;
-      const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer));
+      let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer)); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 14);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
@@ -3033,6 +3062,48 @@ KK.Game = class Game {
     this.ui.toast(`Wiring $${amt.toLocaleString()} to ${callsign || peerId}...`);
     this.ui.addChatLine("BANK", `Wired $${amt.toLocaleString()} to ${callsign || peerId}.`, true);
     if (this.ui.activeModal === "players") this.ui.renderOnlinePlayers();
+  }
+
+  toggleCruiseControl() {
+    if (this.boats && this.boats.activeBoat) {
+      const b = this.boats.activeBoat;
+      if (this.boatCruiseOn) {
+        this.boatCruiseOn = false;
+        this.ui.toast("BOAT CRUISE CONTROL [7]: OFF");
+      } else {
+        if (b.anchored) {
+          this.ui.toast(b.spec.amphibious ? "Inflate air cushion [SPACE] first before engaging Cruise Control!" : "Weigh anchor [SPACE] first before engaging Cruise Control!", true);
+          return;
+        }
+        const cur = Math.round(b.speedKmh || 0);
+        const defKmh = Math.round(b.spec.topSpeedKmh * 0.85);
+        this.boatCruiseKmh = Math.max(20, Math.min(Math.round(b.spec.topSpeedKmh * 1.15), cur >= 18 ? cur : defKmh));
+        this.boatCruiseOn = true;
+        this.ui.toast(`BOAT CRUISE CONTROL [7]: ON (${Math.round(this.boatCruiseKmh / 1.852)} kts / ${this.boatCruiseKmh} km/h) • [=]/[-] Adjust • [S]/[SPC] Cancel`);
+      }
+      return;
+    }
+    if (this.onFoot || this.ridingWithPeerId || this.carriedByPeerId) return;
+    if (this.carCruiseOn) {
+      this.carCruiseOn = false;
+      this.ui.toast("CAR CRUISE CONTROL [7]: OFF");
+    } else {
+      const cur = Math.round(this.vehicle.speedKmh || 0);
+      this.carCruiseKmh = Math.max(20, Math.min(260, cur >= 18 ? cur : 60));
+      this.carCruiseOn = true;
+      this.ui.toast(`CAR CRUISE CONTROL [7]: ON (${this.carCruiseKmh} km/h) • [=]/[-] Adjust • [S]/[SPC] Cancel`);
+    }
+  }
+
+  adjustCruiseSpeed(deltaKmh) {
+    if (this.boats && this.boats.activeBoat && this.boatCruiseOn) {
+      const maxKmh = Math.round(this.boats.activeBoat.spec.topSpeedKmh * 1.15);
+      this.boatCruiseKmh = Math.max(15, Math.min(maxKmh, this.boatCruiseKmh + deltaKmh));
+      this.ui.toast(`Boat Cruise Target: ${Math.round(this.boatCruiseKmh / 1.852)} kts (${this.boatCruiseKmh} km/h)`);
+    } else if (!this.onFoot && this.carCruiseOn) {
+      this.carCruiseKmh = Math.max(20, Math.min(260, this.carCruiseKmh + deltaKmh));
+      this.ui.toast(`Car Cruise Target: ${this.carCruiseKmh} km/h`);
+    }
   }
 
   togglePhotoMode() {
@@ -3184,7 +3255,7 @@ KK.Game = class Game {
     let hitRes = { hit: false };
     for (let s = 8; s <= 300; s += 6) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
-      const cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 23);
+      let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 23); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 18);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
@@ -3283,6 +3354,15 @@ KK.Game = class Game {
       steer: (!this.onFoot && !modalOpen && !inBoatHelm && !(this.skinwalker && this.skinwalker.isGrabbing)) ? ((this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) - (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0)) : 0,
       handbrake: (!this.onFoot && !modalOpen && !inBoatHelm && !!this.keys.Space)
     };
+    // v15.2.1 CAR CRUISE CONTROL [7]: Smooth proportional throttle, cancels cleanly on brake/handbrake!
+    if (this.carCruiseOn) {
+      if (this.onFoot || inBoatHelm || isCarOnAnyBoat || this.carriedByPeerId || driveInput.brake > 0.1 || driveInput.handbrake || !this.vehicle.engineRunning) {
+        this.carCruiseOn = false;
+      } else if (driveInput.throttle < 0.05) {
+        const err = this.carCruiseKmh - (this.vehicle.speedKmh || 0);
+        if (err > 0.5) driveInput.throttle = Math.max(0.10, Math.min(1.0, err * 0.075));
+      }
+    }
     if (this.vehicle.winch.active) { const shiftHeld = !!(this.keys.ShiftLeft || this.keys.ShiftRight); this.vehicle.winch.reeling = (!modalOpen && !inBoatHelm && this.keys.KeyT) ? (shiftHeld ? 1 : -1) : 0; }
     const horn = !this.onFoot && !modalOpen && !inBoatHelm && !!this.keys.KeyN;
     const boatHorn = inBoatHelm && !modalOpen && !!this.keys.KeyN;
@@ -3482,12 +3562,25 @@ KK.Game = class Game {
       if (this.entities.updateRemoteWinches) this.entities.updateRemoteWinches(this.vehicle, this.network.peerId, this.network.remotePlayers);
     }
     if (this.boats) {
-      const boatIn = (this.boats.activeBoat && !this.ui.activeModal && !(this.startMenu && this.startMenu.isOpen)) ? {
+      let boatIn = (this.boats.activeBoat && !this.ui.activeModal && !(this.startMenu && this.startMenu.isOpen)) ? {
         throttle: (this.keys.KeyW || this.keys.ArrowUp) ? 1 : 0,
         brake: (this.keys.KeyS || this.keys.ArrowDown) ? 1 : 0,
         steer: (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) - (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0),
         boost: !!(this.keys.ShiftLeft || this.keys.ShiftRight)
       } : null;
+      // v15.2.1 BOAT CRUISE CONTROL [7]: Smooth marine autopilot throttle, cancels on Reverse [S] or Anchor [Space]!
+      if (this.boatCruiseOn) {
+        if (!this.boats.activeBoat || this.boats.activeBoat.anchored || (boatIn && boatIn.brake > 0.1)) {
+          this.boatCruiseOn = false;
+        } else if (boatIn && boatIn.throttle < 0.05) {
+          const bSpd = this.boats.activeBoat.speedKmh || 0;
+          const errB = this.boatCruiseKmh - bSpd;
+          if (errB > 0.4) {
+            boatIn.throttle = Math.max(0.18, Math.min(1.0, errB * 0.095));
+            if (this.boatCruiseKmh > this.boats.activeBoat.spec.topSpeedKmh * 0.99) boatIn.boost = true;
+          }
+        }
+      }
       this.boats.update(dt, boatIn, this.vehicle, this.particles, this.audio, this.ui, this.network.remotePlayers, this.network.peerId);
       if (this.boats.updateRemoteBoats) this.boats.updateRemoteBoats(dt, this.network.remotePlayers, this.particles);
       // Weld local car onto remote friend's boat deck at 60 FPS!
@@ -3645,6 +3738,7 @@ KK.Game = class Game {
     this.weather.update(dt, focusLocal, this.audio);
     this.hazards.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network);
     this.cryptids.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network, this.hazards);
+    if (this.oceanCryptids) this.oceanCryptids.update(dt, this.vehicle, this.boats, this.particles, this.audio, this.ui, this.network, this.hazards);
     this.clarksonFarm.update(dt, this.vehicle, this.particles, this.audio, this.ui, this);
     this.jamesBar.update(dt, this.vehicle, this);
     this.hammondMesa.update(dt, this.vehicle, this.particles);
@@ -3686,7 +3780,7 @@ KK.Game = class Game {
       if (Math.random() < 0.7) this.particles.emitBarrelSmoke(gm.gx, gm.gy, gm.gz, -curV.x, -curV.y, -curV.z, 0.9);
 
       const gh = this.world.getTerrainInfo(gm.gx, gm.gz, false).height;
-      const cHit = this.cryptids.applyCannonHit(gm.gx, gm.gy, gm.gz, "rlg140", this.audio, 140);
+      let cHit = this.cryptids.applyCannonHit(gm.gx, gm.gy, gm.gz, "rlg140", this.audio, 140); if (!cHit.hit) cHit = this._hitOceanCryptids(gm.gx, gm.gy, gm.gz, 80);
       const gHit = this.gasStations ? this.gasStations.checkProjectileHit(gm.gx, gm.gy, gm.gz, 7.0, this, false) : null;
       if (gm.gy <= gh || cHit.hit || gHit || gm.life <= 0) {
         const hitY = Math.max(gh, gm.gy);
@@ -3729,7 +3823,14 @@ KK.Game = class Game {
     const isArmed = isT72 || isBm21 || isShilka || isArmedBtr;
     if (!isArmed) {
       this.mouseAimHeld = false; this.mouseFireHeld = false; this.coaxFireHeld = false;
-      if (this.thermalMode !== 0) { this.thermalMode = 0; this._applyThermalVisuals(); }
+    }
+    const hasOpticNow = !this.onFoot && !this.ridingWithPeerId && !inBoatHelm && (
+      curVid === "t72" || curVid === "harimau" || curVid === "komodo_recon" || curVid === "komodo_turret" ||
+      curVid === "shilka" || curVid === "pzkpfw_140a4" ||
+      (curVid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)
+    );
+    if (!hasOpticNow && this.thermalMode !== 0) {
+      this.thermalMode = 0; this._applyThermalVisuals();
     }
     if (this.t72ReloadTimer > 0) this.t72ReloadTimer = Math.max(0, this.t72ReloadTimer - dt);
     if (this.t72BarrelRecoil > 0) this.t72BarrelRecoil = Math.max(0, this.t72BarrelRecoil - dt * 1.45);
@@ -3836,7 +3937,7 @@ KK.Game = class Game {
       if (Math.random() < 0.65) this.particles.emitCrashBurst(rk.gx, rk.gy, rk.gz, 0.25, "rock", this.weather.weather);
 
       const gh = this.world.getTerrainInfo(rk.gx, rk.gz, false).height;
-      const cHit = rk.isOwner ? this.cryptids.applyCannonHit(rk.gx, rk.gy, rk.gz, "rocket122", this.audio, 122) : { hit: false };
+      let cHit = rk.isOwner ? this.cryptids.applyCannonHit(rk.gx, rk.gy, rk.gz, "rocket122", this.audio, 122) : { hit: false }; if (rk.isOwner && !cHit.hit) cHit = this._hitOceanCryptids(rk.gx, rk.gy, rk.gz, 48);
       if (rk.gy <= gh || cHit.hit || rk.life <= 0) {
         const hitY = Math.max(gh, rk.gy);
         const dPlayer = Math.hypot(rk.gx - this.vehicle.pos.x, rk.gz - this.vehicle.pos.z);
@@ -3907,11 +4008,11 @@ KK.Game = class Game {
             const shLbl = vs.t72ShellType === "ap" ? `105mm M1060 APFSDS (${vs.t72ApAmmo || 0})` : `105mm M393 HE-FRAG (${vs.t72HeAmmo || 0})`;
             const rld = this.t72ReloadTimer > 0 ? `BUSTLE LOAD: ${this.t72ReloadTimer.toFixed(1)}s` : "105mm READY";
             const thLbl = ["DAY", "FLIR THERMAL", "GREEN NVG"][this.thermalMode || 0];
-            ammoEl.textContent = `COCKERILL 3105 • LRF: ${rngTxt}  |  ${shLbl} [${rld}]  |  7.62mm: ${vs.t72CoaxAmmo || 0}  |  ${thLbl} [6]`;
+            ammoEl.textContent = `COCKERILL 3105 • LRF: ${rngTxt}  |  ${shLbl} [${rld}]  |  7.62mm: ${vs.t72CoaxAmmo || 0}  |  ${thLbl} [Z]`;
           } else if (curVid === "komodo_turret") {
             const vs = this.vehicle.vState;
             const thLbl = ["DAY", "FLIR THERMAL", "GREEN NVG"][this.thermalMode || 0];
-            ammoEl.textContent = `CPWS GEN 2 • LRF: ${rngTxt}  |  30mm AUTOCANNON: ${vs.btrAmmo || 0} rds  |  ${thLbl} [6]`;
+            ammoEl.textContent = `CPWS GEN 2 • LRF: ${rngTxt}  |  30mm AUTOCANNON: ${vs.btrAmmo || 0} rds  |  ${thLbl} [Z]`;
           } else if (curVid === "komodo_std") {
             const vs = this.vehicle.vState;
             ammoEl.textContent = `KOMODO CUPOLA • LRF: ${rngTxt}  |  12.7mm SMB-2 HMG: ${vs.btrAmmo || 0} rds`;
@@ -3940,7 +4041,7 @@ KK.Game = class Game {
       this.tracers[i].life -= dt;
       if (this.tracers[i].life <= 0) { const tm = this.tracers[i].mesh; this.scene.remove(tm); if (tm.geometry) tm.geometry.dispose(); if (tm.material) tm.material.dispose(); this.tracers.splice(i, 1); }
     }
-    this.cameraShake = Math.max(this.cameraShake * Math.exp(-5.0 * dt), this.cryptids.cameraShakeOut || 0);
+    this.cameraShake = Math.max(this.cameraShake * Math.exp(-5.0 * dt), this.cryptids.cameraShakeOut || 0, (this.oceanCryptids && this.oceanCryptids.cameraShakeOut) || 0);
     if (this.cryptids.empTrigger) {
       this.empGlitchTimer = Math.max(this.empGlitchTimer, this.cryptids.empTrigger.dur || 6.5);
       this.empKind = this.cryptids.empTrigger.kind || "sonic";

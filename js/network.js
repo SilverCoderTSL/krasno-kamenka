@@ -1023,6 +1023,12 @@ KK.LanNetwork = class LanNetwork {
       case "cryptid_counter":
         if (this.cb.onCryptidCounter) this.cb.onCryptidCounter(msg);
         break;
+      case "ocean_cryptid_sync":
+        if (this.cb.onOceanCryptidSync) this.cb.onOceanCryptidSync(msg);
+        break;
+      case "ocean_cryptid_hit":
+        if (this.cb.onOceanCryptidHit) this.cb.onOceanCryptidHit(msg);
+        break;
       case "vehicle_ram":
         if (msg.targetPeerId === this.peerId && this.cb.onVehicleRam) this.cb.onVehicleRam(msg);
         break;

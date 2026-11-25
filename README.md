@@ -1,20 +1,15 @@
-# Krasno-Kamenka Oblast (v15.2 ONLINE — Naval & Multi-Crew Deck Overhaul + 60 FPS Ocean & Zero-Lag Trailers)
+# Krasno-Kamenka Oblast (v15.3 ONLINE — The 3 Ocean Cryptids: Phantom Yamato, El Gran Maja & The Bloop)
 
-## What's New in Version 15.2 ONLINE
-1. **Realistic Full-Scale Ships & Multi-Vehicle Deck Bays (`js/config.js`, `js/boats.js`):**
-   - **Projekt 12322 "Zubr" LCAC Hovercraft (`52 m × 22 m`):** Colossal amphibious assault hovercraft with a `13.4 m × 36 m` steel well-deck, **150-ton payload budget**, **6 painted tie-down bays** (`2 lanes × 3 rows` — carries multiple MBTs and 4x4s simultaneously!), walkable side sponsons, articulating hydraulic bow ramp, 3 massive `5.2 m` rear propulsor ducts, and a compressible air-cushion skirt!
-   - **Projekt 11770 "Serna" Tank Landing Barge (`28 m × 9.2 m`):** **75-ton** landing craft with walkable catwalks, articulating bow ramp, and 2 bays (or 1 centered MBT well).
-   - **Krasnaya Utility Patrol Boat (`14.8 m × 5.0 m`):** **4.5-ton** stern bay for 1 light 4x4 + walkable rails.
-   - **Strela-X1 Offshore Speedboat (`9.4 m × 2.5 m`):** Blistering `155 km/h` solo 1-person hydroplane.
-2. **Shipmaster Deck Lock `[U]`, Anchor `[SPACE]` & Walkable Moving Decks (`js/boats.js`, `js/main.js`):**
-   - **`[U]` Shipmaster Deck Lock:** Locks all mounted vehicles with visual yellow tie-down chains & raises the hydraulic bow ramp. Unlocking over deep water (`> 3 m`) triggers a **4-second double-tap safety warning**.
-   - **`[SPACE]` Anchor / Air-Cushion Dump:** Drops anchor on conventional vessels or visibly deflates the Zubr's rubber skirt so it rests dead still for loading.
-   - **Walkable Moving Decks & Live Turrets:** Press `[E]` at the helm (or `[F]` inside a mounted vehicle) to walk freely around the moving deck in boat-local coordinates—or stay inside a chained tank/Komodo on deck to aim & fire turrets live during ocean crossings!
-3. **Maritime Lighting, Dedicated Marine Audio & Nautical Helm HUD (`js/boats.js`, `js/audio.js`, `js/ui.js`, `index.html`, `css/style.css`):**
-   - **`[L]` Navigation Lights** (Port Red / Starboard Green / White Masthead & Stern) & **`[K]` Bridge Searchlight** (`THREE.SpotLight` + volumetric beam), both synced to remote ships.
-   - **Dedicated Marine Audio:** Procedural Zubr gas-turbine + fan roar, Serna marine diesel, Strela/Patrol outboard scream, **`[N]` Naval Foghorn**, anchor clank, and ramp hydraulics—while completely muting your parked car.
-   - **Clean Nautical Helm HUD (`#hud-helm`):** Completely replaces `#hud-dash` when piloting a boat (Knots + km/h, Heading, Telegraph, Fathometer Depth, Payload/Lock, Anchor & Light badges, plus boat-centered Compass/Radar).
-4. **Zero Hydrolock, 60 FPS Ocean & Zero-Lag Trailers (`js/world.js`, `js/main.js`, `js/network.js`):**
-   - Completely bypasses `vehicle.step()` while mounted on a boat or carried on a trailer (zero hydrolock, zero underwater tint, zero physics fighting).
-   - Skips heavy terrain/foliage generation on pure deep-ocean chunks (`_isPureDeepOceanChunk`) for flat 60 FPS even at `155 km/h`.
-   - Local 60 FPS parent-locking + velocity dead-reckoning for trailer-carried & boat-mounted peer cars (zero `60+ km/h` rubber-banding!) + `cash_ack` auto-refund protection for `[TAB]` cash transfers.
+## What's New in Version 15.3 ONLINE
+1. **The Possessed Yamato-Class Battleship (`263 m × 38.9 m`, Open Deep Straits):**
+   - Battle-scarred ghost dreadnought with bulbous bow, permanent 5.5° port list, teak deck, towering 44 m Pagoda Mast with glowing portholes, raked funnel, drifting ghostly sea-mist shroud, and **3 independently slewing triple 460mm (18.1-inch) main turrets**.
+   - **Tragic Passive Aura:** Completely ignores horns, searchlights, and even ramming your boat straight into its armored belt (solid steel bounce!).
+   - **3-Salvo Retaliation:** Fire *any* weapon at it and a haunting General Quarters klaxon tolls, bridge windows shift crimson-amber, all three 460mm turrets slew toward you, and it fires **3 timed broadside salvos** (colossal 45 m water spouts & hull-rocking shockwaves) before elevating its guns to neutral and mournfully submerging into the mist!
+2. **El Gran Maja — Southern Megalodon (`~34 m`, Warm Southern Ocean `z > 8 km`):**
+   - Articulated 5-segment predator with hinged jaw, double rows of serrated teeth, 5 gill slits, battle scars, a towering `4.6 m` scarred dorsal fin, and a 3-joint whipping tail.
+   - Circles your vessel before lunging at `124 km/h` to ram your hull—outrun it in the Strela-X1 (`155 km/h`), evade on the Zubr, or blast it back underwater with deck-mounted tanks/Komodos!
+3. **The Bloop — Northern Abyssal Kraken (`~120 m+`, Freezing Northern Ocean `z < -8 km`):**
+   - Preceded by an eerie deep-sea **"Bloop" sonar groan**, followed by **8 articulated 42-meter breaching tentacles** lined with bioluminescent suckers and a colossal `28 m × 36 m` glowing-eyed domed cephalopod head rising from the abyss!
+   - Weave between slamming tentacles at full boost, toss a road flare (`[G]`) as a decoy, or unload deck cannons/autocannons to drive it back down!
+4. **Full Multiplayer Sync, FLIR Thermal & `[O]` Test Spawners:**
+   - All 3 ocean cryptids sync over multiplayer (`ocean_cryptid_sync` / `ocean_cryptid_hit`), glow in FLIR (`[Z]`), and can also be summoned on demand from `[O] Options -> Recovery & Chaos` while at sea!

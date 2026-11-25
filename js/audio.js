@@ -902,6 +902,81 @@ KK.AudioEngine = class AudioEngine {
     src.connect(bp); bp.connect(g); g.connect(this.master); src.start(t); src.stop(t + 0.60);
   }
 
+  playYamatoLament() {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    for (const [freq, det] of [[52, 0], [78, -6], [104, 4]]) {
+      const o = this.ctx.createOscillator(); o.type = "sawtooth";
+      o.frequency.setValueAtTime(freq, t);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.88, t + 4.2);
+      o.detune.value = det;
+      const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 260;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.001, t);
+      g.gain.linearRampToValueAtTime(0.18, t + 0.9);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 4.4);
+      o.connect(lp); lp.connect(g); g.connect(this.master);
+      o.start(t); o.stop(t + 4.5);
+    }
+  }
+
+  playYamatoKlaxon() {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    for (let k = 0; k < 4; k++) {
+      const st = t + k * 0.42;
+      const o = this.ctx.createOscillator(); o.type = "sawtooth";
+      o.frequency.setValueAtTime(420, st);
+      o.frequency.linearRampToValueAtTime(290, st + 0.32);
+      const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 640; bp.Q.value = 1.8;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.26, st); g.gain.exponentialRampToValueAtTime(0.001, st + 0.36);
+      o.connect(bp); bp.connect(g); g.connect(this.master);
+      o.start(st); o.stop(st + 0.38);
+    }
+  }
+
+  playYamatoSalvo() {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    // 3 staggered colossal 460mm triple-turret thunder detonations!
+    for (let k = 0; k < 3; k++) {
+      const st = t + k * 0.14;
+      const sub = this.ctx.createOscillator(); sub.type = "sine";
+      sub.frequency.setValueAtTime(72, st); sub.frequency.exponentialRampToValueAtTime(22, st + 1.35);
+      const sg = this.ctx.createGain();
+      sg.gain.setValueAtTime(0.68, st); sg.gain.exponentialRampToValueAtTime(0.001, st + 1.45);
+      sub.connect(sg); sg.connect(this.master); sub.start(st); sub.stop(st + 1.5);
+
+      const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+      const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(620, st); lp.frequency.exponentialRampToValueAtTime(110, st + 1.4);
+      const ng = this.ctx.createGain();
+      ng.gain.setValueAtTime(0.55, st); ng.gain.exponentialRampToValueAtTime(0.001, st + 1.5);
+      src.connect(lp); lp.connect(ng); ng.connect(this.master); src.start(st); src.stop(st + 1.55);
+    }
+  }
+
+  playBloopSonar() {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    // Authentic rising-then-echoing deep-sea abyssal "Bloop" frequency sweep!
+    const o = this.ctx.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(34, t);
+    o.frequency.exponentialRampToValueAtTime(148, t + 1.15);
+    o.frequency.exponentialRampToValueAtTime(52, t + 2.8);
+    const o2 = this.ctx.createOscillator(); o2.type = "triangle";
+    o2.frequency.setValueAtTime(68, t);
+    o2.frequency.exponentialRampToValueAtTime(296, t + 1.15);
+    o2.frequency.exponentialRampToValueAtTime(98, t + 2.8);
+    const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 340;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.linearRampToValueAtTime(0.46, t + 0.85);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 3.1);
+    o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(this.master);
+    o.start(t); o2.start(t); o.stop(t + 3.2); o2.stop(t + 3.2);
+  }
+
   playTramBell() {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;
