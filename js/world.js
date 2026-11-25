@@ -18,6 +18,10 @@ KK.World = class World {
     this.scene.add(this.rootGroup);
 
     this.chunks = new Map();
+    this._chunkGeoPool = [];
+    this._chunkQueue = [];
+    this._chunkNeeded = new Set();
+    this._oceanTex = null;
     this.bridgeMeshes = new Map();
     this.townGroups = new Map();
     this.settlementAnims = [];
@@ -490,6 +494,19 @@ KK.World = class World {
     return { blend: maxB, depth: bestDepth, ford: bestFord };
   }
 
+  // v15.2.1 STRICT DRY-INLAND CHECK: Blocks ocean, beaches/coastlines, lakes & river channels!
+  isDryInland(gx, gz, coastMarginM = 6.5, riverPadM = 7.0) {
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const b = this.getBiomeWeights(gx, gz);
+    if ((b.ocean || 0) > 0.08) return false;
+    const ti = this.getTerrainInfo(gx, gz, false);
+    if (ti.waterDepth > 0.05) return false;
+    if (ti.height < seaL + coastMarginM) return false;
+    const rc = this.getRiverChannel(gx, gz);
+    if (rc && rc.seg && rc.dist < rc.seg.halfWidth + riverPadM) return false;
+    return true;
+  }
+
   getWaterSurfaceAt(gx, gz) {
     let wy = -9999;
     const rc = this.getRiverChannel(gx, gz);
@@ -511,9 +528,27 @@ KK.World = class World {
   // v15.0 INFINITE OCEAN PLANE + FAR-HORIZON ARCHIPELAGO SILHOUETTES + COASTAL AIRSTRIP MARKERS!
   _buildOceanAndFarIslands() {
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    // v15.3.1 OPAQUE PROCEDURAL WAVE-TEXTURED OCEAN (Zero full-screen alpha-blend overdraw!)
+    const ocv = document.createElement("canvas"); ocv.width = 256; ocv.height = 256;
+    const octx = ocv.getContext("2d");
+    octx.fillStyle = "#0b4668"; octx.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 8) {
+      for (let x = 0; x < 256; x += 16) {
+        const w = Math.sin(x * 0.08 + y * 0.14) * 0.5 + 0.5;
+        octx.fillStyle = w > 0.62 ? "rgba(68, 165, 206, 0.24)" : "rgba(5, 34, 54, 0.26)";
+        octx.fillRect(x, y, 14, 4);
+        if (w > 0.88) {
+          octx.fillStyle = "rgba(215, 245, 255, 0.30)";
+          octx.fillRect(x + 2, y + 1, 7, 2);
+        }
+      }
+    }
+    this._oceanTex = new THREE.CanvasTexture(ocv);
+    this._oceanTex.wrapS = this._oceanTex.wrapT = THREE.RepeatWrapping;
+    this._oceanTex.repeat.set(520, 520);
     const oceanMat = new THREE.MeshStandardMaterial({
-      color: 0x0d4f73, emissive: 0x041d2e, roughness: 0.22, metalness: 0.35,
-      transparent: true, opacity: 0.88
+      map: this._oceanTex, color: 0x16648c, emissive: 0x052032,
+      roughness: 0.26, metalness: 0.32, transparent: false
     });
     this.oceanMesh = new THREE.Mesh(new THREE.PlaneGeometry(42000, 42000, 1, 1), oceanMat);
     this.oceanMesh.rotation.x = -Math.PI / 2;
@@ -2254,7 +2289,11 @@ KK.World = class World {
     if (!chunkObj || !chunkObj.group) return;
     this.rootGroup.remove(chunkObj.group);
     if (chunkObj.mesh && chunkObj.mesh.geometry) {
-      chunkObj.mesh.geometry.dispose();
+      if (this._chunkGeoPool && this._chunkGeoPool.length < 32) {
+        this._chunkGeoPool.push(chunkObj.mesh.geometry);
+      } else {
+        chunkObj.mesh.geometry.dispose();
+      }
     }
     if (chunkObj.colliders) {
       for (const col of chunkObj.colliders) { if (col.id) this.treeMeshMap.delete(col.id); }
@@ -2724,11 +2763,22 @@ KK.World = class World {
     }
   }
 
-  updateChunks(playerGx, playerGz, force = false) {
-    const pcx = Math.floor(playerGx / KK.CHUNK_SIZE);
-    const pcz = Math.floor(playerGz / KK.CHUNK_SIZE);
+  updateChunks(playerGx, playerGz, force = false, velX = 0, velZ = 0) {
+    // Velocity look-ahead preloading (shifts chunk center up to +125m ahead at 250-300 km/h!)
+    const spd = Math.hypot(velX || 0, velZ || 0);
+    const lookT = Math.min(1.5, spd > 22 ? 1.5 : 0);
+    const leadX = Math.max(-135, Math.min(135, (velX || 0) * lookT));
+    const leadZ = Math.max(-135, Math.min(135, (velZ || 0) * lookT));
+    const pcx = Math.floor((playerGx + leadX) / KK.CHUNK_SIZE);
+    const pcz = Math.floor((playerGz + leadZ) / KK.CHUNK_SIZE);
+
     if (this.oceanMesh) {
       this.oceanMesh.position.set(playerGx, KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0, playerGz);
+      if (this._oceanTex) {
+        const rep = 520 / 42000;
+        const tWave = performance.now() * 0.00008;
+        this._oceanTex.offset.set(playerGx * rep + tWave, -playerGz * rep + tWave * 0.6);
+      }
     }
     if (this.farIslandsGroup && KK.ISLANDS) {
       let cIdx = 0;
@@ -2738,33 +2788,69 @@ KK.World = class World {
         if (m) m.visible = (Math.hypot(playerGx - isl.cx, playerGz - isl.cz) > Math.max(isl.rx, isl.rz) * 1.12);
       }
     }
-    if (!force && pcx === this._lastCcx && pcz === this._lastCcz) return;
-    this._lastCcx = pcx; this._lastCcz = pcz;
 
-    const needed = new Set(), R = KK.CHUNK_RADIUS;
-    for (let dx = -R; dx <= R; dx++) {
-      for (let dz = -R; dz <= R; dz++) {
-        const cx = pcx + dx, cz = pcz + dz, key = cx + "," + cz;
-        needed.add(key);
-        if (!this.chunks.has(key)) this.chunks.set(key, this._createChunk(cx, cz));
+    let listDirty = false;
+    if (force || pcx !== this._lastCcx || pcz !== this._lastCcz) {
+      this._lastCcx = pcx; this._lastCcz = pcz;
+      const needed = new Set(), R = KK.CHUNK_RADIUS;
+      const missing = [];
+      const dirX = spd > 1 ? (velX / spd) : 0;
+      const dirZ = spd > 1 ? (velZ / spd) : 0;
+
+      for (let dx = -R; dx <= R; dx++) {
+        for (let dz = -R; dz <= R; dz++) {
+          const cx = pcx + dx, cz = pcz + dz, key = cx + "," + cz;
+          needed.add(key);
+          if (!this.chunks.has(key)) {
+            if (force) {
+              this.chunks.set(key, this._createChunk(cx, cz));
+              listDirty = true;
+            } else {
+              // Priority: closest chunks + chunks directly ahead of travel direction build FIRST!
+              const cMidX = (cx + 0.5) * KK.CHUNK_SIZE - playerGx;
+              const cMidZ = (cz + 0.5) * KK.CHUNK_SIZE - playerGz;
+              const dist = Math.hypot(cMidX, cMidZ);
+              const aheadDot = (cMidX * dirX + cMidZ * dirZ) / (dist || 1);
+              const prio = dist - aheadDot * 140;
+              missing.push({ cx, cz, key, prio });
+            }
+          }
+        }
+      }
+      this._chunkNeeded = needed;
+      if (!force && missing.length > 0) {
+        missing.sort((a, b) => a.prio - b.prio);
+        this._chunkQueue = missing;
+      } else if (force) {
+        this._chunkQueue = [];
+      }
+
+      // Unload out-of-range chunks safely (pooling PlaneGeometry & guarding pure-ocean null mesh!)
+      for (const [key, chunk] of this.chunks.entries()) {
+        if (!needed.has(key)) {
+          this._disposeChunkGroup(chunk);
+          this.chunks.delete(key);
+          listDirty = true;
+        }
       }
     }
-    for (const [key, chunk] of this.chunks.entries()) {
-      if (!needed.has(key)) {
-        this.rootGroup.remove(chunk.group);
-        chunk.mesh.geometry.dispose();
-        for (const col of chunk.colliders) { if (col.id) this.treeMeshMap.delete(col.id); }
-        if (chunk.fences) { for (const fn of chunk.fences) this.fenceMeshMap.delete(fn.id); }
-        this.chunks.delete(key);
+
+    // Time-sliced chunk streaming: build max 2 chunks (or 5.0ms budget) per frame — ZERO 300 km/h freezes!
+    if (!force && this._chunkQueue && this._chunkQueue.length > 0) {
+      const t0 = performance.now();
+      let built = 0;
+      while (this._chunkQueue.length > 0 && built < 2) {
+        const item = this._chunkQueue.shift();
+        if (!this._chunkNeeded.has(item.key) || this.chunks.has(item.key)) continue;
+        this.chunks.set(item.key, this._createChunk(item.cx, item.cz));
+        listDirty = true;
+        built++;
+        if (performance.now() - t0 > 5.0) break;
       }
     }
-    this.winchTrees = [];
-    this.activeColliders = [];
-    this.activeFences = [];
-    for (const chunk of this.chunks.values()) {
-      for (const tr of chunk.trees) this.winchTrees.push(tr);
-      for (const col of chunk.colliders) this.activeColliders.push(col);
-      if (chunk.fences) { for (const fn of chunk.fences) if (!fn.broken) this.activeFences.push(fn); }
+
+    if (listDirty) {
+      this._rebuildActiveChunkLists();
     }
   }
 
@@ -2793,12 +2879,18 @@ KK.World = class World {
       return { group, mesh: null, heights: null, trees: [], colliders: [], fences: [], isPureOcean: true };
     }
 
-    const geo = new THREE.PlaneGeometry(size, size, segs, segs);
-    geo.rotateX(-Math.PI / 2);
+    let geo = (this._chunkGeoPool && this._chunkGeoPool.length > 0) ? this._chunkGeoPool.pop() : null;
+    if (!geo) {
+      geo = new THREE.PlaneGeometry(size, size, segs, segs);
+      geo.rotateX(-Math.PI / 2);
+    }
 
     const pos = geo.attributes.position;
     const heights = new Float32Array(pos.count);
-    const colors = new Float32Array(pos.count * 3);
+    const existingCol = geo.attributes.color;
+    const colors = (existingCol && existingCol.array && existingCol.array.length === pos.count * 3)
+      ? existingCol.array
+      : new Float32Array(pos.count * 3);
     const col = new THREE.Color();
 
     for (let i = 0; i < pos.count; i++) {
@@ -2873,7 +2965,12 @@ KK.World = class World {
       colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
     }
 
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    if (geo.attributes.color && geo.attributes.color.array === colors) {
+      geo.attributes.color.needsUpdate = true;
+    } else {
+      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    }
+    pos.needsUpdate = true;
     geo.computeVertexNormals();
 
     const group = new THREE.Group();
@@ -2895,8 +2992,10 @@ KK.World = class World {
     const treeCount = isOceanChunk ? 0 : (isTropChunk ? 18 : (isSavChunk ? 7 : (isArcChunk ? 6 : (isVolcChunk ? 3 : (isDesertChunk ? 5 : Math.floor(8 + bCenter.taiga * 15 + bCenter.rust * 4))))));
     const chunkKey = cx + "," + cz;
 
-    // v15.0.2 LUSH GOLDEN SAVANNA TALL GRASS TUFTS & RED-CLAY TERMITE MOUNDS!
+    // v15.3.2 INSTANCED SAVANNA TALL GRASS & TERMITE MOUNDS (Identical look, 34 -> 3 draw calls!)
     if (isSavChunk && !isOceanChunk) {
+      const mMats = [], g1Mats = [], g2Mats = [];
+      const dummy = new THREE.Object3D();
       for (let g = 0; g < 34; g++) {
         const grx = (this.hash2(cx * 47 + g * 3, cz * 23 - g) - 0.5) * (size - 8);
         const grz = (this.hash2(cx * 19 - g, cz * 53 + g * 5) - 0.5) * (size - 8);
@@ -2906,18 +3005,29 @@ KK.World = class World {
         if (gInfo.roadDist < 8 || gInfo.waterDepth > 0.05 || gInfo.surface === "race_tarmac" || gInfo.surface === "tarmac_line") continue;
         const gs = 0.75 + this.hash2(g * 7 + cx, cz - g * 3) * 1.15;
         if (g < 3) {
-          const mound = new THREE.Mesh(this.geoTermite, this.matTermite);
-          mound.scale.set(gs * 0.9, gs * 1.0, gs * 0.9);
-          mound.position.set(grx, gInfo.height + 1.1 * gs, grz);
-          group.add(mound);
+          dummy.position.set(grx, gInfo.height + 1.1 * gs, grz);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(gs * 0.9, gs * 1.0, gs * 0.9);
+          dummy.updateMatrix();
+          mMats.push(dummy.matrix.clone());
         } else {
-          const tuft = new THREE.Mesh(this.geoSavGrass, (g % 2 === 0) ? this.matSavGrass : this.matSavGrass2);
-          tuft.scale.set(gs * 1.4, gs * 0.85, gs * 1.4);
-          tuft.position.set(grx, gInfo.height + 0.52 * gs, grz);
-          tuft.rotation.y = g * 1.1;
-          group.add(tuft);
+          dummy.position.set(grx, gInfo.height + 0.52 * gs, grz);
+          dummy.rotation.set(0, g * 1.1, 0);
+          dummy.scale.set(gs * 1.4, gs * 0.85, gs * 1.4);
+          dummy.updateMatrix();
+          (g % 2 === 0 ? g1Mats : g2Mats).push(dummy.matrix.clone());
         }
       }
+      const addInst = (geo, mat, arr) => {
+        if (arr.length === 0) return;
+        const im = new THREE.InstancedMesh(geo, mat, arr.length);
+        for (let i = 0; i < arr.length; i++) im.setMatrixAt(i, arr[i]);
+        im.instanceMatrix.needsUpdate = true;
+        group.add(im);
+      };
+      addInst(this.geoTermite, this.matTermite, mMats);
+      addInst(this.geoSavGrass, this.matSavGrass, g1Mats);
+      addInst(this.geoSavGrass, this.matSavGrass2, g2Mats);
     }
 
     for (let t = 0; t < treeCount; t++) {
@@ -3039,6 +3149,7 @@ KK.World = class World {
     }
 
     const rockCount = Math.floor(4 + bCenter.mountains * 8 + bCenter.desert * 5 + bCenter.volcanic * 9);
+    const rockMatrices = [];
     for (let r = 0; r < rockCount; r++) {
       const rx = (this.hash2(cx * 41 + r, cz * 53) - 0.5) * (size - 12);
       const rz = (this.hash2(cx * 61, cz * 71 + r) - 0.5) * (size - 12);
@@ -3055,12 +3166,21 @@ KK.World = class World {
       if (blocked) continue;
 
       const rad = 0.85 + this.hash2(cx + r, cz + r) * 1.95;
-      const rock = new THREE.Mesh(this.geoRock, isVolcChunk ? this.matObsidian : (isDesertChunk ? this.matSandRock : this.matRock));
-      rock.position.set(rx, info.height + rad * 0.35, rz);
-      rock.scale.set(rad * 1.15, rad * 0.72, rad);
-      group.add(rock);
+      if (!this._tmpRockDummy) this._tmpRockDummy = new THREE.Object3D();
+      this._tmpRockDummy.position.set(rx, info.height + rad * 0.35, rz);
+      this._tmpRockDummy.rotation.set(0, r * 1.3, 0);
+      this._tmpRockDummy.scale.set(rad * 1.15, rad * 0.72, rad);
+      this._tmpRockDummy.updateMatrix();
+      rockMatrices.push(this._tmpRockDummy.matrix.clone());
       // Solid collidable boulder!
       colliders.push({ x: gx, y: info.height, z: gz, r: rad * 0.92, h: rad * 1.15, kind: "rock" });
+    }
+    if (rockMatrices.length > 0) {
+      const rMat = isVolcChunk ? this.matObsidian : (isDesertChunk ? this.matSandRock : this.matRock);
+      const rInst = new THREE.InstancedMesh(this.geoRock, rMat, rockMatrices.length);
+      for (let i = 0; i < rockMatrices.length; i++) rInst.setMatrixAt(i, rockMatrices[i]);
+      rInst.instanceMatrix.needsUpdate = true;
+      group.add(rInst);
     }
 
     // BREAKABLE ROADSIDE FENCES & GUARDRAILS (Wooden Post-and-Rail + Corrugated Metal!)

@@ -1171,9 +1171,16 @@ KK.UIManager = class UIManager {
             <div class="admin-card-title">🖥 PERFORMANCE &amp; ENGINE TELEMETRY</div>
             <div class="admin-stat-strip">
               <div><span>LIVE FPS</span><b style="color:${ps.fpsSmooth < 35 ? '#ff5c77' : '#2de08b'}">${Math.round(ps.fpsSmooth)}</b></div>
+              <div><span>DRAW CALLS</span><b style="color:#00e5ff;">${g.renderer && g.renderer.info ? g.renderer.info.render.calls : 0}</b></div>
               <div><span>PARTICLES</span><b>${ps.activeCount}/${ps.budget}</b></div>
-              <div><span>COLLIDERS</span><b>${g.world.activeColliders.length}</b></div>
               <div><span>CHUNKS</span><b>${g.world.chunks.size}</b></div>
+            </div>
+            <div class="small muted" style="margin:10px 0 6px 0;"><b>Graphics &amp; Laptop Optimization Preset (Zero Quality Loss on HIGH):</b></div>
+            <div class="btn-row" style="margin-bottom:10px;">
+              <button class="btn small ${g.gfxPreset === 'potato' ? 'accent' : ''}" onclick="window.__GAME__.setGraphicsPreset('potato')">POTATO (Max FPS)</button>
+              <button class="btn small ${g.gfxPreset === 'low' ? 'primary' : ''}" onclick="window.__GAME__.setGraphicsPreset('low')">LOW</button>
+              <button class="btn small ${g.gfxPreset === 'med' ? 'primary' : ''}" onclick="window.__GAME__.setGraphicsPreset('med')">MEDIUM</button>
+              <button class="btn small ${g.gfxPreset === 'high' ? 'primary' : ''}" onclick="window.__GAME__.setGraphicsPreset('high')">HIGH (Full)</button>
             </div>
             <div class="small muted" style="margin:10px 0 6px 0;"><b>Particle Budget Quality:</b></div>
             <div class="btn-row" style="margin-bottom:10px;">

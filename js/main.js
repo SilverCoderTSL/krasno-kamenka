@@ -77,6 +77,9 @@ KK.Game = class Game {
     if (this.ownedVehicles && this.ownedVehicles.shilka) this.shilkaCamp.setRelicVisible(false);
 
     this.photoMode = false;
+    this._hudAccum = 0;
+    this.gfxPreset = "high";
+    try { const gp = localStorage.getItem("kk_gfx_preset"); if (gp && ["potato", "low", "med", "high"].includes(gp)) this.gfxPreset = gp; } catch (e) {}
     this.friendsList = {};
     try { this.friendsList = JSON.parse(localStorage.getItem("kk_friends_v1") || "{}") || {}; } catch (e) { this.friendsList = {}; }
     this.pendingScreenshot = false;
@@ -138,7 +141,9 @@ KK.Game = class Game {
     );
     this.scene.add(this.wpBeacon);
 
-    this.camMode = 0; this.camOrbitYaw = 0; this.camOrbitPitch = 0.24;
+    this.camMode = 0;
+    this.boatCamMode = 0;
+    this._boatCamSmoothY = null; this.camOrbitYaw = 0; this.camOrbitPitch = 0.24;
     this.isDraggingMouse = false; this.camPosSmooth = new THREE.Vector3(-8, 6, 0);
     this.keys = {};
     this._bindInputs();
@@ -410,12 +415,13 @@ KK.Game = class Game {
 
     window.__GAME__ = this;
     this.startMenu = new KK.StartMenu(this);
+    if (this.gfxPreset && this.gfxPreset !== 'high') this.setGraphicsPreset(this.gfxPreset, true);
     this.lastTime = performance.now();
     this._loop = this._loop.bind(this);
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.3 ONLINE! 3 Detailed Ocean Cryptids: The Possessed 263m Yamato Battleship (Passive -> 3x 460mm Salvos if Shot!), El Gran Maja (34m Southern Megalodon) & The Bloop (120m Northern Kraken)!');
+      this.ui.toast('Welcome to v15.3.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -833,6 +839,12 @@ KK.Game = class Game {
       else if (code === "Digit1") this.toggleTrailerHitch();
       else if (code === "Digit5") this.toggleCarCarrierLoad();
       else if (code === "KeyC") {
+        if (this.boats && this.boats.activeBoat) {
+          this.boatCamMode = (this.boatCamMode + 1) % 4;
+          this.camOrbitYaw = 0; this.camOrbitPitch = 0;
+          this.ui.toast("Naval Camera [C]: " + ["Wide Helm Chase Cam", "Bridge / First-Person Helm", "Cargo Deck / Loading Cam", "Low Waterline Cinematic Cam"][this.boatCamMode]);
+          return;
+        }
         this.camMode = (this.camMode + 1) % 4;
         this.camOrbitYaw = 0; this.camOrbitPitch = 0;
         this.ui.toast("Camera [C]: " + ["Chase Cam", "Hood / Bumper Cam", "Wide Convoy Cam", "First-Person Cockpit Cam"][this.camMode]);
@@ -1965,6 +1977,46 @@ KK.Game = class Game {
       text: `${this.network.callsign} raided ${lm.name} for $${lm.rewardCash.toLocaleString()}!`,
       system: true
     });
+  }
+
+  setGraphicsPreset(preset, silent = false) {
+    const p = ["potato", "low", "med", "high"].includes(preset) ? preset : "high";
+    this.gfxPreset = p;
+    try { localStorage.setItem("kk_gfx_preset", p); } catch (e) {}
+
+    const dpr = window.devicePixelRatio || 1;
+    if (p === "potato") {
+      this.renderer.setPixelRatio(Math.min(dpr, 0.85));
+      this.renderer.shadowMap.enabled = false;
+      KK.CHUNK_RADIUS = 2;
+      this.setParticleQuality("low");
+    } else if (p === "low") {
+      this.renderer.setPixelRatio(1.0);
+      this.renderer.shadowMap.enabled = false;
+      KK.CHUNK_RADIUS = 2;
+      this.setParticleQuality("low");
+    } else if (p === "med") {
+      this.renderer.setPixelRatio(Math.min(dpr, 1.35));
+      this.renderer.shadowMap.enabled = true;
+      KK.CHUNK_RADIUS = 3;
+      this.setParticleQuality("med");
+    } else {
+      this.renderer.setPixelRatio(Math.min(dpr, 2.0));
+      this.renderer.shadowMap.enabled = true;
+      KK.CHUNK_RADIUS = 3;
+      this.setParticleQuality("high");
+    }
+    this.renderer.shadowMap.needsUpdate = true;
+    if (this.world && this.vehicle) {
+      const ab = this.boats ? this.boats.activeBoat : null;
+      const fx = ab ? ab.gx : this.vehicle.pos.x;
+      const fz = ab ? ab.gz : this.vehicle.pos.z;
+      this.world.updateChunks(fx, fz, true);
+    }
+    if (!silent) {
+      this.ui.toast(`Graphics Preset: ${p.toUpperCase()} (PixelRatio ${this.renderer.getPixelRatio().toFixed(2)} • Shadows ${this.renderer.shadowMap.enabled ? "ON" : "OFF"} • Radius ${KK.CHUNK_RADIUS})`);
+      if (this.ui.activeModal === "env") this.ui.renderEnvAdmin();
+    }
   }
 
   setParticleQuality(mode) {
@@ -3553,7 +3605,9 @@ KK.Game = class Game {
     const focusGy = activeBoatNow ? (activeBoatNow.gy + (activeBoatNow.spec.deckY || 2.0)) : (ridingPeer ? ridingPeer.gy : (this.onFoot ? this.playerFoot.y : this.vehicle.pos.y));
     const shift = this.world.checkFloatingOrigin(focusGx, focusGz);
     if (shift) { this.camPosSmooth.x += shift.dx; this.camPosSmooth.z += shift.dz; }
-    this.world.updateChunks(focusGx, focusGz);
+    const focusVx = activeBoatNow ? activeBoatNow.vx : (this.onFoot ? 0 : this.vehicle.vel.x);
+    const focusVz = activeBoatNow ? activeBoatNow.vz : (this.onFoot ? 0 : this.vehicle.vel.z);
+    this.world.updateChunks(focusGx, focusGz, false, focusVx, focusVz);
 
     this.world.updateFallingTrees(dt);
     if (this._winchPullNetCd > 0) this._winchPullNetCd = Math.max(0, this._winchPullNetCd - dt);
@@ -4192,7 +4246,8 @@ KK.Game = class Game {
     });
 
     this.ui.updateWindshieldOverlay(dt, this);
-    this.ui.updateHUD(this);
+    this._hudAccum += dt;
+    if (this._hudAccum >= 0.05) { this._hudAccum = 0; this.ui.updateHUD(this); }
     this.renderer.render(this.scene, this.camera);
     if (this.pendingScreenshot) {
       this.pendingScreenshot = false;
@@ -4252,7 +4307,7 @@ KK.Game = class Game {
       const ancTxt = b.anchored ? "[SPACE] Lift/Weigh" : "[SPACE] Anchor/Dump";
       const deckTxt = hasDeck ? ` • [U] ${b.deckLocked ? "Unlock Deck" : "Lock Deck"} • [V] ${mounted ? "Unload Car" : "Load Car"}` : "";
       const walkTxt = b.spec.walkBounds ? " • [E] Walk Deck" : " • [E] Disembark";
-      el.textContent = `⚓ ${ancTxt}${deckTxt} • [L] Nav • [K] Spot • [N] Foghorn${walkTxt}`;
+      el.textContent = `⚓ ${ancTxt}${deckTxt} • [C] Cam • [L] Nav • [K] Spot • [7] Cruise${walkTxt}`;
       el.classList.remove("hidden");
       return;
     }
@@ -4359,16 +4414,63 @@ KK.Game = class Game {
   _updateCamera(dt, focusLocal) {
     if (this.boats && this.boats.activeBoat) {
       const b = this.boats.activeBoat;
-      const dist = (Math.min(44, b.spec.len * 0.88) + 9.0) * this.camZoom;
+      // Smooth vertical target independently of wave bob so sailing feels buttery-smooth!
+      const rawY = focusLocal.y;
+      if (this._boatCamSmoothY === null || Math.abs(rawY - this._boatCamSmoothY) > 12) this._boatCamSmoothY = rawY;
+      this._boatCamSmoothY += (rawY - this._boatCamSmoothY) * Math.min(1, dt * 3.5);
+      const baseY = this._boatCamSmoothY;
+      const sy = Math.sin(b.yaw), cy = Math.cos(b.yaw);
+
+      if (this.boatCamMode === 1) {
+        // MODE 1: BRIDGE / FIRST-PERSON HELM VIEW (Looks straight down the cargo deck & bow ramp!)
+        const hl = b.spec.helmLocal || { x: 0, y: 3.5, z: 2.0 };
+        const eyeW = this.boats.boatLocalToWorld(b, hl.x, hl.y + 1.4, hl.z + 1.2);
+        const eyeL = this.world.toLocal(eyeW.x, eyeW.y, eyeW.z, new THREE.Vector3());
+        const lookYaw = b.yaw + this.camOrbitYaw;
+        const lookP = Math.max(-0.45, Math.min(0.45, -0.08 - this.camOrbitPitch * 0.6));
+        this.camera.position.lerp(eyeL, Math.min(1, dt * 16));
+        this.camera.lookAt(
+          eyeL.x + Math.sin(lookYaw) * 45 * Math.cos(lookP),
+          eyeL.y + Math.sin(lookP) * 45,
+          eyeL.z + Math.cos(lookYaw) * 45 * Math.cos(lookP)
+        );
+        return;
+      } else if (this.boatCamMode === 2) {
+        // MODE 2: CARGO DECK / LOADING CAM (Overhead angled view of vehicle bays & bow ramp!)
+        const dOff = Math.max(14, b.spec.len * 0.42) * this.camZoom;
+        const camPos = new THREE.Vector3(
+          focusLocal.x + cy * (b.spec.width * 0.55 + 6.0) - sy * dOff * 0.35,
+          baseY + Math.max(12, b.spec.len * 0.36) * this.camZoom,
+          focusLocal.z - sy * (b.spec.width * 0.55 + 6.0) - cy * dOff * 0.35
+        );
+        this.camera.position.lerp(camPos, Math.min(1, dt * 9.0));
+        this.camera.lookAt(focusLocal.x + sy * (b.spec.len * 0.14), baseY + 1.2, focusLocal.z + cy * (b.spec.len * 0.14));
+        return;
+      } else if (this.boatCamMode === 3) {
+        // MODE 3: LOW WATERLINE CINEMATIC CAM (Skims beside the hull & wake!)
+        const sideD = (b.spec.width * 0.95 + 10.0) * this.camZoom;
+        const backD = (b.spec.len * 0.52 + 6.0) * this.camZoom;
+        const camPos = new THREE.Vector3(
+          focusLocal.x + cy * sideD - sy * backD,
+          baseY + 2.2,
+          focusLocal.z - sy * sideD - cy * backD
+        );
+        this.camera.position.lerp(camPos, Math.min(1, dt * 7.5));
+        this.camera.lookAt(focusLocal.x + sy * (b.spec.len * 0.15), baseY + 2.6, focusLocal.z + cy * (b.spec.len * 0.15));
+        return;
+      }
+
+      // MODE 0: WIDE HELM CHASE CAM (Horizon-stabilized smooth orbit!)
+      const dist = (Math.min(46, b.spec.len * 0.90) + 9.0) * this.camZoom;
       const yaw = b.yaw + this.camOrbitYaw;
-      const h = (Math.min(16, b.spec.len * 0.28) + 5.2) * this.camZoom;
+      const h = (Math.min(17, b.spec.len * 0.28) + 5.2) * this.camZoom;
       const camPos = new THREE.Vector3(
         focusLocal.x - Math.sin(yaw) * dist,
-        focusLocal.y + h + Math.sin(this.camOrbitPitch) * dist * 0.50,
+        baseY + h + Math.sin(this.camOrbitPitch) * dist * 0.50,
         focusLocal.z - Math.cos(yaw) * dist
       );
-      this.camera.position.lerp(camPos, Math.min(1, dt * 8.5));
-      this.camera.lookAt(focusLocal.x, focusLocal.y + 2.2, focusLocal.z);
+      this.camera.position.lerp(camPos, Math.min(1, dt * 9.0));
+      this.camera.lookAt(focusLocal.x, baseY + 2.0, focusLocal.z);
       return;
     }
     if (this.camMode !== 3 || this.onFoot || this.ridingWithPeerId) this.camera.up.set(0, 1, 0);
