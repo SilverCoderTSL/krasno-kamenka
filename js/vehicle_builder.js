@@ -2082,49 +2082,110 @@ KK.VehicleBuilder = {
     // 14.1B-1. PORSCHE 911 DAKAR (992 RALLY) — Lifted Twin-Turbo AWD Rally Icon!
     // ========================================================================
     else if (vehicleId === "porsche_dakar") {
-      plateText = "911-DKR"; roundHL = true; hlY = 0.74; hlZ = 2.18; hlSpread = 0.66;
+      // v15.4.2 DRASTIC 992 PORSCHE 911 DAKAR REDESIGN — Sculpted Faceted 911 Silhouette!
+      plateText = "911-DKR"; roundHL = true; hlY = 0.78; hlZ = 2.12; hlSpread = 0.68;
       const w = spec.bodyWidth;
-      const matRallyBlue = new THREE.MeshStandardMaterial({ color: 0x16386b, roughness: 0.42, metalness: 0.25 });
-      const matRallyRed  = new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.45 });
-      const matRallyGold = new THREE.MeshStandardMaterial({ color: 0xe9b44c, roughness: 0.40, metalness: 0.45 });
-      const matClad      = new THREE.MeshStandardMaterial({ color: 0x1d2024, roughness: 0.85 });
+      const matRallyBlue = new THREE.MeshStandardMaterial({ color: 0x0f2d5e, roughness: 0.36, metalness: 0.32 });
+      const matRallyRed  = new THREE.MeshStandardMaterial({ color: 0xd92626, roughness: 0.40, metalness: 0.18 });
+      const matRallyGold = new THREE.MeshStandardMaterial({ color: 0xebba46, roughness: 0.34, metalness: 0.55 });
+      const matClad      = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.84, metalness: 0.18 });
+      const mat911Glass  = new THREE.MeshStandardMaterial({ color: 0x162634, roughness: 0.08, metalness: 0.55, transparent: true, opacity: 0.36, side: THREE.DoubleSide });
+      const matDrl       = new THREE.MeshBasicMaterial({ color: 0xf4fbff });
+      const matAmber     = new THREE.MeshBasicMaterial({ color: 0xffb703 });
 
-      const s = new THREE.Shape();
-      s.moveTo(-2.22, 0.42); s.lineTo(2.14, 0.40); s.lineTo(2.26, 0.72);
-      s.lineTo(1.24, 0.90); s.lineTo(0.60, 1.36); s.lineTo(-0.36, 1.38);
-      s.lineTo(-1.84, 0.96); s.lineTo(-2.24, 0.82); s.closePath();
-      chassis.add(this._extrudeSideProfile(s, w - 0.14, matPaint, 0.06, 0.07, cockpitCfg));
+      // 1. Sculpted 992 Lower Tub (Two-Tone Rally Blue lower body + crisp wide rear haunches!)
+      const lowerV = [
+        [-0.86, 0.40,  2.22], [ 0.86, 0.40,  2.22],
+        [-0.92, 0.74,  2.14], [ 0.92, 0.74,  2.14],
+        [-0.96, 0.42,  1.35], [ 0.96, 0.42,  1.35],
+        [-0.95, 0.92,  1.35], [ 0.95, 0.92,  1.35],
+        [-0.94, 0.42, -0.15], [ 0.94, 0.42, -0.15],
+        [-0.92, 0.92, -0.15], [ 0.92, 0.92, -0.15],
+        [-1.02, 0.44, -1.35], [ 1.02, 0.44, -1.35],
+        [-1.00, 0.98, -1.35], [ 1.00, 0.98, -1.35],
+        [-0.88, 0.48, -2.24], [ 0.88, 0.48, -2.24],
+        [-0.90, 0.94, -2.20], [ 0.90, 0.94, -2.20]
+      ];
+      const lowerF = [
+        [0,1,3,2], [0,2,6,4], [1,5,7,3], [4,6,10,8], [5,9,11,7],
+        [8,10,14,12], [9,13,15,11], [12,14,18,16], [13,17,19,15], [16,18,19,17],
+        [2,3,7,6], [6,7,11,10], [10,11,15,14], [14,15,19,18]
+      ];
+      chassis.add(this._buildFacetedMesh(lowerV, lowerF, matRallyBlue, 0.35));
 
-      const lowBody = new THREE.Mesh(new THREE.BoxGeometry(w - 0.08, 0.26, 4.30), matRallyBlue);
-      lowBody.position.set(0, 0.56, -0.02); chassis.add(lowBody);
-      const stripeR = new THREE.Mesh(new THREE.BoxGeometry(w - 0.06, 0.055, 4.32), matRallyRed);
-      stripeR.position.set(0, 0.70, -0.02); chassis.add(stripeR);
-      const stripeG = new THREE.Mesh(new THREE.BoxGeometry(w - 0.06, 0.04, 4.32), matRallyGold);
-      stripeG.position.set(0, 0.75, -0.02); chassis.add(stripeG);
+      // 2. Sculpted White/Paint Upper Body + Sloping 911 Frunk Hood & Fastback Rear Deck!
+      const upperV = [
+        [-0.86, 0.74,  2.14], [ 0.86, 0.74,  2.14],
+        [-0.92, 0.94,  1.26], [ 0.92, 0.94,  1.26],
+        [-0.86, 0.96,  0.92], [ 0.86, 0.96,  0.92],
+        [-0.64, 1.38,  0.22], [ 0.64, 1.38,  0.22],
+        [-0.62, 1.36, -0.58], [ 0.62, 1.36, -0.58],
+        [-0.96, 1.00, -1.35], [ 0.96, 1.00, -1.35],
+        [-0.88, 0.95, -2.20], [ 0.88, 0.95, -2.20]
+      ];
+      const hoodRoofF = [[0,1,3,2], [2,3,5,4], [6,7,9,8], [8,9,11,10], [10,11,13,12]];
+      chassis.add(this._buildFacetedMesh(upperV, hoodRoofF, matPaint, 0.30));
 
-      const fSkid = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.08, 0.54), matMetal);
-      fSkid.position.set(0, 0.42, 2.08); fSkid.rotation.x = 0.34; chassis.add(fSkid);
-      const rSkid = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.10, 0.48), matMetal);
-      rSkid.position.set(0, 0.44, -2.14); rSkid.rotation.x = -0.25; chassis.add(rSkid);
-      const towHook = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.02, 6, 10), matRallyRed);
-      towHook.position.set(0.42, 0.52, 2.28); chassis.add(towHook);
-
-      const ducktail = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.16, 0.36), matPaint);
-      ducktail.position.set(0, 1.04, -2.06); ducktail.rotation.x = -0.32; ducktail.castShadow = true; chassis.add(ducktail);
-      const rearBar = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.06, 0.06), matTaillightL);
-      rearBar.position.set(0, 0.86, -2.25); chassis.add(rearBar);
-
-      const basket = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.09, 1.46), matClad);
-      basket.position.set(0, 1.44, -0.10); chassis.add(basket);
-      const matBoard = new THREE.MeshStandardMaterial({ color: 0xff6b1a, roughness: 0.75 });
-      for (const bx of [-0.30, 0.30]) {
-        const bd = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 1.12), matBoard);
-        bd.position.set(bx, 1.50, -0.10); chassis.add(bd);
+      // 3. Translucent Raked 911 Windshield + Side Windows + Slim A/B/C Pillars + Frog-Eye LEDs!
+      const wShield = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.76, 0.05), mat911Glass);
+      wShield.position.set(0, 1.17, 0.57); wShield.rotation.x = -0.98; chassis.add(wShield);
+      const rGlass = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.84, 0.05), mat911Glass);
+      rGlass.position.set(0, 1.18, -0.96); rGlass.rotation.x = 1.08; chassis.add(rGlass);
+      for (const sx of [-1, 1]) {
+        const aPil = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.78, 0.08), matPaint);
+        aPil.position.set(sx * 0.74, 1.17, 0.56); aPil.rotation.x = -0.98; aPil.rotation.z = sx * 0.24; chassis.add(aPil);
+        const cPil = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.88, 0.16), matPaint);
+        cPil.position.set(sx * 0.76, 1.17, -0.94); cPil.rotation.x = 1.04; cPil.rotation.z = sx * 0.28; chassis.add(cPil);
+        const sWin = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.38, 1.18), mat911Glass);
+        sWin.position.set(sx * 0.78, 1.15, -0.18); sWin.rotation.z = sx * 0.34; chassis.add(sWin);
+        const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.24, 0.76, 12), matPaint);
+        pod.rotation.x = Math.PI / 2 - 0.14; pod.position.set(sx * 0.68, 0.82, 1.78); chassis.add(pod);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.024, 8, 16), matDrl);
+        ring.position.set(sx * 0.68, 0.84, 2.16); chassis.add(ring);
+        const stG = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 4.18), matRallyGold);
+        stG.position.set(sx * 0.96, 0.76, -0.02); chassis.add(stG);
+        const stR = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 4.18), matRallyRed);
+        stR.position.set(sx * 0.96, 0.70, -0.02); chassis.add(stR);
       }
 
-      hoodPivot.position.set(0, 0.90, 1.24);
-      const frunk = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.05, 0.96), matPaint);
-      frunk.position.set(0, 0.02, 0.46); hoodPivot.add(frunk);
+      // 4. Aggressive Front Chin Splitter, Tow Hook & Stainless Skid Plates!
+      const fGrill = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.20, 0.10), matClad);
+      fGrill.position.set(0, 0.54, 2.22); chassis.add(fGrill);
+      const fSkid = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.07, 0.56), matMetal);
+      fSkid.position.set(0, 0.38, 2.08); fSkid.rotation.x = 0.32; chassis.add(fSkid);
+      const rSkid = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.09, 0.48), matMetal);
+      rSkid.position.set(0, 0.44, -2.14); rSkid.rotation.x = -0.24; chassis.add(rSkid);
+      const towHook = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.02, 6, 10), matRallyRed);
+      towHook.position.set(0.46, 0.50, 2.28); chassis.add(towHook);
+
+      // 5. Iconic Full-Width 992 Crimson LED Lightbar, Engine Louvers, Dual Exhausts & Dakar Wing!
+      const rearBar = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.055, 0.06), matTaillightL);
+      rearBar.position.set(0, 0.86, -2.23); chassis.add(rearBar);
+      const deckLouvers = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.04, 0.62), matClad);
+      deckLouvers.position.set(0, 1.00, -1.62); deckLouvers.rotation.x = 0.14; chassis.add(deckLouvers);
+      const ducktail = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.08, 0.38), matPaint);
+      ducktail.position.set(0, 1.04, -2.08); ducktail.rotation.x = -0.26; ducktail.castShadow = true; chassis.add(ducktail);
+      for (const ex of [-0.52, 0.52]) {
+        const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.22, 10), matMetal);
+        tip.rotation.x = Math.PI / 2; tip.position.set(ex, 0.50, -2.26); chassis.add(tip);
+      }
+
+      // 6. Expedition Roof Basket with Amber LED Rally Light Pod & Recovery Boards!
+      const basket = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.08, 1.24), matClad);
+      basket.position.set(0, 1.44, -0.18); chassis.add(basket);
+      for (const lx of [-0.32, -0.11, 0.11, 0.32]) {
+        const podL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.08), matAmber);
+        podL.position.set(lx, 1.47, 0.45); chassis.add(podL);
+      }
+      const matBoard = new THREE.MeshStandardMaterial({ color: 0xff6b1a, roughness: 0.75 });
+      for (const bx of [-0.28, 0.28]) {
+        const bd = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.98), matBoard);
+        bd.position.set(bx, 1.50, -0.18); chassis.add(bd);
+      }
+
+      hoodPivot.position.set(0, 0.92, 1.26);
+      const frunk = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.04, 0.92), matPaint);
+      frunk.position.set(0, 0.02, 0.44); hoodPivot.add(frunk);
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, false) : null;
       this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matClad, 0.14);
@@ -2718,7 +2779,7 @@ KK.VehicleBuilder = {
       const matBrass   = new THREE.MeshStandardMaterial({ color: 0xd4a437, roughness: 0.36, metalness: 0.80 });
       const matLens    = new THREE.MeshStandardMaterial({ color: 0x183c52, emissive: 0x0b4b69, emissiveIntensity: 0.65, roughness: 0.12, metalness: 0.82 });
       const matGoldOpt = new THREE.MeshStandardMaterial({ color: 0xd99b26, emissive: 0x5c3804, emissiveIntensity: 0.45, roughness: 0.12, metalness: 0.85 });
-      const matGlass   = new THREE.MeshStandardMaterial({ color: 0x628096, roughness: 0.10, metalness: 0.32, transparent: true, opacity: 0.44, side: THREE.DoubleSide });
+      const matGlass   = new THREE.MeshStandardMaterial({ color: 0x7aa4be, roughness: 0.08, metalness: 0.22, transparent: true, opacity: 0.24, side: THREE.DoubleSide, depthWrite: false });
       const matRedShk  = new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.48, metalness: 0.45 });
       const matNet     = new THREE.MeshStandardMaterial({ color: 0x384d2c, roughness: 0.96 });
 
@@ -2807,14 +2868,23 @@ KK.VehicleBuilder = {
       const wCenterY = (1.48 + roofY) * 0.5;
       const wCenterZ = (cowlZ + 0.72) * 0.5;
       const wSlope = Math.atan2(cowlZ - 0.72, roofY - 1.48);
-      const wFrame = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.76, 0.10), matArmorDk);
-      wFrame.position.set(0, wCenterY, wCenterZ); wFrame.rotation.x = -wSlope; chassis.add(wFrame);
-      for (const wx of [-0.42, 0.42]) {
-        const wPane = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.56, 0.12), matGlass);
-        wPane.position.set(wx, wCenterY, wCenterZ + 0.01); wPane.rotation.x = -wSlope; chassis.add(wPane);
-        const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.42, 0.03), matArmorDk);
-        wiper.position.set(wx - 0.08, wCenterY - 0.06, wCenterZ + 0.08); wiper.rotation.x = -wSlope; wiper.rotation.z = 0.28; chassis.add(wiper);
+      // v15.4.2 HOLLOW SEE-THROUGH ARMORED WINDSHIELD FRAME (Clear 1st-Person Cockpit POV!)
+      const wGrp = new THREE.Group();
+      wGrp.position.set(0, wCenterY, wCenterZ);
+      wGrp.rotation.x = -wSlope;
+      const fTopBar = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.09, 0.10), matArmorDk); fTopBar.position.y =  0.34; wGrp.add(fTopBar);
+      const fBotBar = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.09, 0.10), matArmorDk); fBotBar.position.y = -0.34; wGrp.add(fBotBar);
+      const fMidBar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.64, 0.10), matArmorDk); wGrp.add(fMidBar);
+      for (const sx of [-0.84, 0.84]) {
+        const fSide = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.72, 0.10), matArmorDk); fSide.position.x = sx; wGrp.add(fSide);
       }
+      for (const wx of [-0.42, 0.42]) {
+        const wPane = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.58, 0.04), matGlass);
+        wPane.position.set(wx, 0, 0.01); wGrp.add(wPane);
+        const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.42, 0.03), matArmorDk);
+        wiper.position.set(wx - 0.08, -0.06, 0.06); wiper.rotation.z = 0.28; wGrp.add(wiper);
+      }
+      chassis.add(wGrp);
 
       // 5. BOLD TRAPEZOIDAL ARMORED FENDERS / WHEEL WELLS (Exact 2.25m / 2.30m width!)
       for (const sx of [-1, 1]) {

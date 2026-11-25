@@ -303,7 +303,7 @@ KK.ClarksonFarm = class ClarksonFarm {
     }
     const vs = game.vehicle.vState, spec = game.vehicle.spec;
     for (const pid of Object.keys(KK.PARTS_CATALOG)) vs.parts[pid].hp = 100;
-    vs.health.mudClog = 0; vs.health.tieRodBias = 0; vs.health.tires = 100; vs.health.body = 100;
+    vs.health.mudClog = 0; vs.health.tieRodBias = 0; vs.health.tires = 100; vs.burnedOut = false; vs.health.body = 100;
     vs.health.headlightL = 100; vs.health.headlightR = 100;
     for (let i = 0; i < vs.blownTires.length; i++) { vs.blownTires[i] = false; vs.tiresHP[i] = 100; }
     vs.spareTires = spec.wheels.length >= 6 ? 3 : 2;

@@ -1540,7 +1540,7 @@ KK.UIManager = class UIManager {
     const warns = [];
     const blownList = (vs.blownTires || []).map((b, i) => b ? spec.wheels[i].id : null).filter(Boolean);
     if (blownList.length > 0) warns.push(`BLOWN TIRE (${blownList.join(", ")})`);
-    if (vs.burnedOut) warns.push("VEHICLE BURNED OUT");
+    if (vs.burnedOut) warns.push("VEHICLE BURNED OUT — Repair at Garage [G] or Field Repair [X]");
     if (v.hydrolocked) warns.push("ENGINE HYDROLOCKED");
     if (engOverall < 20) warns.push("ENGINE FAILURE");
     if (v.coolantTemp > 114) warns.push("COOLANT OVERHEATING");

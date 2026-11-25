@@ -1985,25 +1985,49 @@ KK.World = class World {
         surface = "asphalt";
       }
 
-      // Layer Solid Ocean Port Pier Decks so cars drive smoothly out to the pier lip & boat ramps!
+      // v15.4.2 SOLID COLLIDABLE PORT PIERS + LANDWARD APPROACH RAMPS + SIDE LAUNCH RAMPS!
       if (KK.PORTS) {
         const pierY = seaL + 2.95;
         for (let pi = 0; pi < KK.PORTS.length; pi++) {
           const pt = KK.PORTS[pi];
           const dxP = gx - pt.x, dzP = gz - pt.z;
-          if (Math.abs(dxP) > 65 || Math.abs(dzP) > 65) continue;
+          if (Math.abs(dxP) > 76 || Math.abs(dzP) > 76) continue;
           const cp = Math.cos(-(pt.yaw || 0)), sp = Math.sin(-(pt.yaw || 0));
           const lxP = dxP * cp + dzP * sp;
           const lzP = -dxP * sp + dzP * cp;
-          const halfW = (pt.islandId === 2) ? 22.0 : ((pt.islandId === 4) ? 7.5 : ((pt.islandId === 1 || pt.islandId === 5) ? 10.0 : 12.2));
-          const maxZ  = (pt.islandId === 2) ? 52.5 : ((pt.islandId === 4) ? 29.5 : ((pt.islandId === 1) ? 34.5 : ((pt.islandId === 5) ? 30.5 : 36.5)));
-          if (Math.abs(lxP) <= halfW && lzP >= -14 && lzP <= maxZ && pierY >= h - 0.35) {
-            h = pierY;
-            surface = "asphalt";
-            waterDepth = 0;
-            mudDepth = 0;
-            onBridge = true;
-            break;
+          const iid = pt.islandId;
+          const halfW = (iid === 2) ? 22.0 : ((iid === 4) ? 7.5 : ((iid === 1 || iid === 5) ? 10.0 : 12.2));
+          const minZ  = (iid === 2) ? -16.0 : ((iid === 1 || iid === 4) ? -10.0 : -12.0);
+          const maxZ  = (iid === 2) ? 53.0 : ((iid === 4) ? 30.0 : ((iid === 1) ? 35.0 : ((iid === 5) ? 31.0 : 37.0)));
+
+          // 1) Main horizontal pier deck (extended +1m seaward to bridge seamlessly to ship ramps!)
+          if (Math.abs(lxP) <= halfW && lzP >= minZ && lzP <= maxZ) {
+            if (pierY >= h - 0.5) {
+              h = pierY; surface = "asphalt"; waterDepth = 0; mudDepth = 0; onBridge = true;
+              break;
+            }
+          }
+          // 2) Smooth sloped landward approach ramp (16m long) so cars climb cleanly onto the pier!
+          if (Math.abs(lxP) <= halfW && lzP < minZ && lzP >= minZ - 16.0) {
+            const u = 1.0 - (minZ - lzP) / 16.0;
+            const rampH = h * (1.0 - u) + pierY * u;
+            if (rampH >= h - 0.25) {
+              h = rampH; surface = "asphalt"; waterDepth = 0; mudDepth = 0; onBridge = true;
+              break;
+            }
+          }
+          // 3) Solid driveable side boat launch ramp!
+          const rX = (iid === 2) ? 27.0 : ((iid === 4) ? 11.5 : ((iid === 1) ? 14.5 : ((iid === 5) ? 13.5 : 16.5)));
+          const rW = (iid === 2) ? 7.5 : 5.5;
+          const rZ0 = (iid === 2) ? 12.0 : 5.0;
+          const rZ1 = (iid === 2) ? 36.0 : 28.0;
+          if (Math.abs(lxP - rX) <= rW && lzP >= rZ0 && lzP <= rZ1) {
+            const u = (lzP - rZ0) / (rZ1 - rZ0);
+            const launchH = pierY * (1.0 - u) + (seaL - 0.6) * u;
+            if (launchH >= h - 0.5) {
+              h = launchH; surface = "asphalt"; waterDepth = Math.max(0, seaL - h); mudDepth = 0; onBridge = true;
+              break;
+            }
           }
         }
       }

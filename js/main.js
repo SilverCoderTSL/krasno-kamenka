@@ -424,7 +424,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.4.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v15.4.2 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -1712,6 +1712,7 @@ KK.Game = class Game {
       this.money -= cost;
       const vs = this.vehicle.vState;
       for (const pid of Object.keys(KK.PARTS_CATALOG)) vs.parts[pid].hp = 100;
+      vs.burnedOut = false; if ((vs.fuel || 0) < 25) vs.fuel = 100;
       vs.health.mudClog = 0; vs.health.tieRodBias = 0; vs.health.tires = 100; vs.health.body = 100;
       vs.health.headlightL = 100; vs.health.headlightR = 100; vs.health.lightbar = 100; vs.health.taillightL = 100; vs.health.taillightR = 100;
       for (let i = 0; i < vs.blownTires.length; i++) { vs.blownTires[i] = false; vs.tiresHP[i] = 100; }
@@ -1754,6 +1755,7 @@ KK.Game = class Game {
     const vs = this.vehicle.vState, p = vs.parts;
     this.audio.playCash();
     if (part === "engine") {
+      if (vs.burnedOut) { vs.burnedOut = false; vs.fuel = Math.max(vs.fuel || 0, 28); vs.health.body = Math.max(vs.health.body || 4, 45); }
       this.vehicle.hydrolocked = false; this.vehicle.engineRunning = true;
       for (const id of ["airFilter", "fuelRails", "fuelInjectors", "sparkPlugs", "pistons", "crankshaft", "camshaft", "headGasket"]) {
         p[id].hp = Math.max(p[id].hp, 65);
@@ -2137,7 +2139,8 @@ KK.Game = class Game {
     this.vehicle.coolantTemp = 82;
     this.audio.playWrench();
     this._saveProgress(true);
-    this.ui.toast(`SERVICED AT ${ownerLabel} SUPPORT TRAILER! 100% Fuel, Fresh Tires, Spares, 6 Flares & 90% Field Repair!`);
+    this.vehicle.vState.burnedOut = false;
+        this.ui.toast(`SERVICED AT ${ownerLabel} SUPPORT TRAILER! 100% Fuel, Fresh Tires, Spares, 6 Flares & 90% Field Repair!`);
   }
 
   findNearbyBlownWheel(gx, gz, maxDist = 2.6) {
@@ -3182,7 +3185,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.4.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v15.4.2.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     const ab = this.boats.activeBoat;
