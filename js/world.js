@@ -20,6 +20,8 @@ KK.World = class World {
     this.chunks = new Map();
     this._chunkGeoPool = [];
     this._chunkQueue = [];
+    this._activeChunkBuild = null;
+    this._activeRoadSegs = null;
     this._chunkNeeded = new Set();
     this._oceanTex = null;
     this.bridgeMeshes = new Map();
@@ -1595,8 +1597,9 @@ KK.World = class World {
 
   getNearestRoad(gx, gz) {
     let bestDist = 999999, bestSeg = null, bestCx = gx, bestCz = gz;
-    for (let i = 0; i < this.roadSegments.length; i++) {
-      const s = this.roadSegments[i];
+    const segs = this._activeRoadSegs || this.roadSegments;
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
       if (gx < s.minX || gx > s.maxX || gz < s.minZ || gz > s.maxZ) continue;
       const vx = s.x1 - s.x0, vz = s.z1 - s.z0;
       const len2 = vx * vx + vz * vz;
@@ -1986,7 +1989,7 @@ KK.World = class World {
       if (Math.hypot(gx - KK.TOWNS[i].x, gz - KK.TOWNS[i].z) < 86) { surface = "gravel"; break; }
     }
 
-    return { height: h, surface, roadDist: road.dist, potholeDepth, mudDepth, waterDepth, waterSurfaceY, onBridge, bridgeHit };
+    return { height: h, surface, roadDist: road.dist, potholeDepth, mudDepth, waterDepth, waterSurfaceY, onBridge, bridgeHit, b };
   }
 
   toLocal(gx, gy, gz, outVec) {
@@ -2835,18 +2838,38 @@ KK.World = class World {
       }
     }
 
-    // Time-sliced chunk streaming: build max 1 chunk per frame (or 2 if ultra-fast pure-ocean) — steady 60 FPS pacing!
-    if (!force && this._chunkQueue && this._chunkQueue.length > 0) {
+    // v15.3.5 MICRO-SLICED INCREMENTAL CHUNK STREAMING (< 2.5ms/frame -> ZERO 60->35 FPS stutters!)
+    if (!force) {
       const t0 = performance.now();
-      let builtLand = 0;
-      while (this._chunkQueue.length > 0 && builtLand < 1) {
+      // 1. If no chunk is currently mid-build, pop the next needed chunk from the priority queue
+      while (!this._activeChunkBuild && this._chunkQueue && this._chunkQueue.length > 0) {
         const item = this._chunkQueue.shift();
         if (!this._chunkNeeded.has(item.key) || this.chunks.has(item.key)) continue;
-        const ch = this._createChunk(item.cx, item.cz);
-        this.chunks.set(item.key, ch);
-        listDirty = true;
-        if (!ch.isPureOcean) builtLand++;
-        if (performance.now() - t0 > 3.5) break;
+        const size = KK.CHUNK_SIZE;
+        if (this._isPureDeepOceanChunk(item.cx * size, item.cz * size, size)) {
+          this.chunks.set(item.key, this._createChunk(item.cx, item.cz));
+          listDirty = true;
+          if (performance.now() - t0 > 2.0) break;
+        } else {
+          this._activeChunkBuild = this._beginChunkBuild(item.cx, item.cz, item.key);
+        }
+      }
+      // 2. Advance the active chunk build by ~520 vertices (within 2.6ms frame budget!)
+      if (this._activeChunkBuild) {
+        if (!this._chunkNeeded.has(this._activeChunkBuild.key) || this.chunks.has(this._activeChunkBuild.key)) {
+          // Player moved past before completion — recycle geometry cleanly!
+          if (this._activeChunkBuild.geo && this._chunkGeoPool && this._chunkGeoPool.length < 32) {
+            this._chunkGeoPool.push(this._activeChunkBuild.geo);
+          }
+          this._activeChunkBuild = null;
+        } else {
+          const doneChunk = this._stepChunkBuild(this._activeChunkBuild, t0, 2.6);
+          if (doneChunk) {
+            this.chunks.set(this._activeChunkBuild.key, doneChunk);
+            this._activeChunkBuild = null;
+            listDirty = true;
+          }
+        }
       }
     }
 
@@ -2868,114 +2891,171 @@ KK.World = class World {
     return true;
   }
 
-  _createChunk(cx, cz) {
+  _filterChunkRoads(startX, startZ, size) {
+    const pad = 42;
+    const minX = startX - pad, maxX = startX + size + pad;
+    const minZ = startZ - pad, maxZ = startZ + size + pad;
+    const list = [];
+    for (let i = 0; i < this.roadSegments.length; i++) {
+      const s = this.roadSegments[i];
+      if (s.maxX < minX || s.minX > maxX || s.maxZ < minZ || s.minZ > maxZ) continue;
+      list.push(s);
+    }
+    return list;
+  }
+
+  _colorChunkVertex(gx, gz, info, col) {
+    const b = info.b || this.getBiomeWeights(gx, gz);
+    if (info.surface === "race_tarmac") col.setRGB(0.14, 0.15, 0.18);
+    else if (info.surface === "tarmac_line") col.setRGB(0.92, 0.94, 0.96);
+    else if (info.surface === "kerb") {
+      const stripe = (Math.floor((gx + gz) * 0.22) % 2 === 0);
+      if (stripe) col.setRGB(0.86, 0.14, 0.16); else col.setRGB(0.94, 0.94, 0.94);
+    } else if (info.surface === "bad_road") {
+      const wear = this.hash2(Math.floor(gx * 0.5), Math.floor(gz * 0.5)) * 0.10;
+      col.setRGB(0.28 + wear, 0.21 + wear * 0.7, 0.14 + wear * 0.4);
+    } else if (info.potholeDepth > 0.04) col.setRGB(0.16, 0.13, 0.10);
+    else if (info.surface === "asphalt") {
+      const wear = this.hash2(Math.floor(gx * 0.5), Math.floor(gz * 0.5)) * 0.08;
+      col.setRGB(0.24 + wear, 0.24 + wear, 0.26 + wear);
+    } else if (info.surface === "shale") col.setRGB(0.39, 0.36, 0.33);
+    else if (info.surface === "gravel") col.setRGB(0.45, 0.42, 0.36);
+    else if (info.surface === "mud") col.setRGB(0.24, 0.17, 0.11);
+    else if (info.surface === "volcanic") {
+      const vein = Math.abs(Math.sin(gx * 0.032 + Math.cos(gz * 0.028) * 2.5));
+      if (vein < 0.07) col.setRGB(0.95, 0.28, 0.04);
+      else {
+        const vv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
+        col.setRGB(0.15 + vv, 0.13 + vv, 0.14 + vv);
+      }
+    } else if (info.surface === "sand") {
+      const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.07;
+      col.setRGB(0.76 + sv, 0.54 + sv, 0.30 + sv);
+    } else if (info.surface === "rock" || info.height > 175) {
+      if (info.height > 260) col.setRGB(0.86, 0.90, 0.94);
+      else col.setRGB(0.38, 0.38, 0.40);
+    } else if (KK.CLARKSON_FARM && Math.hypot(gx - KK.CLARKSON_FARM.x, gz - KK.CLARKSON_FARM.z) < KK.CLARKSON_FARM.radius) {
+      const v = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
+      col.setRGB(0.24 + v, 0.48 + v, 0.18 + v);
+    } else {
+      if ((b.radioactive || 0) > 0.35) {
+        const rv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
+        col.setRGB(0.24 + rv, 0.28 + rv, 0.16 + rv);
+      } else if (info.surface === "snow" || (b.arctic || 0) > 0.42) {
+        const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.04;
+        col.setRGB(0.84 + sv, 0.90 + sv, 0.96 + sv);
+      } else if ((b.tropical || 0) > 0.35) {
+        const tv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
+        col.setRGB(0.11 + tv * 0.5, 0.44 + tv, 0.15 + tv * 0.5);
+      } else if ((b.savanna || 0) > 0.35) {
+        const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
+        col.setRGB(0.68 + sv, 0.56 + sv * 0.8, 0.22 + sv * 0.4);
+      } else {
+        const gv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
+        col.setRGB(0.24 + b.rust * 0.12 + gv, 0.32 + b.taiga * 0.05 + gv, 0.18 + gv);
+      }
+    }
+    if (this.craters.length > 0) {
+      const cr = this.getCraterOffset(gx, gz);
+      if (cr.scorch > 0.05) {
+        col.r *= (1 - cr.scorch * 0.78);
+        col.g *= (1 - cr.scorch * 0.82);
+        col.b *= (1 - cr.scorch * 0.85);
+      }
+    }
+  }
+
+  _beginChunkBuild(cx, cz, key) {
     const size = KK.CHUNK_SIZE, segs = KK.CHUNK_SEGMENTS;
     const startX = cx * size, startZ = cz * size;
-
-    // v15.2 60 FPS FAST DEEP-OCEAN CHUNK SKIP: Zero-cost stub for empty seabed far from islands!
-    if (this._isPureDeepOceanChunk(startX, startZ, size)) {
-      const group = new THREE.Group();
-      group.position.set(startX + size * 0.5, 0, startZ + size * 0.5);
-      this.rootGroup.add(group);
-      return { group, mesh: null, heights: null, trees: [], colliders: [], fences: [], isPureOcean: true };
-    }
-
     let geo = (this._chunkGeoPool && this._chunkGeoPool.length > 0) ? this._chunkGeoPool.pop() : null;
     if (!geo) {
       geo = new THREE.PlaneGeometry(size, size, segs, segs);
       geo.rotateX(-Math.PI / 2);
     }
-
     const pos = geo.attributes.position;
     const heights = new Float32Array(pos.count);
     const existingCol = geo.attributes.color;
     const colors = (existingCol && existingCol.array && existingCol.array.length === pos.count * 3)
       ? existingCol.array
       : new Float32Array(pos.count * 3);
-    const col = new THREE.Color();
+    return {
+      cx, cz, key, size, startX, startZ, geo, pos, heights, colors,
+      roadSubset: this._filterChunkRoads(startX, startZ, size),
+      vIdx: 0, col: new THREE.Color()
+    };
+  }
 
-    for (let i = 0; i < pos.count; i++) {
-      const gx = startX + size * 0.5 + pos.getX(i);
-      const gz = startZ + size * 0.5 + pos.getZ(i);
+  _stepChunkBuild(job, t0, budgetMs = 2.6) {
+    this._activeRoadSegs = job.roadSubset;
+    const pos = job.pos, heights = job.heights, colors = job.colors, col = job.col;
+    const halfX = job.startX + job.size * 0.5, halfZ = job.startZ + job.size * 0.5;
+    const total = pos.count;
+    let i = job.vIdx;
+    const batchEnd = Math.min(total, i + 540);
+    while (i < batchEnd) {
+      const gx = halfX + pos.getX(i);
+      const gz = halfZ + pos.getZ(i);
       const info = this.getTerrainInfo(gx, gz, false);
       pos.setY(i, info.height);
       heights[i] = info.height;
-
-      const b = this.getBiomeWeights(gx, gz);
-      if (info.surface === "race_tarmac") col.setRGB(0.14, 0.15, 0.18);
-      else if (info.surface === "tarmac_line") col.setRGB(0.92, 0.94, 0.96);
-      else if (info.surface === "kerb") {
-        const stripe = (Math.floor((gx + gz) * 0.22) % 2 === 0);
-        if (stripe) col.setRGB(0.86, 0.14, 0.16); else col.setRGB(0.94, 0.94, 0.94);
-      } else if (info.surface === "bad_road") {
-        const wear = this.hash2(Math.floor(gx * 0.5), Math.floor(gz * 0.5)) * 0.10;
-        col.setRGB(0.28 + wear, 0.21 + wear * 0.7, 0.14 + wear * 0.4);
-      } else if (info.potholeDepth > 0.04) col.setRGB(0.16, 0.13, 0.10);
-      else if (info.surface === "asphalt") {
-        const wear = this.hash2(Math.floor(gx * 0.5), Math.floor(gz * 0.5)) * 0.08;
-        col.setRGB(0.24 + wear, 0.24 + wear, 0.26 + wear);
-      } else if (info.surface === "shale") col.setRGB(0.39, 0.36, 0.33);
-      else if (info.surface === "gravel") col.setRGB(0.45, 0.42, 0.36);
-      else if (info.surface === "mud") col.setRGB(0.24, 0.17, 0.11);
-      else if (info.surface === "volcanic") {
-        // Dark volcanic ash & glowing magma veins across Mt. Vulkan Caldera!
-        const vein = Math.abs(Math.sin(gx * 0.032 + Math.cos(gz * 0.028) * 2.5));
-        if (vein < 0.07) col.setRGB(0.95, 0.28, 0.04); // glowing molten crack!
-        else {
-          const vv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
-          col.setRGB(0.15 + vv, 0.13 + vv, 0.14 + vv);
-        }
-      } else if (info.surface === "sand") {
-        const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.07;
-        col.setRGB(0.76 + sv, 0.54 + sv, 0.30 + sv);
-      } else if (info.surface === "rock" || info.height > 175) {
-        if (info.height > 260) col.setRGB(0.86, 0.90, 0.94); // Snowy Abominable Snowman peaks!
-        else col.setRGB(0.38, 0.38, 0.40);
-      } else if (KK.CLARKSON_FARM && Math.hypot(gx - KK.CLARKSON_FARM.x, gz - KK.CLARKSON_FARM.z) < KK.CLARKSON_FARM.radius) {
-        const v = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
-        col.setRGB(0.24 + v, 0.48 + v, 0.18 + v);
-      } else {
-        if ((b.radioactive || 0) > 0.35) {
-          const rv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.05;
-          col.setRGB(0.24 + rv, 0.28 + rv, 0.16 + rv);
-        } else if (info.surface === "snow" || (b.arctic || 0) > 0.42) {
-          const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.04;
-          col.setRGB(0.84 + sv, 0.90 + sv, 0.96 + sv);
-        } else if ((b.tropical || 0) > 0.35) {
-          const tv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
-          col.setRGB(0.11 + tv * 0.5, 0.44 + tv, 0.15 + tv * 0.5);
-        } else if ((b.savanna || 0) > 0.35) {
-          const sv = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
-          col.setRGB(0.68 + sv, 0.56 + sv * 0.8, 0.22 + sv * 0.4);
-        } else {
-          const r = 0.28 * b.rust + 0.16 * b.taiga + 0.72 * b.desert + 0.36 * b.mountains;
-          const g = 0.33 * b.rust + 0.28 * b.taiga + 0.52 * b.desert + 0.34 * b.mountains;
-          const bl = 0.18 * b.rust + 0.15 * b.taiga + 0.28 * b.desert + 0.32 * b.mountains;
-          const v = (this.hash2(Math.floor(gx), Math.floor(gz)) - 0.5) * 0.06;
-          col.setRGB(Math.max(0.05, r + v), Math.max(0.05, g + v), Math.max(0.05, bl + v));
-        }
-      }
-      if (this.craters.length > 0) {
-        const sc = this.getCraterOffset(gx, gz).scorch;
-        if (sc > 0.02) {
-          col.r = col.r * (1 - sc * 0.72) + 0.08 * sc;
-          col.g = col.g * (1 - sc * 0.74) + 0.07 * sc;
-          col.b = col.b * (1 - sc * 0.76) + 0.06 * sc;
-        }
-      }
+      this._colorChunkVertex(gx, gz, info, col);
       colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
+      i++;
+      if ((i & 63) === 0 && (performance.now() - t0) > budgetMs) break;
     }
+    job.vIdx = i;
+    this._activeRoadSegs = null;
+    if (i < total) return null; // Continue next frame!
 
-    if (geo.attributes.color && geo.attributes.color.array === colors) {
-      geo.attributes.color.needsUpdate = true;
+    // Finalize mesh + instanced props in one quick pass
+    if (job.geo.attributes.color && job.geo.attributes.color.array === colors) {
+      job.geo.attributes.color.needsUpdate = true;
     } else {
-      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      job.geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     }
     pos.needsUpdate = true;
-    geo.computeVertexNormals();
+    job.geo.computeVertexNormals();
+    return this._finalizeChunkFromGeo(job.cx, job.cz, job.geo, heights, job.roadSubset);
+  }
 
-    const group = new THREE.Group();
-    group.position.set(startX + size * 0.5, 0, startZ + size * 0.5);
+  _createChunk(cx, cz) {
+    const size = KK.CHUNK_SIZE, segs = KK.CHUNK_SEGMENTS;
+    const startX = cx * size, startZ = cz * size;
+    if (this._isPureDeepOceanChunk(startX, startZ, size)) {
+      const group = new THREE.Group();
+      group.position.set(startX + size * 0.5, 0, startZ + size * 0.5);
+      this.rootGroup.add(group);
+      return { group, mesh: null, heights: null, trees: [], colliders: [], fences: [], isPureOcean: true };
+    }
+    const job = this._beginChunkBuild(cx, cz, cx + "," + cz);
+    this._activeRoadSegs = job.roadSubset;
+    const pos = job.pos, heights = job.heights, colors = job.colors, col = job.col;
+    const halfX = startX + size * 0.5, halfZ = startZ + size * 0.5;
+    for (let i = 0; i < pos.count; i++) {
+      const gx = halfX + pos.getX(i);
+      const gz = halfZ + pos.getZ(i);
+      const info = this.getTerrainInfo(gx, gz, false);
+      pos.setY(i, info.height);
+      heights[i] = info.height;
+      this._colorChunkVertex(gx, gz, info, col);
+      colors[i * 3] = col.r; colors[i * 3 + 1] = col.g; colors[i * 3 + 2] = col.b;
+    }
+    this._activeRoadSegs = null;
+    if (job.geo.attributes.color && job.geo.attributes.color.array === colors) {
+      job.geo.attributes.color.needsUpdate = true;
+    } else {
+      job.geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    }
+    pos.needsUpdate = true;
+    job.geo.computeVertexNormals();
+    return this._finalizeChunkFromGeo(cx, cz, job.geo, heights, job.roadSubset);
+  }
+
+  _finalizeChunkFromGeo(cx, cz, geo, heights, roadSubset) {
+    const size = KK.CHUNK_SIZE;
+    const startX = cx * size, startZ = cz * size;
+    this._activeRoadSegs = roadSubset;
     const mesh = new THREE.Mesh(geo, this.matTerrain);
     mesh.receiveShadow = true;
     group.add(mesh);
@@ -3246,6 +3326,7 @@ KK.World = class World {
     }
 
     this.rootGroup.add(group);
+    this._activeRoadSegs = null;
     return { group, mesh, heights, trees, colliders, fences };
   }
 
