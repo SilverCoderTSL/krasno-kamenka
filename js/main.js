@@ -145,6 +145,7 @@ KK.Game = class Game {
     this.boatCamMode = 0;
     this._boatCamSmoothY = null; this.camOrbitYaw = 0; this.camOrbitPitch = 0.24;
     this.isDraggingMouse = false; this.camPosSmooth = new THREE.Vector3(-8, 6, 0);
+    this._camOffsetSmooth = new THREE.Vector3(0, 3.2, -8.2);
     this.keys = {};
     this._bindInputs();
     this.ui = new KK.UIManager(this);
@@ -421,7 +422,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.3.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v15.3.4 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -1996,13 +1997,21 @@ KK.Game = class Game {
       KK.CHUNK_RADIUS = 2;
       this.setParticleQuality("low");
     } else if (p === "med") {
-      this.renderer.setPixelRatio(Math.min(dpr, 1.35));
+      this.renderer.setPixelRatio(Math.min(dpr, 1.0));
       this.renderer.shadowMap.enabled = true;
+      if (this.weather && this.weather.sunLight && this.weather.sunLight.shadow) {
+        this.weather.sunLight.shadow.mapSize.set(1024, 1024);
+        if (this.weather.sunLight.shadow.map) { this.weather.sunLight.shadow.map.dispose(); this.weather.sunLight.shadow.map = null; }
+      }
       KK.CHUNK_RADIUS = 3;
       this.setParticleQuality("med");
     } else {
       this.renderer.setPixelRatio(Math.min(dpr, 2.0));
       this.renderer.shadowMap.enabled = true;
+      if (this.weather && this.weather.sunLight && this.weather.sunLight.shadow) {
+        this.weather.sunLight.shadow.mapSize.set(2048, 2048);
+        if (this.weather.sunLight.shadow.map) { this.weather.sunLight.shadow.map.dispose(); this.weather.sunLight.shadow.map = null; }
+      }
       KK.CHUNK_RADIUS = 3;
       this.setParticleQuality("high");
     }
@@ -2015,7 +2024,7 @@ KK.Game = class Game {
     }
     if (!silent) {
       this.ui.toast(`Graphics Preset: ${p.toUpperCase()} (PixelRatio ${this.renderer.getPixelRatio().toFixed(2)} • Shadows ${this.renderer.shadowMap.enabled ? "ON" : "OFF"} • Radius ${KK.CHUNK_RADIUS})`);
-      if (this.ui.activeModal === "env") this.ui.renderEnvAdmin();
+      if (this.ui.activeModal === "env" && this.ui.renderEnvControls) this.ui.renderEnvControls();
     }
   }
 
@@ -4618,14 +4627,20 @@ KK.Game = class Game {
     const baseYaw = Math.atan2(fwd.x, fwd.z) + this.camOrbitYaw;
     const elev = this.camOrbitPitch;
     const horizDist = Math.cos(elev) * baseRadius;
-    const desired = new THREE.Vector3(
-      focusLocal.x - Math.sin(baseYaw) * horizDist,
-      focusLocal.y + 1.75 + Math.sin(elev) * baseRadius,
-      focusLocal.z - Math.cos(baseYaw) * horizDist
-    );
-    const groundY = this.world.getTerrainInfo(desired.x + this.world.originX, desired.z + this.world.originZ, false).height + 0.65;
-    if (desired.y < groundY) desired.y = groundY;
-    this.camPosSmooth.lerp(desired, Math.min(1, dt * 8.5));
+    const desiredOffX = -Math.sin(baseYaw) * horizDist;
+    const desiredOffY = 1.75 + Math.sin(elev) * baseRadius;
+    const desiredOffZ = -Math.cos(baseYaw) * horizDist;
+    const smoothAlpha = 1.0 - Math.exp(-10.5 * dt);
+    this._camOffsetSmooth.x += (desiredOffX - this._camOffsetSmooth.x) * smoothAlpha;
+    this._camOffsetSmooth.y += (desiredOffY - this._camOffsetSmooth.y) * smoothAlpha;
+    this._camOffsetSmooth.z += (desiredOffZ - this._camOffsetSmooth.z) * smoothAlpha;
+
+    let camX = focusLocal.x + this._camOffsetSmooth.x;
+    let camY = focusLocal.y + this._camOffsetSmooth.y;
+    let camZ = focusLocal.z + this._camOffsetSmooth.z;
+    const groundY = this.world.getTerrainInfo(camX + this.world.originX, camZ + this.world.originZ, false).height + 0.65;
+    if (camY < groundY) camY = groundY;
+    this.camPosSmooth.set(camX, camY, camZ);
     this.camera.position.copy(this.camPosSmooth);
     if (this.cameraShake > 0.008) {
       const sh = this.cameraShake * 0.42;

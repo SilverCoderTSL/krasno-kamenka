@@ -2835,17 +2835,18 @@ KK.World = class World {
       }
     }
 
-    // Time-sliced chunk streaming: build max 2 chunks (or 5.0ms budget) per frame — ZERO 300 km/h freezes!
+    // Time-sliced chunk streaming: build max 1 chunk per frame (or 2 if ultra-fast pure-ocean) — steady 60 FPS pacing!
     if (!force && this._chunkQueue && this._chunkQueue.length > 0) {
       const t0 = performance.now();
-      let built = 0;
-      while (this._chunkQueue.length > 0 && built < 2) {
+      let builtLand = 0;
+      while (this._chunkQueue.length > 0 && builtLand < 1) {
         const item = this._chunkQueue.shift();
         if (!this._chunkNeeded.has(item.key) || this.chunks.has(item.key)) continue;
-        this.chunks.set(item.key, this._createChunk(item.cx, item.cz));
+        const ch = this._createChunk(item.cx, item.cz);
+        this.chunks.set(item.key, ch);
         listDirty = true;
-        built++;
-        if (performance.now() - t0 > 5.0) break;
+        if (!ch.isPureOcean) builtLand++;
+        if (performance.now() - t0 > 3.5) break;
       }
     }
 
