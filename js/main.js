@@ -424,7 +424,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.6.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v15.6.3 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -1006,7 +1006,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.6.1 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v15.6.3 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1030,7 +1030,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.6.1 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v15.6.3 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -3257,7 +3257,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.6.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v15.6.3.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {

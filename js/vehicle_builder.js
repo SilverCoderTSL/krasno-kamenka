@@ -547,12 +547,12 @@ KK.VehicleBuilder = {
       const scoop = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.11, 0.48), matPaint);
       scoop.position.set(0, 0.09, 0.72); hoodPivot.add(scoop);
 
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.80, 0.60, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.80, 0.60, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.29, 0.88); wind.rotation.x = -0.64; chassis.add(wind);
       for (const sx of [-1, 1]) {
-        const winF = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.68), matGlass);
+        const winF = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.68), matGlass); winF.visible = false;
         winF.position.set(sx * (w * 0.47), 1.29, 0.34); chassis.add(winF);
-        const winR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.64), matGlass);
+        const winR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.64), matGlass); winR.visible = false;
         winR.position.set(sx * (w * 0.47), 1.29, -0.44); chassis.add(winR);
         const step = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 1.88), matChrome);
         step.position.set(sx * (w * 0.52), 0.36, 0.06); chassis.add(step);
@@ -620,12 +620,12 @@ KK.VehicleBuilder = {
       scoopHole.position.set(0, 0.10, 0.86); hoodPivot.add(scoopHole);
 
       // Glass: raked front, rear, and 4-door side windows
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.64, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.64, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.20, 0.61); wind.rotation.x = -0.82; chassis.add(wind);
-      const rWind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, 0.60, 0.06), matGlass);
+      const rWind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, 0.60, 0.06), matGlass); rWind.visible = false;
       rWind.position.set(0, 1.19, -1.14); rWind.rotation.x = 0.86; chassis.add(rWind);
       for (const sx of [-1, 1]) {
-        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.36, 1.28), matGlass);
+        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.36, 1.28), matGlass); sg.visible = false;
         sg.position.set(sx * (w * 0.45), 1.18, -0.26); chassis.add(sg);
       }
 
@@ -693,12 +693,12 @@ KK.VehicleBuilder = {
       }
 
       // Glass
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.62, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.62, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.18, 0.61); wind.rotation.x = -0.80; chassis.add(wind);
-      const rWind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, 0.58, 0.06), matGlass);
+      const rWind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, 0.58, 0.06), matGlass); rWind.visible = false;
       rWind.position.set(0, 1.18, -1.13); rWind.rotation.x = 0.84; chassis.add(rWind);
       for (const sx of [-1, 1]) {
-        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.36, 1.28), matGlass);
+        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.36, 1.28), matGlass); sg.visible = false;
         sg.position.set(sx * (w * 0.46), 1.17, -0.26); chassis.add(sg);
       }
 
@@ -753,12 +753,12 @@ KK.VehicleBuilder = {
       }
 
       // Signature Blacked-Out "Floating Roof" Pillar Glass Greenhouse!
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.84, 0.64, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.84, 0.64, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.46, 0.82); wind.rotation.x = -0.48; chassis.add(wind);
-      const rGlass = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 0.58, 0.06), matGlass);
+      const rGlass = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 0.58, 0.06), matGlass); rGlass.visible = false;
       rGlass.position.set(0, 1.44, -2.28); rGlass.rotation.x = 0.38; chassis.add(rGlass);
       for (const sx of [-1, 1]) {
-        const fullGlass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.54, 2.75), matGlass);
+        const fullGlass = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.54, 2.75), matGlass); fullGlass.visible = false;
         fullGlass.position.set(sx * (w * 0.48), 1.44, -0.78); chassis.add(fullGlass);
         // Gloss black pillars (floating roof signature!)
         for (const pz of [0.10, -0.95]) {
@@ -813,10 +813,10 @@ KK.VehicleBuilder = {
       hoodPivot.position.set(0, 1.09, 1.06);
       const hoodPanel = new THREE.Mesh(new THREE.BoxGeometry(w * 0.72, 0.08, 1.52), matPaint);
       hoodPanel.position.set(0, 0.02, 0.76); hoodPivot.add(hoodPanel);
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.56, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.56, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.42, 0.99); wind.rotation.x = -0.25; chassis.add(wind);
       for (const sx of [-1, 1]) {
-        const sw = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.48, 0.86), matGlass);
+        const sw = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.48, 0.86), matGlass); sw.visible = false;
         sw.position.set(sx * (w * 0.46), 1.42, 0.34); chassis.add(sw);
       }
       const trayZ = -1.56, trayLen = 2.34, trayW = w * 1.05;
@@ -851,10 +851,10 @@ KK.VehicleBuilder = {
       chassis.add(this._extrudeSideProfile(s, 1.72, matPaint, 0.06, 0.07, cockpitCfg));
       const lowerBand = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.48, 4.18), matTrim);
       lowerBand.position.set(0, 0.64, -0.01); chassis.add(lowerBand);
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.62, 0.07), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.62, 0.07), matGlass); wind.visible = false;
       wind.position.set(0, 1.38, 1.97); wind.rotation.x = -0.50; chassis.add(wind);
       for (const sx of [-1, 1]) {
-        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.48, 3.25), matGlass);
+        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.48, 3.25), matGlass); sg.visible = false;
         sg.position.set(sx * 0.87, 1.44, -0.15); chassis.add(sg);
         const sky = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.05, 2.35), matGlass);
         sky.position.set(sx * 0.44, 1.98, -0.25); chassis.add(sky);
@@ -893,10 +893,10 @@ KK.VehicleBuilder = {
         const slot = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.22, 0.10), matMetal);
         slot.position.set(gx, 0.78, 1.77); chassis.add(slot);
       }
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.50, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.50, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.32, 0.62); wind.rotation.x = -0.26; chassis.add(wind);
       for (const sx of [-1, 1]) {
-        const winS = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 1.82), matGlass);
+        const winS = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 1.82), matGlass); winS.visible = false;
         winS.position.set(sx * 0.79, 1.32, -0.46); chassis.add(winS);
       }
       const spareTire = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.22, 16), matTire);
@@ -970,12 +970,12 @@ KK.VehicleBuilder = {
       }
 
       // Sleek Coupe Glass + Iconic Blacked-Out R35 A-Pillars + Side Fender Gill Vents
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.74, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.74, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.21, 0.55); wind.rotation.x = -0.92; chassis.add(wind);
-      const rWind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, 0.92, 0.06), matGlass);
+      const rWind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, 0.92, 0.06), matGlass); rWind.visible = false;
       rWind.position.set(0, 1.22, -1.26); rWind.rotation.x = 1.12; chassis.add(rWind);
       for (const sx of [-1, 1]) {
-        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 1.32), matGlass);
+        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.34, 1.32), matGlass); sg.visible = false;
         sg.position.set(sx * (w * 0.46), 1.18, -0.34); chassis.add(sg);
         const sideVent = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.24, 0.16), matCarbon);
         sideVent.position.set(sx * (w * 0.48), 0.76, 0.86); chassis.add(sideVent);
@@ -1168,12 +1168,12 @@ KK.VehicleBuilder = {
       const hood = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 0.08, 1.32), matPaint);
       hood.position.set(0, 0.02, 0.66); hoodPivot.add(hood);
 
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.80, 0.64, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.80, 0.64, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.36, 0.72); wind.rotation.x = -0.64; chassis.add(wind);
-      const rWin = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.56, 0.06), matGlass);
+      const rWin = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.56, 0.06), matGlass); rWin.visible = false;
       rWin.position.set(0, 1.38, -2.18); rWin.rotation.x = 0.45; chassis.add(rWin);
       for (const sx of [-1, 1]) {
-        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.46, 2.52), matGlass);
+        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.46, 2.52), matGlass); sg.visible = false;
         sg.position.set(sx * (w * 0.46), 1.36, -0.72); chassis.add(sg);
         const step = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.06, 2.15), matRubber);
         step.position.set(sx * (w * 0.50), 0.38, 0.02); chassis.add(step);
@@ -1238,10 +1238,10 @@ KK.VehicleBuilder = {
       const hood = new THREE.Mesh(new THREE.BoxGeometry(w * 0.84, 0.09, 1.40), matPaint);
       hood.position.set(0, 0.02, 0.70); hoodPivot.add(hood);
 
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 0.66, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 0.66, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.49, 0.83); wind.rotation.x = -0.46; chassis.add(wind);
       for (const sx of [-1, 1]) {
-        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.52, 2.86), matGlass);
+        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.52, 2.86), matGlass); sg.visible = false;
         sg.position.set(sx * (w * 0.47), 1.48, -0.82); chassis.add(sg);
         const step = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 2.38), matChrome);
         step.position.set(sx * (w * 0.52), 0.38, 0.02); chassis.add(step);
@@ -1493,12 +1493,12 @@ KK.VehicleBuilder = {
       hoodPivot.position.set(0, 0.95, 0.86);
       const hood = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.07, 1.06), matPaint);
       hood.position.set(0, 0.02, 0.53); hoodPivot.add(hood);
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.62, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.62, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.22, 0.60); wind.rotation.x = -0.76; chassis.add(wind);
-      const rWin = new THREE.Mesh(new THREE.BoxGeometry(w * 0.74, 0.50, 0.06), matGlass);
+      const rWin = new THREE.Mesh(new THREE.BoxGeometry(w * 0.74, 0.50, 0.06), matGlass); rWin.visible = false;
       rWin.position.set(0, 1.24, -1.69); rWin.rotation.x = 0.74; chassis.add(rWin);
       for (const sx of [-1, 1]) {
-        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.40, 1.72), matGlass);
+        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.40, 1.72), matGlass); sg.visible = false;
         sg.position.set(sx * (w * 0.45), 1.22, -0.54); chassis.add(sg);
       }
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
@@ -1537,10 +1537,10 @@ KK.VehicleBuilder = {
       hoodPivot.position.set(0, 1.11, 0.76);
       const hood = new THREE.Mesh(new THREE.BoxGeometry(w * 0.76, 0.09, 1.28), matPaint);
       hood.position.set(0, 0.02, 0.64); hoodPivot.add(hood);
-      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.58, 0.06), matGlass);
+      const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.58, 0.06), matGlass); wind.visible = false;
       wind.position.set(0, 1.44, 0.68); wind.rotation.x = -0.28; chassis.add(wind);
       for (const sx of [-1, 1]) {
-        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.46, 2.15), matGlass);
+        const sg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.46, 2.15), matGlass); sg.visible = false;
         sg.position.set(sx * (w * 0.44), 1.44, -0.68); chassis.add(sg);
       }
       const spT = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.28, 16), matTire);
@@ -2249,8 +2249,13 @@ KK.VehicleBuilder = {
         aPil.position.set(sx * 0.74, 1.17, 0.56); aPil.rotation.x = -0.98; aPil.rotation.z = sx * 0.24; chassis.add(aPil);
         const cPil = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.88, 0.16), matPaint);
         cPil.position.set(sx * 0.76, 1.17, -0.94); cPil.rotation.x = 1.04; cPil.rotation.z = sx * 0.28; chassis.add(cPil);
-        const sWin = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.38, 1.18), mat911Glass);
-        sWin.position.set(sx * 0.78, 1.15, -0.18); sWin.rotation.z = sx * 0.34; chassis.add(sWin);
+        const swGeo = new THREE.BufferGeometry();
+        swGeo.setAttribute("position", new THREE.Float32BufferAttribute([
+          sx * 0.85, 0.96,  0.90,  sx * 0.94, 0.99, -1.32,  sx * 0.63, 1.35, -0.58,
+          sx * 0.85, 0.96,  0.90,  sx * 0.63, 1.35, -0.58,  sx * 0.65, 1.37,  0.22
+        ], 3));
+        swGeo.computeVertexNormals();
+        chassis.add(new THREE.Mesh(swGeo, mat911Glass));
         const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.24, 0.76, 12), matPaint);
         pod.rotation.x = Math.PI / 2 - 0.14; pod.position.set(sx * 0.68, 0.82, 1.78); chassis.add(pod);
         const ring = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.024, 8, 16), matDrl);
@@ -2330,11 +2335,11 @@ KK.VehicleBuilder = {
 
       for (const sx of [-1, 1]) {
         for (let wz = 1.65; wz >= -2.55; wz -= 1.05) {
-          const pane = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.86, 0.92), matGlass);
+          const pane = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.86, 0.92), matGlass); pane.visible = false;
           pane.position.set(sx * (w * 0.48), 1.94, wz); chassis.add(pane);
         }
       }
-      const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.84, 0.06), matGlass);
+      const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.84, 0.06), matGlass); rearGlass.visible = false;
       rearGlass.position.set(0, 1.94, -3.45); chassis.add(rearGlass);
       for (let rz = 1.4; rz >= -2.2; rz -= 1.15) {
         for (const sx of [-0.56, 0.56]) {
@@ -4200,13 +4205,19 @@ KK.VehicleBuilder = {
           rib.rotation.x = ang; spinGroup.add(rib);
         }
       } else {
-        const tire = new THREE.Mesh(new THREE.CylinderGeometry(wRad, wRad, wWid, 20), matTire);
+        // v15.6.3 TRUE HOLLOW TIRE (openEnded=true + Sidewall Rings) so Open-Spoke Rims & Brake Discs are 100% Visible!
+        const tire = new THREE.Mesh(new THREE.CylinderGeometry(wRad, wRad, wWid, 20, 1, true), matTire);
         tire.rotation.z = Math.PI / 2; tire.castShadow = true; tireRubberGroup.add(tire);
         const brandMat = this._getTireSidewallMat(vState && vState.tireBrand);
-        const swRing = new THREE.Mesh(new THREE.RingGeometry(wRad * 0.56, wRad * 0.99, 20), brandMat);
+        const swRing = new THREE.Mesh(new THREE.RingGeometry(wRad * 0.56, wRad * 1.00, 20), brandMat);
         swRing.rotation.y = sideSign > 0 ? Math.PI / 2 : -Math.PI / 2;
-        swRing.position.x = sideSign * (wWid * 0.506);
+        swRing.position.x = sideSign * (wWid * 0.502);
         tireRubberGroup.add(swRing);
+        // Inner tire sidewall ring (keeps inside of tire closed while leaving the rim center completely open!)
+        const swInner = new THREE.Mesh(new THREE.RingGeometry(wRad * 0.56, wRad * 1.00, 20), matTire);
+        swInner.rotation.y = sideSign > 0 ? -Math.PI / 2 : Math.PI / 2;
+        swInner.position.x = -sideSign * (wWid * 0.50);
+        tireRubberGroup.add(swInner);
 
         const lugGeo = new THREE.BoxGeometry(wWid * 0.92, 0.048 * rScale, wRad * 0.19);
         for (let l = 0; l < 12; l++) {
@@ -4217,7 +4228,8 @@ KK.VehicleBuilder = {
         }
 
         // v15.6 OPEN-SPOKE CUSTOM RIMS + VISIBLE GLOWING BRAKE ROTOR DISC!
-        const innerBarrel = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.58, wRad * 0.58, wWid * 0.86, 16, 1, true), matRubber);
+        const matBarrelIn = matRubber.clone(); matBarrelIn.side = THREE.DoubleSide;
+        const innerBarrel = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.57, wRad * 0.57, wWid * 0.96, 16, 1, true), matBarrelIn);
         innerBarrel.rotation.z = Math.PI / 2; spinGroup.add(innerBarrel);
         const outerLip = new THREE.Mesh(new THREE.TorusGeometry(wRad * 0.56, 0.032 * rScale, 6, 18), matRim);
         outerLip.rotation.y = Math.PI / 2; outerLip.position.x = sideSign * (wWid * 0.44); spinGroup.add(outerLip);
@@ -4226,7 +4238,7 @@ KK.VehicleBuilder = {
 
         const rotorDisc = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.44, wRad * 0.44, 0.036, 16), matBrakeRotor);
         rotorDisc.rotation.z = Math.PI / 2;
-        rotorDisc.position.x = sideSign * (wWid * 0.14);
+        rotorDisc.position.x = sideSign * (wWid * 0.22);
         spinGroup.add(rotorDisc);
 
         const rimStyle = (vehicleId === "gtr_r35" || vehicleId === "supra" || vehicleId === "evo" || vehicleId === "wrx") ? "te37"
@@ -4238,14 +4250,14 @@ KK.VehicleBuilder = {
         for (let sp = 0; sp < spokeCnt; sp++) {
           const ang = (sp / spokeCnt) * Math.PI * 2;
           const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.038, wRad * 0.44, spokeW), matRim);
-          spoke.position.set(sideSign * (wWid * 0.36), Math.cos(ang) * (wRad * 0.30), Math.sin(ang) * (wRad * 0.30));
+          spoke.position.set(sideSign * (wWid * 0.41), Math.cos(ang) * (wRad * 0.32), Math.sin(ang) * (wRad * 0.32));
           spoke.rotation.x = ang + (rimStyle === "mesh" ? (sp % 2 === 0 ? 0.22 : -0.22) : 0);
           spinGroup.add(spoke);
         }
       }
 
       const caliper = new THREE.Mesh(new THREE.BoxGeometry(0.075, wRad * 0.26, wRad * 0.19), matBrake);
-      caliper.position.set(sideSign * (wWid * 0.16), 0.04, wRad * 0.34); camberPivot.add(caliper);
+      caliper.position.set(sideSign * (wWid * 0.24), 0.04, wRad * 0.34); camberPivot.add(caliper);
 
       const strutMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 1.0, 8), matSpring); root.add(strutMesh);
       const armMesh = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 1.0), matMetal); root.add(armMesh);

@@ -251,8 +251,8 @@ KK.CockpitBuilder = {
       // v15.6 FORM-FITTING TRAPEZOIDAL SIDE WINDOWS, WINDSHIELD & REAR GLASS!
       if (!this._matFormGlass) {
         this._matFormGlass = new THREE.MeshStandardMaterial({
-          color: 0x162b3b, roughness: 0.08, metalness: 0.45,
-          transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false
+          color: 0x4c7c9c, roughness: 0.08, metalness: 0.35,
+          transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false
         });
       }
       const makeQuad = (p0, p1, p2, p3) => {
