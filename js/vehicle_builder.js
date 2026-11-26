@@ -3772,6 +3772,7 @@ KK.VehicleBuilder = {
     spRear.position.set(0, 0.58, -halfLen - 0.006);
     chassis.add(spRear);
 
+    const exhaustTips = this._buildDynamicExhaust(chassis, vehicleId, vState, spec) || [];
     // v16.0 DYNAMIC MULTI-TIP BACKFIRE FLAMES (One flame cone per actual exhaust tip!)
     const flameGeo = new THREE.ConeGeometry(0.095, 0.48, 8);
     const flameMat = new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.92 });
@@ -3992,7 +3993,7 @@ KK.VehicleBuilder = {
     // ========================================================================
     const engineBay = this._buildEngineBay(vehicleId, vState, spec, hoodPivot);
     if (engineBay) chassis.add(engineBay);
-    const exhaustTips = this._buildDynamicExhaust(chassis, vehicleId, vState, spec) || [];
+    // v16.2.1 exhaustTips initialized earlier before flameMeshes!
 
     const xrayGroup = new THREE.Group();
     xrayGroup.visible = false;
