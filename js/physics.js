@@ -303,10 +303,10 @@ KK.VehiclePhysics = class VehiclePhysics {
     if (this.brakeHeat === undefined) this.brakeHeat = 0;
     if (this.braking && this.speedKmh > 22) {
       const heatRate = (0.28 + Math.min(1.5, this.speedKmh / 140)) * (handbrake ? 1.25 : 1.0);
-      this.brakeHeat = Math.min(1.0, this.brakeHeat + clampedDt * heatRate * 0.55);
+      this.brakeHeat = Math.min(1.0, this.brakeHeat + dt * heatRate * 0.55);
     } else {
       const coolRate = 0.14 + Math.min(0.35, this.speedKmh / 240);
-      this.brakeHeat = Math.max(0.0, this.brakeHeat - clampedDt * coolRate);
+      this.brakeHeat = Math.max(0.0, this.brakeHeat - dt * coolRate);
     }
     this.reversing = this.gear === -1;
 
