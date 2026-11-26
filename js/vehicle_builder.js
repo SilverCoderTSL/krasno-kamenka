@@ -345,19 +345,23 @@ KK.VehicleBuilder = {
     shape.lineTo(zFront, yBottom);
   },
 
-  // v16.4.1 RECESSED INNER WHEEL-WELL LINERS + TUCKED COILOVER SHOCK STRUTS (Aligned to exact carved arch!)
-  _addWheelWellLiners(chassis, spec, matLiner, yBottom = 0.36) {
+  // v16.5 RECESSED INNER WHEEL-WELL LINERS + TUCKED COILOVER SHOCK STRUTS
+  // Strictly clamped inside maxTopY & 0.26m depth so ZERO plane ever pokes into the boot or cabin!
+  _addWheelWellLiners(chassis, spec, matLiner, yBottom = 0.36, maxTopY = 0.96) {
     if (!this._matWellDark) {
       this._matWellDark = new THREE.MeshStandardMaterial({ color: 0x0c0e11, roughness: 0.96, metalness: 0.04, side: THREE.DoubleSide });
       this._matCoilSpring = new THREE.MeshStandardMaterial({ color: 0xd92626, roughness: 0.42, metalness: 0.35 });
     }
-    const rLiner = (spec.wheelRadius || 0.38) + 0.105;
-    const depth = 0.42;
+    const cy = yBottom + 0.04;
+    const rBase = (spec.wheelRadius || 0.38) + 0.11;
+    const rArch = Math.min(rBase, Math.max(0.28, maxTopY - cy));
+    const rLiner = Math.max(0.24, rArch - 0.018);
+    const depth = Math.min(0.27, spec.bodyWidth * 0.14);
     const archGeo = new THREE.CylinderGeometry(rLiner, rLiner, depth, 14, 1, true, 0, Math.PI);
     const backGeo = new THREE.CircleGeometry(rLiner, 14, 0, Math.PI);
-    const strutGeo = new THREE.CylinderGeometry(0.032, 0.032, rLiner * 0.82, 8);
-    const springGeo = new THREE.CylinderGeometry(0.056, 0.056, rLiner * 0.40, 8);
-    const cy = yBottom + 0.04;
+    const strutH = Math.max(0.18, rLiner * 0.72);
+    const strutGeo = new THREE.CylinderGeometry(0.028, 0.028, strutH, 8);
+    const springGeo = new THREE.CylinderGeometry(0.050, 0.050, strutH * 0.48, 8);
 
     for (const w of (spec.wheels || [])) {
       const side = w.x < 0 ? -1 : 1;
@@ -376,10 +380,10 @@ KK.VehicleBuilder = {
       chassis.add(back);
 
       const strut = new THREE.Mesh(strutGeo, matLiner || this._matWellDark);
-      strut.position.set(innerX + side * 0.09, cy + rLiner * 0.34, w.z);
+      strut.position.set(innerX + side * 0.075, cy + strutH * 0.48, w.z);
       chassis.add(strut);
       const spring = new THREE.Mesh(springGeo, this._matCoilSpring);
-      spring.position.set(innerX + side * 0.09, cy + rLiner * 0.44, w.z);
+      spring.position.set(innerX + side * 0.075, cy + strutH * 0.56, w.z);
       chassis.add(spring);
     }
   },
@@ -553,7 +557,7 @@ KK.VehicleBuilder = {
 
       // 1. Rounded Classic Loaf Body Extrusion (Hollow Cabin + Split Windshield!)
       const s = new THREE.Shape();
-      s.moveTo(-2.14, 0.42); s.lineTo(2.08, 0.42);
+      this._traceBottomWithWheelArches(s, -2.14, 2.08, 0.42, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.12));
       s.quadraticCurveTo(2.24, 0.72, 2.18, 1.18);
       s.quadraticCurveTo(2.10, 1.72, 1.82, 1.94);
       s.quadraticCurveTo(0.0, 2.06, -1.96, 1.94);
@@ -571,8 +575,8 @@ KK.VehicleBuilder = {
       chassis.add(this._buildFacetedMesh(noseV, noseF, matPaint, 0.30));
 
       // Stamped Soviet body-side horizontal beltline & triple corrugated lower ribs!
-      const skirt = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.22, 4.24), matRubber);
-      skirt.position.set(0, 0.45, -0.02); chassis.add(skirt);
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.20, 1.38), matRubber);
+      skirt.position.set(0, 0.45, 0.03); chassis.add(skirt);
       for (const sx of [-1, 1]) {
         for (const ry of [0.76, 0.92, 1.14]) {
           const rib = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.038, 4.16), ry === 1.14 ? matTrim : matPaint);
@@ -667,7 +671,8 @@ KK.VehicleBuilder = {
       const nose = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.34, 0.07), matPaint);
       nose.position.set(0, -0.17, 0.03); hoodPivot.add(nose);
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matRubber, 0.12);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.42, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.12));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matRubber, 0.12, 0.46);
       this._addMirrors(chassis, 0.97, 1.48, 1.72, matMetal, matRubber, 0.24);
     }
 
@@ -682,7 +687,7 @@ KK.VehicleBuilder = {
       const matDrl = new THREE.MeshBasicMaterial({ color: 0xeef8ff });
 
       const cabShape = new THREE.Shape();
-      cabShape.moveTo(-0.92, 0.42); cabShape.lineTo(2.50, 0.42);
+      this._traceBottomWithWheelArches(cabShape, -0.92, 2.50, 0.42, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.94));
       cabShape.quadraticCurveTo(2.62, 0.68, 2.50, 0.94);
       cabShape.lineTo(1.10, 1.01); cabShape.lineTo(0.62, 1.58);
       cabShape.quadraticCurveTo(-0.14, 1.66, -0.82, 1.58);
@@ -749,7 +754,8 @@ KK.VehicleBuilder = {
         brace.position.set(sx * (w * 0.39), 1.34, -1.36); brace.rotation.x = 0.72; chassis.add(brace);
       }
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matGunmetal, 0.17);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.42, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.94));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matGunmetal, 0.17, 0.46);
       this._addMirrors(chassis, w * 0.49, 1.24, 0.72, matRubber, matChrome, 0.22);
     }
 
@@ -825,7 +831,7 @@ KK.VehicleBuilder = {
         mf.position.set(wDef.x, 0.28, wDef.z - 0.44); chassis.add(mf);
       }
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addWheelWellLiners(chassis, spec, matMetal, 0.37);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.37, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.88));
       this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matPaint, 0.14, 0.41);
       this._addMirrors(chassis, w * 0.46, 1.10, 0.48, matRubber, matPaint, 0.18);
     }
@@ -840,8 +846,7 @@ KK.VehicleBuilder = {
       const matRedLogo = new THREE.MeshStandardMaterial({ color: 0xe61c24, roughness: 0.3, metalness: 0.3 });
 
       const s = new THREE.Shape();
-      s.moveTo(-2.22, 0.34);
-      s.lineTo(2.18, 0.34);
+      this._traceBottomWithWheelArches(s, -2.22, 2.18, 0.34, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.86));
       s.lineTo(2.30, 0.60);
       s.lineTo(2.18, 0.80);
       s.lineTo(0.86, 0.91);
@@ -906,7 +911,8 @@ KK.VehicleBuilder = {
       }
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matPaint, 0.13);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.34, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.86));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matPaint, 0.13, 0.38);
       this._addMirrors(chassis, w * 0.47, 1.09, 0.48, matCarbon, matPaint, 0.18);
     }
 
@@ -919,8 +925,7 @@ KK.VehicleBuilder = {
 
       // Iconic tall, poised L322 Range Rover silhouette with clamshell hood & floating greenhouse!
       const s = new THREE.Shape();
-      s.moveTo(-2.40, 0.42);
-      s.lineTo(2.38, 0.42);
+      this._traceBottomWithWheelArches(s, -2.40, 2.38, 0.42, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.06));
       s.quadraticCurveTo(2.50, 0.72, 2.42, 1.06);   // authoritative Range Rover nose
       s.lineTo(0.98, 1.12);                         // flat clamshell hood
       s.lineTo(0.62, 1.78);                         // tall commanding windshield
@@ -974,7 +979,8 @@ KK.VehicleBuilder = {
       }
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matPaint, 0.14);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.42, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.06));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matPaint, 0.14, 0.46);
       this._addMirrors(chassis, w * 0.50, 1.32, 0.68, matRubber, matChrome, 0.24);
     }
 
@@ -985,7 +991,7 @@ KK.VehicleBuilder = {
       plateText = "LC-79V8"; hlY = 0.82; hlZ = 2.66; hlSpread = 0.68;
       const w = spec.bodyWidth;
       const cabShape = new THREE.Shape();
-      cabShape.moveTo(-0.32, 0.46); cabShape.lineTo(2.58, 0.46); cabShape.lineTo(2.62, 1.02);
+      this._traceBottomWithWheelArches(cabShape, -0.32, 2.58, 0.46, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.02)); cabShape.lineTo(2.62, 1.02);
       cabShape.lineTo(1.06, 1.08); cabShape.lineTo(0.88, 1.74); cabShape.lineTo(-0.28, 1.74); cabShape.closePath();
       chassis.add(this._extrudeSideProfile(cabShape, w - 0.14, matPaint, 0.06, 0.07, cockpitCfg));
 
@@ -1028,7 +1034,8 @@ KK.VehicleBuilder = {
         post.position.set(sx * (trayW * 0.44), 1.32, -0.40); chassis.add(post);
       }
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, false) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matRubber, 0.18);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.46, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.02));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matRubber, 0.18, 0.5);
       this._addMirrors(chassis, w * 0.48, 1.42, 0.78, matChrome, matChrome, 0.28);
     }
 
@@ -1038,7 +1045,7 @@ KK.VehicleBuilder = {
     else if (vehicleId === "delica") {
       plateText = "L300-4X4"; hlY = 0.84; hlZ = 2.16; hlSpread = 0.56;
       const s = new THREE.Shape();
-      s.moveTo(-2.08, 0.42); s.lineTo(2.06, 0.42); s.lineTo(2.14, 0.96);
+      this._traceBottomWithWheelArches(s, -2.08, 2.06, 0.42, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.06)); s.lineTo(2.14, 0.96);
       s.lineTo(1.76, 1.66); s.quadraticCurveTo(1.56, 1.94, 1.20, 1.94);
       s.lineTo(-1.88, 1.94); s.quadraticCurveTo(-2.10, 1.88, -2.10, 1.56); s.closePath();
       chassis.add(this._extrudeSideProfile(s, 1.72, matPaint, 0.06, 0.07, cockpitCfg));
@@ -1062,7 +1069,8 @@ KK.VehicleBuilder = {
       const hatch = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.30, 0.08), matTrim);
       hatch.position.set(0, -0.15, 0.04); hoodPivot.add(hatch);
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matTrim, 0.15);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.42, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.06));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matTrim, 0.15, 0.46);
       this._addMirrors(chassis, 0.88, 1.34, 1.66, matChrome, matRubber, 0.22);
     }
 
@@ -1072,7 +1080,7 @@ KK.VehicleBuilder = {
     else if (vehicleId === "jimny") {
       plateText = "JB74-4X4"; roundHL = true; hlY = 0.78; hlZ = 1.78; hlSpread = 0.52;
       const s = new THREE.Shape();
-      s.moveTo(-1.68, 0.44); s.lineTo(1.70, 0.44); s.lineTo(1.74, 0.96);
+      this._traceBottomWithWheelArches(s, -1.68, 1.70, 0.44, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.96)); s.lineTo(1.74, 0.96);
       s.lineTo(0.68, 1.02); s.lineTo(0.52, 1.62); s.lineTo(-1.58, 1.62); s.lineTo(-1.70, 1.02); s.closePath();
       chassis.add(this._extrudeSideProfile(s, 1.58, matPaint, 0.06, 0.06, cockpitCfg));
       const blackRoof = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.12, 2.18), matRubber);
@@ -1098,7 +1106,8 @@ KK.VehicleBuilder = {
       const hood = new THREE.Mesh(new THREE.BoxGeometry(1.50, 0.08, 1.04), matPaint);
       hood.position.set(0, 0.02, 0.52); hoodPivot.add(hood);
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matRubber, 0.18);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.44, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.96));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matRubber, 0.18, 0.48);
       this._addMirrors(chassis, 0.80, 1.24, 0.52, matRubber, matRubber, 0.22);
     }
 
@@ -1123,25 +1132,15 @@ KK.VehicleBuilder = {
       s.lineTo(-2.28, 1.00);
       s.lineTo(-2.35, 0.46);
       s.closePath();
-      chassis.add(this._extrudeSideProfile(s, w - 0.14, matPaint, 0.05, 0.06, cockpitCfg, matCarbon));
+      chassis.add(this._extrudeSideProfile(s, w - 0.05, matPaint, 0.05, 0.06, cockpitCfg, matCarbon));
 
       for (const sx of [-1, 1]) {
         const hw = w * 0.5;
-        // v16.4 Widebody haunches arched cleanly over front (z=1.42) & rear (z=-1.36) wheel wells!
-        const hV = [
-          [sx * (hw - 0.10), 0.38,  2.26], [sx * (hw + 0.02), 0.42,  1.94],
-          [sx * (hw - 0.04), 0.80,  2.20], [sx * (hw + 0.02), 0.92,  1.92],
-          [sx * (hw + 0.02), 0.86,  1.42], [sx * (hw + 0.02), 0.95,  1.42],
-          [sx * (hw - 0.01), 0.40,  0.88], [sx * (hw - 0.02), 0.94,  0.88],
-          [sx * (hw - 0.01), 0.40, -0.82], [sx * (hw - 0.01), 0.96, -0.82],
-          [sx * (hw + 0.04), 0.88, -1.36], [sx * (hw + 0.04), 1.00, -1.36],
-          [sx * (hw + 0.02), 0.46, -1.90], [sx * (hw + 0.02), 0.99, -1.90],
-          [sx * (hw - 0.04), 0.48, -2.30], [sx * (hw - 0.04), 0.98, -2.28]
-        ];
-        const hF = sx > 0
-          ? [[0,1,3,2], [1,4,5,3], [4,6,7,5], [6,8,9,7], [8,10,11,9], [10,12,13,11], [12,14,15,13]]
-          : [[0,2,3,1], [1,3,5,4], [4,5,7,6], [6,7,9,8], [8,9,11,10], [10,11,13,12], [12,13,15,14]];
-        chassis.add(this._buildFacetedMesh(hV, hF, matPaint, 0.32));
+        // v16.5 Sculpted R35 upper shoulder haunch crease (strictly above wheel arches — zero triangle clipping!)
+        const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.11, 1.32), matPaint);
+        shoulder.position.set(sx * (hw - 0.015), 0.93, -1.38); chassis.add(shoulder);
+        const fShoulder = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.09, 1.05), matPaint);
+        fShoulder.position.set(sx * (hw - 0.02), 0.91, 1.44); chassis.add(fShoulder);
 
         const gill = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.18), matCarbon);
         gill.position.set(sx * (hw + 0.01), 0.74, 0.88); gill.rotation.x = 0.22; chassis.add(gill);
@@ -1222,7 +1221,7 @@ KK.VehicleBuilder = {
       }
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addWheelWellLiners(chassis, spec, matMetal, 0.35);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.35, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.90));
       this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matCarbon, 0.12, 0.39);
       this._addMirrors(chassis, w * 0.49, 1.12, 0.42, matCarbon, matPaint, 0.20);
     }
@@ -1238,8 +1237,7 @@ KK.VehicleBuilder = {
       const matJerry   = new THREE.MeshStandardMaterial({ color: 0x4d563c, roughness: 0.82 });
 
       const lowerDeck = new THREE.Shape();
-      lowerDeck.moveTo(-2.34, 0.58);
-      lowerDeck.lineTo(2.26, 0.58);
+      this._traceBottomWithWheelArches(lowerDeck, -2.34, 2.26, 0.58, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.08));
       lowerDeck.lineTo(2.34, 1.06);
       lowerDeck.lineTo(0.84, 1.15);
       lowerDeck.lineTo(-2.34, 1.15);
@@ -1327,6 +1325,7 @@ KK.VehicleBuilder = {
       whipAnt.position.set(-w * 0.44, 2.25, -2.18); chassis.add(whipAnt);
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.58, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.08));
       this._addMirrors(chassis, w * 0.48, 1.44, 0.62, matSteel, matRubber, 0.26);
     }
 
@@ -1396,7 +1395,7 @@ KK.VehicleBuilder = {
       rearSkid.position.set(0, 0.44, -2.38); chassis.add(rearSkid);
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addWheelWellLiners(chassis, spec, matMetal, 0.42);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.42, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.98));
       this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matGlossBlk, 0.14, 0.46);
       this._addMirrors(chassis, w * 0.48, 1.26, 0.60, matGlossBlk, matPaint, 0.22);
     }
@@ -1411,8 +1410,7 @@ KK.VehicleBuilder = {
       const matSandBoard = new THREE.MeshStandardMaterial({ color: 0xff6b1a, roughness: 0.72 });
 
       const s = new THREE.Shape();
-      s.moveTo(-2.42, 0.44);
-      s.lineTo(2.40, 0.44);
+      this._traceBottomWithWheelArches(s, -2.42, 2.40, 0.44, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.08));
       s.quadraticCurveTo(2.54, 0.74, 2.44, 1.08);
       s.lineTo(1.00, 1.14);
       s.lineTo(0.62, 1.82);
@@ -1474,7 +1472,8 @@ KK.VehicleBuilder = {
       }
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matGoldClad, 0.17);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.44, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.08));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matGoldClad, 0.17, 0.48);
       this._addMirrors(chassis, w * 0.49, 1.36, 0.68, matRubber, matChrome, 0.24);
     }
 
@@ -1490,8 +1489,7 @@ KK.VehicleBuilder = {
 
       // 1. Accurate Faceted Boat-Hull Lower Tub + Sloped Upper Armored Glacis!
       const lowerHull = new THREE.Shape();
-      lowerHull.moveTo(-3.68, 0.72);
-      lowerHull.lineTo(2.75, 0.68);
+      this._traceBottomWithWheelArches(lowerHull, -3.68, 2.75, 0.72, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.42));
       lowerHull.lineTo(3.74, 1.34);     // sharp amphibious prow!
       lowerHull.lineTo(3.55, 1.48);
       lowerHull.lineTo(-3.72, 1.48);
@@ -1607,6 +1605,7 @@ KK.VehicleBuilder = {
       engHatch.position.set(0, 0.04, -0.70); hoodPivot.add(engHatch);
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, false) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.72, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.42));
       this._addMirrors(chassis, w * 0.46, 1.88, 2.38, matMetal, matRubber, 0.26);
     }
 
@@ -1684,7 +1683,7 @@ KK.VehicleBuilder = {
       plateText = "GOOD-NWS"; hlY = 0.68; hlZ = 2.02; hlSpread = 0.58;
       const w = spec.bodyWidth;
       const s = new THREE.Shape();
-      s.moveTo(-1.98, 0.36); s.lineTo(1.94, 0.36); s.quadraticCurveTo(2.06, 0.56, 1.96, 0.84);
+      this._traceBottomWithWheelArches(s, -1.98, 1.94, 0.36, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.88)); s.quadraticCurveTo(2.06, 0.56, 1.96, 0.84);
       s.lineTo(0.86, 0.94); s.lineTo(0.32, 1.48); s.quadraticCurveTo(-0.45, 1.54, -1.42, 1.48);
       s.lineTo(-1.96, 1.00); s.lineTo(-2.00, 0.46); s.closePath();
       chassis.add(this._extrudeSideProfile(s, w - 0.10, matPaint, 0.06, 0.07, cockpitCfg));
@@ -1707,7 +1706,8 @@ KK.VehicleBuilder = {
         sg.position.set(sx * (w * 0.45), 1.22, -0.54); chassis.add(sg);
       }
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matRubber, 0.11);
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.36, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.88));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matRubber, 0.11, 0.4);
       this._addMirrors(chassis, w * 0.46, 1.12, 0.46, matRubber, matRubber, 0.18);
     }
 
@@ -1718,7 +1718,7 @@ KK.VehicleBuilder = {
       plateText = "RUBICON"; roundHL = true; hlY = 0.86; hlZ = 2.12; hlSpread = 0.56;
       const w = spec.bodyWidth;
       const s = new THREE.Shape();
-      s.moveTo(-2.06, 0.48); s.lineTo(2.04, 0.48); s.lineTo(2.10, 1.04);
+      this._traceBottomWithWheelArches(s, -2.06, 2.04, 0.48, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.04)); s.lineTo(2.10, 1.04);
       s.lineTo(0.76, 1.10); s.lineTo(0.56, 1.78); s.lineTo(-1.98, 1.78); s.lineTo(-2.08, 1.06); s.closePath();
       chassis.add(this._extrudeSideProfile(s, w - 0.16, matPaint, 0.05, 0.06, cockpitCfg, matRubber));
       const gBg = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.42, 0.08), matPaint);
@@ -1753,6 +1753,7 @@ KK.VehicleBuilder = {
       const spR = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.30, 10), matRim);
       spR.rotation.x = Math.PI / 2; spR.position.set(0, 1.06, -2.24); chassis.add(spR);
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.48, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.04));
       this._addMirrors(chassis, w * 0.46, 1.32, 0.56, matRubber, matRubber, 0.22);
     }
 
@@ -1767,8 +1768,7 @@ KK.VehicleBuilder = {
       const matJerry   = new THREE.MeshStandardMaterial({ color: 0x3f4c36, roughness: 0.85 });
 
       const lowerDeck = new THREE.Shape();
-      lowerDeck.moveTo(-2.52, 0.60);
-      lowerDeck.lineTo(2.46, 0.60);
+      this._traceBottomWithWheelArches(lowerDeck, -2.52, 2.46, 0.60, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.16));
       lowerDeck.lineTo(2.54, 1.12);
       lowerDeck.lineTo(0.96, 1.22);
       lowerDeck.lineTo(-2.52, 1.22);
@@ -1844,6 +1844,7 @@ KK.VehicleBuilder = {
       whipAnt.position.set(w * 0.45, 2.38, -2.35); chassis.add(whipAnt);
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.60, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.16));
       this._addMirrors(chassis, w * 0.48, 1.54, 0.74, matSteel, matRubber, 0.28);
     }
 
@@ -2523,7 +2524,7 @@ KK.VehicleBuilder = {
       const matRoofAc = new THREE.MeshStandardMaterial({ color: 0xdce2e8, roughness: 0.55 });
 
       const s = new THREE.Shape();
-      s.moveTo(-3.46, 0.52); s.lineTo(3.40, 0.52); s.lineTo(3.48, 1.44);
+      this._traceBottomWithWheelArches(s, -3.46, 3.40, 0.52, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.36)); s.lineTo(3.48, 1.44);
       s.lineTo(3.16, 2.54); s.lineTo(-3.36, 2.54); s.lineTo(-3.48, 1.44); s.closePath();
       chassis.add(this._extrudeSideProfile(s, w - 0.08, matPaint, 0.05, 0.05, cockpitCfg));
 
@@ -2565,6 +2566,7 @@ KK.VehicleBuilder = {
       svcHatch.position.set(0, -0.22, 0.28); hoodPivot.add(svcHatch);
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, false) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.52, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 1.36));
       this._addMirrors(chassis, w * 0.50, 1.86, 3.36, matMetal, matRubber, 0.28);
     }
 
