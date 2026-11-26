@@ -314,6 +314,82 @@ KK.VehicleBuilder = {
     }
   },
 
+  // v16.4 TRUE RECESSED WHEEL WELLS: Carves semicircular wheel arches into 2D side-profile Shape!
+  _traceBottomWithWheelArches(shape, zRear, zFront, yBottom, spec, maxTopY = 0.92) {
+    shape.moveTo(zRear, yBottom);
+    const axles = [];
+    const seen = new Set();
+    for (const w of (spec.wheels || [])) {
+      const kz = Math.round(w.z * 100);
+      if (!seen.has(kz)) { seen.add(kz); axles.push({ z: w.z, y: w.y || 0.25 }); }
+    }
+    axles.sort((a, b) => a.z - b.z);
+    const rBase = (spec.wheelRadius || 0.38) + 0.11;
+    for (const ax of axles) {
+      const cy = ax.y + 0.26;
+      const rArch = Math.min(rBase, Math.max(0.24, maxTopY - cy));
+      const dy = yBottom - cy;
+      const dz = (Math.abs(dy) < rArch) ? Math.sqrt(rArch * rArch - dy * dy) : rArch;
+      const zStart = Math.max(zRear + 0.08, ax.z - dz);
+      const zEnd   = Math.min(zFront - 0.08, ax.z + dz);
+      if (zEnd <= zStart + 0.08) continue;
+      shape.lineTo(zStart, yBottom);
+      const angStart = Math.atan2(yBottom - cy, zStart - ax.z);
+      const angEnd   = Math.atan2(yBottom - cy, zEnd - ax.z);
+      const segs = 10;
+      for (let i = 1; i < segs; i++) {
+        const t = i / segs;
+        const a = angStart + (angEnd - angStart) * t;
+        const py = Math.min(maxTopY, Math.max(yBottom, cy + Math.sin(a) * rArch));
+        shape.lineTo(ax.z + Math.cos(a) * rArch, py);
+      }
+      shape.lineTo(zEnd, yBottom);
+    }
+    shape.lineTo(zFront, yBottom);
+  },
+
+  // v16.4 RECESSED INNER WHEEL-WELL LINERS + TUCKED COILOVER SHOCK STRUTS (0 Extra Lights!)
+  _addWheelWellLiners(chassis, spec, matLiner) {
+    if (!this._matWellDark) {
+      this._matWellDark = new THREE.MeshStandardMaterial({ color: 0x101215, roughness: 0.96, metalness: 0.05, side: THREE.DoubleSide });
+      this._matCoilSpring = new THREE.MeshStandardMaterial({ color: 0xd92626, roughness: 0.42, metalness: 0.35 });
+    }
+    const rLiner = (spec.wheelRadius || 0.38) + 0.10;
+    const depth = 0.38;
+    const archGeo = new THREE.CylinderGeometry(rLiner, rLiner, depth, 14, 1, true, 0, Math.PI);
+    const backGeo = new THREE.CircleGeometry(rLiner, 14, 0, Math.PI);
+    const strutGeo = new THREE.CylinderGeometry(0.032, 0.032, rLiner * 0.85, 8);
+    const springGeo = new THREE.CylinderGeometry(0.055, 0.055, rLiner * 0.42, 8);
+
+    for (const w of (spec.wheels || [])) {
+      const side = w.x < 0 ? -1 : 1;
+      const cy = (w.y || 0.25) + 0.26;
+      const outerX = side * (spec.bodyWidth * 0.5 - 0.06);
+      const centerX = outerX - side * (depth * 0.5);
+      const innerX = outerX - side * depth;
+
+      // Curved inner arch liner
+      const liner = new THREE.Mesh(archGeo, this._matWellDark);
+      liner.rotation.z = Math.PI / 2;
+      liner.position.set(centerX, cy, w.z);
+      chassis.add(liner);
+
+      // Solid inner bulkhead backing plate (prevents see-through tunnel!)
+      const back = new THREE.Mesh(backGeo, this._matWellDark);
+      back.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+      back.position.set(innerX, cy, w.z);
+      chassis.add(back);
+
+      // Tucked visible coilover shock strut inside the wheel well
+      const strut = new THREE.Mesh(strutGeo, matLiner || this._matWellDark);
+      strut.position.set(innerX + side * 0.08, cy + rLiner * 0.32, w.z);
+      chassis.add(strut);
+      const spring = new THREE.Mesh(springGeo, this._matCoilSpring);
+      spring.position.set(innerX + side * 0.08, cy + rLiner * 0.42, w.z);
+      chassis.add(spring);
+    }
+  },
+
   _addFenderFlares(chassis, wheels, wheelRadius, matFlare, flareWidth = 0.15) {
     for (const w of wheels) {
       const side = w.x < 0 ? -1 : 1;
@@ -693,8 +769,7 @@ KK.VehicleBuilder = {
       const redFlapMat    = new THREE.MeshStandardMaterial({ color: 0xcc1f2a, roughness: 0.85 });
 
       const s = new THREE.Shape();
-      s.moveTo(-2.16, 0.37);
-      s.lineTo(2.14, 0.37);
+      this._traceBottomWithWheelArches(s, -2.16, 2.14, 0.37, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.88));
       s.quadraticCurveTo(2.28, 0.58, 2.18, 0.86);
       s.lineTo(0.88, 0.95);
       s.lineTo(0.36, 1.46);
@@ -754,6 +829,7 @@ KK.VehicleBuilder = {
         mf.position.set(wDef.x, 0.28, wDef.z - 0.44); chassis.add(mf);
       }
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal);
       this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matPaint, 0.16);
       this._addMirrors(chassis, w * 0.46, 1.10, 0.48, matRubber, matPaint, 0.18);
     }
@@ -1042,8 +1118,7 @@ KK.VehicleBuilder = {
       const matSmoked   = new THREE.MeshStandardMaterial({ color: 0x101318, roughness: 0.25, metalness: 0.55 });
 
       const s = new THREE.Shape();
-      s.moveTo(-2.30, 0.35);
-      s.lineTo(2.26, 0.35);
+      this._traceBottomWithWheelArches(s, -2.30, 2.26, 0.35, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.90));
       s.quadraticCurveTo(2.42, 0.54, 2.30, 0.83);
       s.lineTo(0.86, 0.96);
       s.lineTo(0.20, 1.43);
@@ -1056,17 +1131,20 @@ KK.VehicleBuilder = {
 
       for (const sx of [-1, 1]) {
         const hw = w * 0.5;
+        // v16.4 Widebody haunches arched cleanly over front (z=1.42) & rear (z=-1.36) wheel wells!
         const hV = [
-          [sx * (hw - 0.10), 0.38,  2.26], [sx * (hw + 0.03), 0.42,  1.60],
-          [sx * (hw - 0.04), 0.80,  2.20], [sx * (hw + 0.02), 0.94,  1.56],
-          [sx * (hw - 0.02), 0.40,  0.60], [sx * (hw - 0.03), 0.94,  0.60],
-          [sx * (hw - 0.02), 0.40, -0.70], [sx * (hw - 0.02), 0.96, -0.70],
-          [sx * (hw + 0.05), 0.44, -1.55], [sx * (hw + 0.04), 1.00, -1.55],
+          [sx * (hw - 0.10), 0.38,  2.26], [sx * (hw + 0.02), 0.42,  1.94],
+          [sx * (hw - 0.04), 0.80,  2.20], [sx * (hw + 0.02), 0.92,  1.92],
+          [sx * (hw + 0.02), 0.86,  1.42], [sx * (hw + 0.02), 0.95,  1.42],
+          [sx * (hw - 0.01), 0.40,  0.88], [sx * (hw - 0.02), 0.94,  0.88],
+          [sx * (hw - 0.01), 0.40, -0.82], [sx * (hw - 0.01), 0.96, -0.82],
+          [sx * (hw + 0.04), 0.88, -1.36], [sx * (hw + 0.04), 1.00, -1.36],
+          [sx * (hw + 0.02), 0.46, -1.90], [sx * (hw + 0.02), 0.99, -1.90],
           [sx * (hw - 0.04), 0.48, -2.30], [sx * (hw - 0.04), 0.98, -2.28]
         ];
         const hF = sx > 0
-          ? [[0,1,3,2], [1,4,5,3], [4,6,7,5], [6,8,9,7], [8,10,11,9]]
-          : [[0,2,3,1], [1,3,5,4], [4,5,7,6], [6,7,9,8], [8,9,11,10]];
+          ? [[0,1,3,2], [1,4,5,3], [4,6,7,5], [6,8,9,7], [8,10,11,9], [10,12,13,11], [12,14,15,13]]
+          : [[0,2,3,1], [1,3,5,4], [4,5,7,6], [6,7,9,8], [8,9,11,10], [10,11,13,12], [12,13,15,14]];
         chassis.add(this._buildFacetedMesh(hV, hF, matPaint, 0.32));
 
         const gill = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.26, 0.18), matCarbon);
@@ -1148,6 +1226,7 @@ KK.VehicleBuilder = {
       }
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal);
       this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matCarbon, 0.13);
       this._addMirrors(chassis, w * 0.49, 1.12, 0.42, matCarbon, matPaint, 0.20);
     }
@@ -1267,8 +1346,7 @@ KK.VehicleBuilder = {
       const matDrl      = new THREE.MeshBasicMaterial({ color: 0xf0f8ff });
 
       const s = new THREE.Shape();
-      s.moveTo(-2.36, 0.42);
-      s.lineTo(2.32, 0.42);
+      this._traceBottomWithWheelArches(s, -2.36, 2.32, 0.42, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.98));
       s.quadraticCurveTo(2.44, 0.70, 2.34, 0.98);
       s.lineTo(0.96, 1.05);
       s.lineTo(0.46, 1.66);
@@ -1322,6 +1400,7 @@ KK.VehicleBuilder = {
       rearSkid.position.set(0, 0.44, -2.38); chassis.add(rearSkid);
 
       cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal);
       this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matGlossBlk, 0.15);
       this._addMirrors(chassis, w * 0.48, 1.26, 0.60, matGlossBlk, matPaint, 0.22);
     }
