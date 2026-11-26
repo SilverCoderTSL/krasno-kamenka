@@ -1453,6 +1453,25 @@ KK.UIManager = class UIManager {
       const rpmPct = Math.min(100, (v.rpm / eng.redlineRpm) * 100);
       const rpmBar = document.getElementById("hud-rpm-bar");
       if (rpmBar) { rpmBar.style.width = rpmPct + "%"; rpmBar.style.background = rpmPct > 86 ? "#ef476f" : "#00e5ff"; }
+      // v16.7 CPM2 Analog RPM Needle (-135° -> +125°), Fuel Needle (-65° -> +65°), CEL & Odometer!
+      const rpmNeedle = document.getElementById("hud-rpm-needle");
+      if (rpmNeedle) {
+        const rpmNorm10 = Math.max(0, Math.min(1.0, (v.rpm || 0) / Math.max(7000, eng.redlineRpm * 1.15)));
+        const deg = -135 + rpmNorm10 * 260;
+        rpmNeedle.setAttribute("transform", `rotate(${deg.toFixed(1)} 110 108)`);
+      }
+      const fuelNeedle = document.getElementById("hud-fuel-needle");
+      if (fuelNeedle) {
+        const fFrac = Math.max(0, Math.min(1, (vs.fuel || 0) / Math.max(1, spec.fuelCapacity || 60)));
+        fuelNeedle.setAttribute("transform", `rotate(${(-65 + fFrac * 130).toFixed(1)} 110 194)`);
+      }
+      const celIcon = document.getElementById("hud-cel-icon");
+      if (celIcon) {
+        const celOn = (engOverall < 68 || v.coolantTemp > 110 || v.hydrolocked);
+        celIcon.setAttribute("opacity", celOn ? "1.0" : "0.18");
+      }
+      const odoKm = ((vs.odometerM || 0) / 1000).toFixed(1).padStart(6, "0");
+      setTxt("hud-odo", odoKm);
       setTxt("hud-temp", Math.round(v.coolantTemp) + "°C");
       const tempEl = document.getElementById("hud-temp"); if (tempEl) tempEl.style.color = v.coolantTemp > 112 ? "#ff4d6d" : "#dce6f2";
       setTxt("hud-egt", Math.round(v.egtTemp) + "°C");

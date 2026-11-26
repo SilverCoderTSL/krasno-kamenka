@@ -2111,7 +2111,7 @@ KK.World = class World {
 
       // v15.4 DRIVE-ON PHYSICAL BOAT RAMPS & CARGO DECKS!
       if (this.boatsRef && this.boatsRef.getDriveableSurfaceAt) {
-        const bs = this.boatsRef.getDriveableSurfaceAt(gx, gz);
+        const bs = this.boatsRef.getDriveableSurfaceAt(gx, gz, h);
         if (bs && bs.height >= h - 0.5) {
           h = bs.height;
           surface = "asphalt";

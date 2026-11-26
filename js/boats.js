@@ -192,7 +192,7 @@ KK.BoatManager = class BoatManager {
   }
 
   // v15.4 PHYSICAL DRIVE-ON RAMP & CARGO DECK SURFACE QUERY (Called by world.getTerrainInfo!)
-  getDriveableSurfaceAt(gx, gz) {
+  getDriveableSurfaceAt(gx, gz, groundH = null) {
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
     const checkList = this.spawnedBoats.concat(Array.from(this.remoteBoats.values()));
     for (let i = 0; i < checkList.length; i++) {
@@ -212,29 +212,32 @@ KK.BoatManager = class BoatManager {
         if (Math.abs(lx) <= 6.7 && lz >= -16.5 && lz <= 20.5) {
           return { height: deckH, boat: b, onRamp: false, lx, lz };
         }
-        // Lowered bow loading ramp (lz: 20.2 -> 28.8)
-        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 6.5 && lz > 20.2 && lz <= 29.2) {
-          const u = Math.max(0, Math.min(1, (lz - 20.2) / 8.8));
-          const tipY = Math.max(seaL + 2.85, b.gy + 1.85);
-          return { height: deckH * (1 - u) + tipY * u, boat: b, onRamp: true, lx, lz };
+        // v16.7 Smoothstep feathered bow loading ramp (meets actual pier/beach height flush — zero bump!)
+        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 6.6 && lz > 20.2 && lz <= 31.0) {
+          const u = Math.max(0, Math.min(1, (lz - 20.2) / 10.6));
+          const su = u * u * (3 - 2 * u);
+          const tipY = (groundH !== null) ? Math.min(deckH - 0.08, Math.max(seaL + 0.12, groundH)) : Math.max(seaL + 2.55, b.gy + 1.65);
+          return { height: deckH * (1 - su) + tipY * su, boat: b, onRamp: true, lx, lz };
         }
       } else if (b.id === "serna") {
         if (Math.abs(lx) <= 3.4 && lz >= -7.8 && lz <= 12.4) {
           return { height: deckH, boat: b, onRamp: false, lx, lz };
         }
-        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 3.3 && lz > 12.2 && lz <= 18.5) {
-          const u = Math.max(0, Math.min(1, (lz - 12.2) / 6.2));
-          const tipY = Math.max(seaL + 2.85, b.gy + 1.60);
-          return { height: deckH * (1 - u) + tipY * u, boat: b, onRamp: true, lx, lz };
+        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 3.4 && lz > 12.2 && lz <= 20.2) {
+          const u = Math.max(0, Math.min(1, (lz - 12.2) / 7.8));
+          const su = u * u * (3 - 2 * u);
+          const tipY = (groundH !== null) ? Math.min(deckH - 0.08, Math.max(seaL + 0.12, groundH)) : Math.max(seaL + 2.55, b.gy + 1.45);
+          return { height: deckH * (1 - su) + tipY * su, boat: b, onRamp: true, lx, lz };
         }
       } else if (b.id === "patrol") {
         if (Math.abs(lx) <= 2.15 && lz >= -6.6 && lz <= 1.2) {
           return { height: deckH, boat: b, onRamp: false, lx, lz };
         }
-        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 1.95 && lz < -6.4 && lz >= -10.8) {
-          const u = Math.max(0, Math.min(1, (-6.4 - lz) / 4.2));
-          const tipY = Math.max(seaL + 2.85, b.gy + 1.15);
-          return { height: deckH * (1 - u) + tipY * u, boat: b, onRamp: true, lx, lz };
+        if (!b.deckLocked && b.rampAnim > 0.35 && Math.abs(lx) <= 2.05 && lz < -6.4 && lz >= -12.2) {
+          const u = Math.max(0, Math.min(1, (-6.4 - lz) / 5.6));
+          const su = u * u * (3 - 2 * u);
+          const tipY = (groundH !== null) ? Math.min(deckH - 0.08, Math.max(seaL + 0.12, groundH)) : Math.max(seaL + 2.55, b.gy + 1.10);
+          return { height: deckH * (1 - su) + tipY * su, boat: b, onRamp: true, lx, lz };
         }
       }
     }

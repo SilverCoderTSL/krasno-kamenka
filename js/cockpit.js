@@ -562,7 +562,7 @@ KK.CockpitBuilder = {
           leverR.rotation.x = -0.18 - Math.max(0, -st) * 0.85;
           if (gaugeSys) {
             this.gaugeAccum += dt;
-            if (this.gaugeAccum >= 0.22) { this.gaugeAccum = 0; gaugeSys.draw(state); }
+            if (this.gaugeAccum >= 0.45) { this.gaugeAccum = 0; gaugeSys.draw(state); }
           }
         }
       }
@@ -800,6 +800,8 @@ KK.CockpitBuilder = {
     };
     const wiperL = makeWiper(w * 0.22), wiperR = makeWiper(-w * 0.22);
 
+    // v16.7 Disable shadow maps on interior cockpit meshes to keep 1st-person POV locked at 60 FPS on UHD 630!
+    cockpitGrp.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } });
     const eyeLocal = new THREE.Vector3(drvX, Math.min(cfg.roofY - 0.15, cfg.beltY + 0.32), zC - 0.04);
 
     return {
@@ -833,7 +835,14 @@ KK.CockpitBuilder = {
         wiperL.rotation.z = sweep; wiperR.rotation.z = sweep;
         if (gaugeSys && state.inCockpitCam) {
           this.gaugeAccum += dt;
-          if (this.gaugeAccum >= 0.22) { this.gaugeAccum = 0; gaugeSys.draw(state); }
+          if (this.gaugeAccum >= 0.45) {
+            this.gaugeAccum = 0;
+            const gSig = `${Math.round(state.speedKmh || 0)}_${Math.round((state.rpm || 0) / 100)}_${state.gear || 0}_${Math.floor((state.timeOfDay || 0) * 60)}_${state.empGlitch > 0 ? 1 : 0}`;
+            if (gSig !== this._lastGaugeSig || state.empGlitch > 0) {
+              this._lastGaugeSig = gSig;
+              gaugeSys.draw(state);
+            }
+          }
         }
       }
     };

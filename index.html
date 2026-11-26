@@ -16,8 +16,8 @@
     <div class="start-menu-shell">
       <div class="sm-header">
         <div>
-          <div class="sm-kicker">SIBERIAN FRONTIER VEHICULAR HORROR SANDBOX • v16.6 ONLINE</div>
-          <h1 class="sm-title">KRASNO-KAMENKA OBLAST <span class="sm-ver-badge">v16.6 ONLINE</span></h1>
+          <div class="sm-kicker">SIBERIAN FRONTIER VEHICULAR HORROR SANDBOX • v16.7 ONLINE</div>
+          <h1 class="sm-title">KRASNO-KAMENKA OBLAST <span class="sm-ver-badge">v16.7 ONLINE</span></h1>
         </div>
         <div class="sm-header-pills">
           <span id="sm-header-balance" class="cash-badge">$18,000</span>
@@ -65,7 +65,7 @@
   <div id="hud-top">
     <div class="hud-panel hud-top-left">
       <div class="title-line">
-        <span>KRASNO-KAMENKA v16.6 ONLINE</span>
+        <span>KRASNO-KAMENKA v16.7 ONLINE</span>
         <span id="hud-cash" class="cash-badge">$18,000</span>
         <button id="btn-open-account" class="acc-pill" title="Login / Register Server Account & Leaderboard [O]"><span id="hud-account-pill">👤 GUEST (LOGIN)</span></button>
       </div>
@@ -125,11 +125,54 @@
   </div>
 
   <div id="hud-dash">
-    <div class="dash-main">
-      <div><span id="hud-speed" class="speed-val">0</span><span class="speed-unit">KM/H</span></div>
-      <div id="hud-gear" class="gear-badge">1</div>
+    <div class="cpm-cluster">
+      <svg class="cpm-svg" viewBox="0 0 220 205" width="220" height="205">
+        <defs>
+          <linearGradient id="cpmDialGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="rgba(14,22,34,0.88)"/>
+            <stop offset="100%" stop-color="rgba(6,10,16,0.92)"/>
+          </linearGradient>
+        </defs>
+        <circle cx="110" cy="108" r="94" fill="url(#cpmDialGlow)" stroke="rgba(0,229,255,0.28)" stroke-width="1.5"/>
+        <!-- Main 0..10 RPM arc (135 deg -> 395 deg = 260 deg sweep) -->
+        <path d="M 48 170 A 88 88 0 1 1 196 123" fill="none" stroke="rgba(226,238,248,0.82)" stroke-width="4" stroke-linecap="round"/>
+        <!-- Redline Arc (7..10 x1000 RPM) -->
+        <path id="hud-redline-arc" d="M 149 29 A 88 88 0 0 1 196 123" fill="none" stroke="#ff2a3c" stroke-width="5.5" stroke-linecap="round"/>
+        <!-- RPM Ticks & Numbers 0..10 -->
+        <g id="hud-rpm-ticks" fill="#e2eef8" font-family="monospace" font-size="11" font-weight="700" text-anchor="middle">
+          <text x="64" y="160">0</text><text x="46" y="132">1</text><text x="41" y="100">2</text>
+          <text x="51" y="69">3</text><text x="74" y="47">4</text><text x="106" y="39">5</text>
+          <text x="137" y="46">6</text><text x="162" y="65" fill="#ff4d6d">7</text>
+          <text x="176" y="92" fill="#ff4d6d">8</text><text x="179" y="122" fill="#ff4d6d">9</text>
+        </g>
+        <!-- Sweeping RPM Needle -->
+        <g id="hud-rpm-needle" transform="rotate(-135 110 108)">
+          <line x1="110" y1="108" x2="110" y2="26" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+          <line x1="110" y1="108" x2="110" y2="30" stroke="#00e5ff" stroke-width="1.2" stroke-linecap="round"/>
+        </g>
+        <!-- Centered Circular Gear Badge -->
+        <circle cx="110" cy="108" r="19" fill="#0d1520" stroke="#ffffff" stroke-width="2.2"/>
+        <text id="hud-gear" x="110" y="115" fill="#ffd166" font-family="monospace" font-size="20" font-weight="900" text-anchor="middle">1</text>
+        <!-- Check Engine Warning Icon -->
+        <g id="hud-cel-icon" opacity="0.22" transform="translate(86, 134)">
+          <path d="M2 5 H5 V3 H13 V5 H16 V4 H19 V12 H16 V11 H14 L12 13 H5 V11 H2 Z" fill="#ffb703"/>
+        </g>
+        <!-- Digital KM/H & Odometer -->
+        <text x="144" y="141" fill="#8da2b8" font-family="monospace" font-size="9" font-weight="700" text-anchor="middle">KM/H</text>
+        <text id="hud-speed" x="144" y="160" fill="#ffffff" font-family="monospace" font-size="21" font-weight="900" text-anchor="middle">0</text>
+        <rect x="64" y="149" width="48" height="14" rx="2" fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.45)" stroke-width="1"/>
+        <text id="hud-odo" x="88" y="160" fill="#e2e8f0" font-family="monospace" font-size="9.5" font-weight="700" text-anchor="middle">0000.0</text>
+        <!-- Bottom Fuel Mini-Arc Gauge -->
+        <path d="M 85 190 A 28 28 0 0 1 135 190" fill="none" stroke="rgba(226,238,248,0.55)" stroke-width="2" stroke-dasharray="3,2"/>
+        <text x="79" y="194" fill="#ff4d6d" font-family="monospace" font-size="8" font-weight="700">E</text>
+        <text x="139" y="194" fill="#00f5d4" font-family="monospace" font-size="8" font-weight="700">F</text>
+        <g id="hud-fuel-needle" transform="rotate(65 110 194)">
+          <line x1="110" y1="194" x2="110" y2="170" stroke="#ff3b5c" stroke-width="2" stroke-linecap="round"/>
+        </g>
+        <circle cx="110" cy="194" r="3" fill="#ffffff"/>
+      </svg>
     </div>
-    <div class="rpm-track"><div id="hud-rpm-bar"></div></div>
+    <div class="rpm-track" style="display:none;"><div id="hud-rpm-bar"></div></div>
     <div class="dash-sub">
       <span id="hud-rpm">800 RPM</span>
       <span id="hud-boost" style="color:#ffb703;">0.0 PSI</span>
@@ -144,7 +187,7 @@
     <div id="hud-military-panel" class="hud-military-panel hidden"></div>
   </div>
 
-  <!-- v16.6 DEDICATED NAUTICAL HELM HUD (Replaces Car Dash Completely When Piloting Any Boat!) -->
+  <!-- v16.7 DEDICATED NAUTICAL HELM HUD (Replaces Car Dash Completely When Piloting Any Boat!) -->
   <div id="hud-helm" class="hidden">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
       <span id="helm-vessel-name" style="color:#00f5ff;font-weight:900;font-size:12px;letter-spacing:0.6px;">⚓ VESSEL HELM</span>

@@ -389,15 +389,16 @@ KK.VehiclePhysics = class VehiclePhysics {
       const radHpFrac = (parts.radiator ? parts.radiator.hp : 100) / 100;
       const icHpFrac  = (parts.intercooler ? parts.intercooler.hp : 100) / 100;
       const pumpHpFrac = (parts.waterPump ? parts.waterPump.hp : 100) / 100;
-      const radPerf = KK.getPartPerf(vs, "radiator") * (radHpFrac < 0.35 ? Math.max(0.06, radHpFrac / 0.35) : 1.0);
-      const pumpPerf = KK.getPartPerf(vs, "waterPump") * (pumpHpFrac < 0.30 ? Math.max(0.10, pumpHpFrac / 0.30) : 1.0);
-      const radEff = (radPerf * 0.65 + pumpPerf * 0.35) * (1.0 - hlth.mudClog * 0.0055);
+      // v16.7 REAL MULTIPLICATIVE COOLING: Dead radiator (0%) or dead water pump collapses cooling to < 4%!
+      const radPerf = KK.getPartPerf(vs, "radiator") * (radHpFrac < 0.40 ? Math.max(0.03, radHpFrac / 0.40) : 1.0);
+      const pumpPerf = KK.getPartPerf(vs, "waterPump") * (pumpHpFrac < 0.35 ? Math.max(0.04, pumpHpFrac / 0.35) : 1.0);
+      const radEff = Math.max(0.015, radPerf * pumpPerf) * (1.0 - hlth.mudClog * 0.006);
       const fanAirflow = this.coolantTemp > 92 ? 1.25 : 0.72;
       const airflow = Math.max(fanAirflow, 0.78 + Math.min(1.45, this.speedKmh / 36));
-      const heatIn = (0.45 + load * 5.2 + (radHpFrac < 0.15 ? 2.4 : 0)) * eng.heatRate;
+      const heatIn = (0.55 + load * 6.0 + (radHpFrac < 0.20 ? (3.5 + load * 4.5) : 0)) * eng.heatRate;
       const heatOut = Math.max(0, this.coolantTemp - 74) * 0.34 * radEff * airflow;
       const targetFloor = this.coolantTemp < 80 ? (82 - this.coolantTemp) * 0.14 : 0;
-      this.coolantTemp = Math.max(32, Math.min(142, this.coolantTemp + (heatIn - heatOut + targetFloor) * dt));
+      this.coolantTemp = Math.max(32, Math.min(148, this.coolantTemp + (heatIn - heatOut + targetFloor) * dt));
 
       const realIcEff = icEff * (icHpFrac < 0.35 ? Math.max(0.18, icHpFrac / 0.35) : 1.0);
       const targetEgt = 255 + baseLoad * 335 + (overBoost * 9.5) / Math.max(0.18, realIcEff) + (icHpFrac < 0.15 ? 160 * baseLoad : 0);
@@ -421,12 +422,16 @@ KK.VehiclePhysics = class VehiclePhysics {
 
       if (this.coolantTemp > 110) {
         const ohSev = (this.coolantTemp - 110) * dt;
-        this._wearPart("headGasket", ohSev * 0.085);
-        this._wearPart("pistons",    ohSev * 0.060);
-        this._wearPart("crankshaft", ohSev * 0.042);
-        this._wearPart("camshaft",   ohSev * 0.038);
-        this._wearPart("sparkPlugs", ohSev * 0.055);
-        this._wearPart("waterPump",  ohSev * 0.045);
+        this._wearPart("headGasket",      ohSev * 0.12);
+        this._wearPart("pistons",         ohSev * 0.085);
+        this._wearPart("crankshaft",      ohSev * 0.060);
+        this._wearPart("camshaft",        ohSev * 0.055);
+        this._wearPart("sparkPlugs",      ohSev * 0.075);
+        this._wearPart("waterPump",       ohSev * 0.065);
+        this._wearPart("fuelRail",        ohSev * 0.045);
+        this._wearPart("injectors",       ohSev * 0.050);
+        this._wearPart("turbo",           ohSev * 0.065);
+        this._wearPart("exhaustManifold", ohSev * 0.050);
       }
       if (this.egtTemp > 940) {
         this._wearPart("headGasket", (this.egtTemp - 935) * 0.008 * dt);
@@ -545,6 +550,11 @@ KK.VehiclePhysics = class VehiclePhysics {
             // Tie-rod bending ONLY on genuinely brutal high-speed slams (>55 km/h!) so it's realistic, not spammy!
             if (w.def.steer && this.speedKmh > 55 && impactSeverity > 0.92) {
               this._wearPart("tieRods", dmg * 0.9);
+              if (impactSeverity > 1.25) {
+                const prevGl2 = hlth.glass !== undefined ? hlth.glass : 100;
+                hlth.glass = Math.max(0, prevGl2 - impactSeverity * 18);
+                if (prevGl2 >= 55 && hlth.glass < 55) this.emit("toast", "💥 WINDSHIELD CRACKED FROM HARD LANDING!");
+              }
               const shockId = i === 0 ? "shockFL" : (i === 1 ? "shockFR" : (i === 2 ? "shockRL" : "shockRR"));
               const shockHp = (parts[shockId] ? parts[shockId].hp : 100);
               if (shockHp < 28) { this._wearPart("tieRods", 1.8); this._wearPart("wheelHubs", 1.5); vs.health.body = Math.max(5, vs.health.body - 0.6); }
@@ -991,6 +1001,11 @@ KK.VehiclePhysics = class VehiclePhysics {
             const hitDmg = Math.min(42, (impactSpd - 2.2) * (isRock ? 2.15 : 1.45) * bullShield);
             this._wearPart("radiator", hitDmg * 0.75);
             this._wearPart("intercooler", hitDmg * 0.55);
+            if (impactSpd > 8.5) {
+              const prevGl = hlth.glass !== undefined ? hlth.glass : 100;
+              hlth.glass = Math.max(0, prevGl - hitDmg * 1.45);
+              if (prevGl >= 55 && hlth.glass < 55) this.emit("toast", "💥 WINDSHIELD CRACKED ON IMPACT!");
+            }
             if (impactSpd > 10.5) {
               this._wearPart("shockFL", hitDmg * 0.55);
               this._wearPart("shockFR", hitDmg * 0.55);

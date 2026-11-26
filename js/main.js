@@ -428,7 +428,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v16.6 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v16.7 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -1026,7 +1026,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.6 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v16.7 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1050,7 +1050,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.6 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v16.7 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1673,7 +1673,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v16.6 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v16.7 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -3331,7 +3331,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.6.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v16.7.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -3894,7 +3894,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v16.6 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    // v16.7 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const dGate = Math.hypot(gx - (-62099), gz - 63132);
@@ -3995,6 +3995,11 @@ KK.Game = class Game {
         transfer: this.vehicle.vState.parts.transferCase.hp,
         driveshaft: this.vehicle.vState.parts.driveshaft.hp,
         tieRods: this.vehicle.vState.parts.tieRods.hp,
+        shockFL: this.vehicle.vState.parts.shockFL ? this.vehicle.vState.parts.shockFL.hp : 100,
+        shockFR: this.vehicle.vState.parts.shockFR ? this.vehicle.vState.parts.shockFR.hp : 100,
+        shockRL: this.vehicle.vState.parts.shockRL ? this.vehicle.vState.parts.shockRL.hp : 100,
+        shockRR: this.vehicle.vState.parts.shockRR ? this.vehicle.vState.parts.shockRR.hp : 100,
+        brakePads: this.vehicle.vState.parts.brakePads ? this.vehicle.vState.parts.brakePads.hp : 100,
         shocksAvg: (this.vehicle.vState.parts.shockFL.hp + this.vehicle.vState.parts.shockFR.hp + this.vehicle.vState.parts.shockRL.hp + this.vehicle.vState.parts.shockRR.hp) / 4
       }
     });

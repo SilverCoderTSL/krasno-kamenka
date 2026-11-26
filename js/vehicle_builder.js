@@ -4256,17 +4256,29 @@ KK.VehicleBuilder = {
       const rearWz = spec.wheels[spec.wheels.length - 1].z;
       addXPart("rearAxle",    new THREE.CylinderGeometry(0.055, 0.055, spec.bodyWidth * 0.86, 8), 0, isKomodo ? 0.58 : 0.32, rearWz, 0, Math.PI / 2);
       const xraySuspList = [];
+      const xrayBrakeList = [];
       for (let wi = 0; wi < spec.wheels.length; wi++) {
         const wd = spec.wheels[wi];
+        const cornerKey = (wd.z >= 0) ? (wd.x < 0 ? "shockFL" : "shockFR") : (wd.x < 0 ? "shockRL" : "shockRR");
         const sMat = makeXrayMat();
-        const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.56, 6), sMat);
+        const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.58, 6), sMat);
         const baseY = isKomodo ? 0.86 : 0.56;
         sk.position.set(wd.x * 0.82, baseY, wd.z);
         sk.renderOrder = 10;
         xrayGroup.add(sk);
-        xraySuspList.push({ mesh: sk, mat: sMat, baseY });
+        xraySuspList.push({ mesh: sk, mat: sMat, baseY, partKey: cornerKey });
+
+        // v16.7 X-Ray Brake Rotor/Caliper Disc at each wheel!
+        const bMat = makeXrayMat();
+        const brk = new THREE.Mesh(new THREE.CylinderGeometry(spec.wheelRadius * 0.52, spec.wheelRadius * 0.52, 0.12, 10), bMat);
+        brk.rotation.z = Math.PI / 2;
+        brk.position.set(wd.x * 0.90, (wd.y || 0.25) + 0.08, wd.z);
+        brk.renderOrder = 10;
+        xrayGroup.add(brk);
+        xrayBrakeList.push({ mesh: brk, mat: bMat });
       }
       xrayParts._suspList = xraySuspList;
+      xrayParts._brakeList = xrayBrakeList;
     }
 
     // v15.9 Tracked Tank X-Ray: Left & Right Destroyable Track Runs!
@@ -4559,15 +4571,23 @@ KK.VehicleBuilder = {
         const isXray = !!state.xrayActive;
         xrayGroup.visible = isXray;
         if (isXray && xrayParts._suspList) {
-          const sHp = (state.health && state.health.suspension !== undefined) ? state.health.suspension : 100;
-          const sCol = sHp > 65 ? 0x2de08b : (sHp > 35 ? 0xffbe0b : 0xff3b3b);
+          const xhObj = state.xrayHealth || {};
           const wOffs = state.wheelOffsets || [];
           for (let si = 0; si < xrayParts._suspList.length; si++) {
             const it = xrayParts._suspList[si];
+            const sHp = (xhObj[it.partKey] !== undefined) ? xhObj[it.partKey] : (xhObj.shocksAvg !== undefined ? xhObj.shocksAvg : 100);
+            const sCol = sHp > 65 ? 0x2de08b : (sHp > 30 ? 0xffbe0b : 0xff3b3b);
             it.mat.color.setHex(sCol);
             const comp = wOffs[si] || 0;
             it.mesh.position.y = it.baseY + comp * 0.55;
             it.mesh.scale.y = Math.max(0.55, Math.min(1.35, 1.0 - comp * 0.7));
+          }
+          if (xrayParts._brakeList) {
+            const bHp = xhObj.brakePads !== undefined ? xhObj.brakePads : 100;
+            const bCol = (state.brakeHeat > 0.55) ? 0xff6b1a : (bHp > 65 ? 0x2de08b : (bHp > 30 ? 0xffbe0b : 0xff3b3b));
+            for (let bi = 0; bi < xrayParts._brakeList.length; bi++) {
+              xrayParts._brakeList[bi].mat.color.setHex(bCol);
+            }
           }
         }
         for (const sm of shellMaterials) {
