@@ -1242,51 +1242,6 @@ KK.CryptidManager = class CryptidManager {
     if (!this._isLandSafe(rx.gx, rx.gz, 8.0, 14.0, true)) { rx.state = "prowl"; rx.dormantCd = 40.0; rx.gx = -8500; rx.gz = 1800; }
     rx.gy = this.world.getTerrainInfo(rx.gx, rx.gz, false).height;
 
-    // 5B. NEUTRAL BRACHIOSAURUS HERD (Peaceful grazers — ONLY kick you away if you ram into them!)
-    if (this.brachios) {
-      for (const br of this.brachios) {
-        br.phase += dt * 1.1;
-        if (br.kickCd > 0) br.kickCd = Math.max(0, br.kickCd - dt);
-        const toHomeX = br.homeX - br.gx, toHomeZ = br.homeZ - br.gz;
-        if (Math.hypot(toHomeX, toHomeZ) > 130) {
-          const hYaw = Math.atan2(toHomeX, toHomeZ);
-          let diff = hYaw - br.yaw;
-          while (diff > Math.PI) diff -= Math.PI * 2;
-          while (diff < -Math.PI) diff += Math.PI * 2;
-          br.yaw += diff * Math.min(1, dt * 0.6);
-        } else {
-          br.yaw += Math.sin(br.phase * 0.25) * dt * 0.14;
-        }
-        br.gx += Math.sin(br.yaw) * 2.4 * dt;
-        br.gz += Math.cos(br.yaw) * 2.4 * dt;
-        const tBr = world.getTerrainInfo(br.gx, br.gz, false);
-        br.gy = tBr ? tBr.height : br.gy;
-        br.mesh.position.set(br.gx - world.originX, br.gy, br.gz - world.originZ);
-        br.mesh.rotation.y = br.yaw;
-        const dBr = Math.hypot(br.gx - px, br.gz - pz);
-        br.mesh.visible = dBr < 540;
-        if (br.mesh.visible) {
-          br.neckPivot.rotation.x = Math.sin(br.phase * 0.55) * 0.16;
-          br.tailPivot.rotation.y = Math.sin(br.phase * 0.7) * 0.22;
-          for (let li = 0; li < br.legs.length; li++) {
-            br.legs[li].rotation.x = Math.sin(br.phase + (li % 2 === 0 ? 0 : Math.PI)) * 0.18;
-          }
-        }
-        const hitRad = 5.4 * br.scale;
-        if (dBr < hitRad && Math.abs(br.gy - vehicle.pos.y) < 9.0 && br.kickCd <= 0) {
-          br.kickCd = 2.6;
-          const pushX = (px - br.gx) / Math.max(0.5, dBr);
-          const pushZ = (pz - br.gz) / Math.max(0.5, dBr);
-          vehicle.vel.x = pushX * 26.0;
-          vehicle.vel.z = pushZ * 26.0;
-          vehicle.vel.y = Math.max(vehicle.vel.y, 11.5);
-          vehicle.angVel.y += (Math.random() - 0.5) * 5.0;
-          if (audio) audio.playImpact(0.95);
-          if (ui) ui.toast("🦕 BRACHIOSAURUS KICKED YOU AWAY! Don't ram the gentle giants!", true);
-        }
-      }
-    }
-
     // 6. GODZILLA (v14.2: Fair Snow-Delivery Pacing + Stalk-From-Afar + Standoff Tail Whip + Titan Kick + 3-Min Rest!)
     const gz = this.godzilla;
     if (gz.adaptTimer > 0) { gz.adaptTimer -= dt; if (gz.adaptTimer <= 0) gz.adaptedToMil = false; }
@@ -1773,6 +1728,48 @@ KK.CryptidManager = class CryptidManager {
         }
         vehicle.vState.health.body = Math.max(5, vehicle.vState.health.body - 26);
         particles.emitCrashBurst(px, py, pz, 1.2, "rock", weatherSys.weather);
+      }
+    }
+
+    // 5B. NEUTRAL BRACHIOSAURUS HERD (Peaceful grazers — ONLY kick you away if you ram into them!)
+    if (this.brachios) {
+      for (const br of this.brachios) {
+        br.phase += dt * 1.1;
+        if (br.kickCd > 0) br.kickCd = Math.max(0, br.kickCd - dt);
+        const toHomeX = br.homeX - br.gx, toHomeZ = br.homeZ - br.gz;
+        if (Math.hypot(toHomeX, toHomeZ) > 130) {
+          const hYaw = Math.atan2(toHomeX, toHomeZ);
+          let diff = hYaw - br.yaw;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          br.yaw += diff * Math.min(1, dt * 0.6);
+        } else {
+          br.yaw += Math.sin(br.phase * 0.25) * dt * 0.14;
+        }
+        br.gx += Math.sin(br.yaw) * 2.4 * dt;
+        br.gz += Math.cos(br.yaw) * 2.4 * dt;
+        const tBr = this.world.getTerrainInfo(br.gx, br.gz, false);
+        br.gy = tBr ? tBr.height : br.gy;
+        this.world.toLocal(br.gx, br.gy, br.gz, br.mesh.position);
+        br.mesh.rotation.y = br.yaw;
+        const dBr = Math.hypot(br.gx - px, br.gz - pz);
+        br.mesh.visible = dBr < 540;
+        if (br.mesh.visible) {
+          br.neckPivot.rotation.x = Math.sin(br.phase * 0.55) * 0.16;
+          br.tailPivot.rotation.y = Math.sin(br.phase * 0.7) * 0.22;
+          for (let li = 0; li < br.legs.length; li++) {
+            br.legs[li].rotation.x = Math.sin(br.phase + (li % 2 === 0 ? 0 : Math.PI)) * 0.18;
+          }
+        }
+        const hitRad = 5.4 * br.scale;
+        if (dBr < hitRad && Math.abs(br.gy - py) < 9.0 && br.kickCd <= 0) {
+          br.kickCd = 2.6;
+          const pushX = (px - br.gx) / Math.max(0.5, dBr);
+          const pushZ = (pz - br.gz) / Math.max(0.5, dBr);
+          vehicle.applyExternalImpulse(pushX * 26.0, 11.5, pushZ * 26.0, (Math.random() - 0.5) * 5.0);
+          if (audio) audio.playImpact(0.95);
+          vehicle.emit("toast", "🦕 BRACHIOSAURUS KICKED YOU AWAY! Don't ram the gentle giants!");
+        }
       }
     }
 
