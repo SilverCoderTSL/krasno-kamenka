@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.6.3";
-KK.VERSION_FULL = "v15.6.3 ONLINE";
+KK.VERSION = "v16.2";
+KK.VERSION_FULL = "v16.2 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -138,7 +138,7 @@ KK.TOWNS = [
   { id: 19, name: "Savanna Marina Port", survivability: "HIGH", survScore: 92, survColor: "#ffd166", survNote: "Modern waterfront suburb & deep-water container port", biome: "savanna", x: -64800, z: 67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Sleek coastal marina suburb with paved boat ramps and highway access to Zolotoy City." },
   { id: 20, name: "Poligon-9 Gunnery Range", survivability: "LOW", survScore: 34, survColor: "#8ecae6", survNote: "Frozen tank proving ground • Target hulks & heavy ice runway", biome: "arctic", x: -65200, z: -67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Wide open arctic weapons testing range with target tank hulks, concrete blast walls & ice runway." },
   { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -74600, z: -74800, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" },
-  // v15.6.3 OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
+  // v16.2 OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
   { id: 22, name: "Kampung Nelayan (West Coast)", survivability: "MODERATE", survScore: 66, survColor: "#2de08b", survNote: "Crowded stilt fishing village • Flooded rutted dirt lanes", biome: "tropical", x: 61800, z: 62600, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense coastal stilt village packed with wooden boats, warungs & mud-choked lanes." },
   { id: 23, name: "Desa Lereng Api (Volcano Ridge)", survivability: "LOW", survScore: 44, survColor: "#ff9f1c", survNote: "High mountain switchback village on Gunung Api's slope", biome: "tropical", x: 73400, z: 57200, hasGarage: true, hasDock: true, isIsland: true, desc: "Steep terraced clove-farm village clinging to Gunung Api's winding volcanic hairpins." },
   { id: 24, name: "Bukit Bambu (Bamboo Pass)", survivability: "MODERATE", survScore: 58, survColor: "#ffd166", survNote: "Misty bamboo-forest highland pass • Broken washboard tracks", biome: "tropical", x: 75800, z: 64200, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense bamboo-grove crossroads linking the volcanic summit road to the southern lake." },
@@ -151,7 +151,7 @@ KK.ROAD_LINKS = [
   [3, 4], [3, 8], [4, 6], [4, 7],
   [5, 6], [6, 7],
   [0, 9], [2, 9], [5, 9],
-  // v15.6.3 Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
+  // v16.2 Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
   [10, 22], [22, 15], [15, 25], [25, 16], [16, 24], [24, 23], [23, 10], [15, 23], [15, 24],
   // Zolotoy Savanna (Modernized Pristine Highway Network!)
   [11, 17], [11, 18], [11, 19], [17, 19], [18, 19],
@@ -501,6 +501,21 @@ KK.TIRE_COMPOUNDS = {
     punctureResist: 0.45, dragMult: 1.06,
     desc: "Wide flotation tread floats effortlessly across Red Sands Desert dunes!"
   }
+};
+
+KK.RIM_STYLES = {
+  steel_mil: { id: "steel_mil", name: "Heavy 8-Lug Military Steel" },
+  sport5:    { id: "sport5",    name: "Classic 5-Spoke Alloy" },
+  te37:      { id: "te37",      name: "TE37 6-Spoke Sport" },
+  mesh:      { id: "mesh",      name: "BBS Multi-Spoke Mesh" },
+  turbofan:  { id: "turbofan",  name: "Rally Turbofan" }
+};
+KK.getDefaultRimStyle = function(vid) {
+  if (vid === "kamaz" || vid === "ural" || vid === "maz537" || vid === "btr80" || vid === "komodo_std" || vid === "komodo_recon" || vid === "komodo_turret" || vid === "uaz_buhanka" || vid === "lc79") return "steel_mil";
+  if (vid === "gtr_r35" || vid === "supra" || vid === "evo" || vid === "wrx") return "te37";
+  if (vid === "porsche_dakar" || vid === "audi_quattro") return "turbofan";
+  if (vid === "bmw_e39" || vid === "camry") return "mesh";
+  return "sport5";
 };
 
 KK.TIRE_BRANDS = {
@@ -1730,7 +1745,7 @@ KK.createDefaultVehicleState = function(vehicleId) {
       rideHeight: 0.0, springStiffness: 1.0, damperRebound: 1.0, antiRoll: 1.0,
       camberDeg: -0.5, toeDeg: 0.0, frontPsi: 30, rearPsi: 30
     },
-    health: { mudClog: 0, tieRodBias: 0.0, tires: 100, body: 100, headlightL: 100, headlightR: 100, lightbar: 100, taillightL: 100, taillightR: 100 },
+    health: { mudClog: 0, tieRodBias: 0.0, tires: 100, body: 100, headlightL: 100, headlightR: 100, lightbar: 100, taillightL: 100, taillightR: 100, trackL: 100, trackR: 100, glass: 100 },
     parts: {}, fuel: spec.fuelCapacity
   };
   if (spec.id === "harimau") {

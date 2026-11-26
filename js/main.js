@@ -128,6 +128,9 @@ KK.Game = class Game {
     this.ridingWithPeerId = null;
     this.timedWork = null;
     this.wipersOn = false;
+    this.gpLapStartMs = 0;
+    this.gpInGate = false;
+    try { this.gpBestLaps = JSON.parse(localStorage.getItem("kk_gp_best_laps_v1") || "{}"); } catch (_) { this.gpBestLaps = {}; }
     this.windshieldMud = 0;
     this.coopBoostTimer = 0;
     this.coopTargetPeerId = null;
@@ -317,6 +320,7 @@ KK.Game = class Game {
         this._applyIncomingOrdnanceDamage(msg.x1, msg.y1, msg.z1, cal >= 35 ? "auto40" : "mg", cal, false);
         if (this.network.isHost || this.network.mode === "offline") {
           this.cryptids.applyBulletHit(msg.x1, msg.y1, msg.z1, this.audio, cal >= 35, cal);
+        this.applyGunfireHitToLocalVehicle(msg.x1, msg.y1, msg.z1, cal);
         }
       },
       onCannonFire: (msg) => {
@@ -424,7 +428,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v15.6.3 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v16.2 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -805,6 +809,11 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
+        const pxG = this.onFoot ? this.playerFoot.x : this.vehicle.pos.x;
+        const pzG = this.onFoot ? this.playerFoot.z : this.vehicle.pos.z;
+        let nearGarTown = null;
+        for (const t of KK.TOWNS) { if (t.hasGarage && Math.hypot(pxG - t.garageX, pzG - t.garageZ) < 24) { nearGarTown = t; break; } }
+        if (nearGarTown) { this.ui.openModal("garage"); return; }
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -846,6 +855,17 @@ KK.Game = class Game {
         }
         this.vehicle.parkingBrake = !this.vehicle.parkingBrake;
         this.audio.playWrench();
+        if (this.boats && !this.boats.activeBoat && !this.onFoot) {
+          if (this.vehicle.parkingBrake && !this.boats.findLocalMountedBoat() && !this.remoteBoatMount) {
+            const underP = this.boats.findBoatUnderPoint(this.vehicle.pos.x, this.vehicle.pos.z, true);
+            if (underP && underP.boat && this.boats.spawnedBoats.includes(underP.boat)) {
+              if (this.boats.autoSnapAndStrapVehicle(underP.boat, this.vehicle, this.ui, this.audio, this.network.remotePlayers)) return;
+            }
+          } else if (!this.vehicle.parkingBrake) {
+            const ownMP = this.boats.findLocalMountedBoat();
+            if (ownMP) { this.boats.autoUnstrapVehicle(ownMP.boat, this.vehicle, this.ui, this.audio); return; }
+          }
+        }
         this.ui.toast(this.vehicle.parkingBrake ? "Parking Brake [P]: LOCKED" : "Parking Brake [P]: RELEASED");
       }
       else if (code === "Digit1") this.toggleTrailerHitch();
@@ -1006,7 +1026,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.6.3 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v16.2 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1030,7 +1050,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.6.3 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v16.2 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1653,6 +1673,40 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
+  // v16.2 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
+    if (!this.vehicle || !this.vehicle.vState) return;
+    const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
+    const hitRad = (this.vehicle.spec.bodyLen || 4.6) * 0.62 + (caliber >= 35 ? 3.2 : 0.8);
+    if (d > hitRad) return;
+    const vs = this.vehicle.vState;
+    const hlth = vs.health;
+    const dmg = caliber >= 100 ? 65 : (caliber >= 30 ? 32 : 16);
+    hlth.body = Math.max(5, (hlth.body || 100) - dmg * 0.35);
+    hlth.glass = Math.max(0, (hlth.glass !== undefined ? hlth.glass : 100) - dmg * 1.1);
+    if (Math.random() < 0.55) {
+      if (Math.random() < 0.5) hlth.headlightL = 0; else hlth.headlightR = 0;
+    }
+    if (this.vehicle.spec.isTracked) {
+      if (Math.random() < 0.5) hlth.trackL = Math.max(0, (hlth.trackL !== undefined ? hlth.trackL : 100) - dmg * 1.3);
+      else hlth.trackR = Math.max(0, (hlth.trackR !== undefined ? hlth.trackR : 100) - dmg * 1.3);
+      if (hlth.trackL < 15 || hlth.trackR < 15) this.ui.toast("💥 TANK TRACK SNAPPED BY GUNFIRE! Repair with [X] Field Repair!", true);
+    } else if (vs.blownTires && vs.blownTires.length > 0 && Math.random() < 0.65) {
+      const wi = Math.floor(Math.random() * vs.blownTires.length);
+      vs.blownTires[wi] = true;
+      this.ui.toast("💥 TIRE SHOT OUT! Swap spare or Field Repair [X]!", true);
+    }
+    if (this.audio) this.audio.playImpact(0.75);
+  }
+
+  setRimStyle(rimId) {
+    if (!KK.RIM_STYLES || !KK.RIM_STYLES[rimId]) return;
+    this.vehicle.vState.rimStyle = rimId;
+    this._rebuildActiveVehicleMesh();
+    this._saveProgress();
+    this.ui.toast(`Installed Rims: ${KK.RIM_STYLES[rimId].name}!`);
+  }
+
   setPaintColor(hex) { this.vehicle.vState.paintColor = hex; this.vehicleRig.applyUpgrades(this.vehicle.vState); this._saveProgress(); }
 
   setTune(key, val) {
@@ -1786,7 +1840,7 @@ KK.Game = class Game {
       for (const pid of Object.keys(KK.PARTS_CATALOG)) vs.parts[pid].hp = 100;
       vs.burnedOut = false; if ((vs.fuel || 0) < 25) vs.fuel = 100;
       vs.health.mudClog = 0; vs.health.tieRodBias = 0; vs.health.tires = 100; vs.health.body = 100;
-      vs.health.headlightL = 100; vs.health.headlightR = 100; vs.health.lightbar = 100; vs.health.taillightL = 100; vs.health.taillightR = 100;
+      vs.health.headlightL = 100; vs.health.headlightR = 100; vs.health.trackL = 100; vs.health.trackR = 100; vs.health.glass = 100; vs.health.lightbar = 100; vs.health.taillightL = 100; vs.health.taillightR = 100;
       for (let i = 0; i < vs.blownTires.length; i++) { vs.blownTires[i] = false; vs.tiresHP[i] = 100; }
       vs.spareTires = this.vehicle.spec.wheels.length >= 6 ? 3 : 2;
       this.vehicle.hydrolocked = false; this.vehicle.engineRunning = this.vehicle.ignitionOn; this.vehicle.coolantTemp = 82;
@@ -1827,6 +1881,7 @@ KK.Game = class Game {
     const vs = this.vehicle.vState, p = vs.parts;
     this.audio.playCash();
     if (part === "engine") {
+      vs.health.trackL = 100; vs.health.trackR = 100; vs.health.glass = 100;
       if (vs.burnedOut) { vs.burnedOut = false; vs.fuel = Math.max(vs.fuel || 0, 28); vs.health.body = Math.max(vs.health.body || 4, 45); }
       this.vehicle.hydrolocked = false; this.vehicle.engineRunning = true;
       for (const id of ["airFilter", "fuelRails", "fuelInjectors", "sparkPlugs", "pistons", "crankshaft", "camshaft", "headGasket"]) {
@@ -3257,7 +3312,7 @@ KK.Game = class Game {
     }
   }
 
-  // v15.6.3.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v16.2.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -3483,7 +3538,7 @@ KK.Game = class Game {
   }
 
   _spawnRemoteVisuals(rp) {
-    const fakeState = KK.createDefaultVehicleState(rp.vehicleId); fakeState.paintColor = rp.paintColor;
+    const fakeState = KK.createDefaultVehicleState(rp.vehicleId); fakeState.paintColor = rp.paintColor; if (rp.rimStyle) fakeState.rimStyle = rp.rimStyle;
     rp.rig = KK.VehicleBuilder.buildVehicle(rp.vehicleId, fakeState, false);
     const tag = KK.VehicleBuilder.createNameSprite(rp.callsign, "#00f5d4"); tag.position.set(0, 3.1, 0); rp.rig.root.add(tag);
     this.scene.add(rp.rig.root);
@@ -3492,7 +3547,7 @@ KK.Game = class Game {
 
   _rebuildRemoteRig(rp) {
     if (rp.rig) this.scene.remove(rp.rig.root);
-    const fakeState = KK.createDefaultVehicleState(rp.vehicleId); fakeState.paintColor = rp.paintColor;
+    const fakeState = KK.createDefaultVehicleState(rp.vehicleId); fakeState.paintColor = rp.paintColor; if (rp.rimStyle) fakeState.rimStyle = rp.rimStyle;
     rp.rig = KK.VehicleBuilder.buildVehicle(rp.vehicleId, fakeState, false);
     const tag = KK.VehicleBuilder.createNameSprite(rp.callsign, "#00f5d4"); tag.position.set(0, 3.1, 0); rp.rig.root.add(tag);
     this.scene.add(rp.rig.root);
@@ -3820,8 +3875,49 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
+    // v16.2 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
+      const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
+      const dGate = Math.hypot(gx - (-62099), gz - 63132);
+      if (dGate < 26) {
+        if (!this.gpInGate) {
+          this.gpInGate = true;
+          const nowMs = performance.now();
+          if (this.gpLapStartMs > 0 && (nowMs - this.gpLapStartMs) > 25000) {
+            const lapSec = (nowMs - this.gpLapStartMs) / 1000;
+            const vid = this.vehicle.vState.vehicleId;
+            const prevBest = this.gpBestLaps[vid];
+            const isPB = (!prevBest || lapSec < prevBest);
+            if (isPB) {
+              this.gpBestLaps[vid] = +lapSec.toFixed(2);
+              try { localStorage.setItem("kk_gp_best_laps_v1", JSON.stringify(this.gpBestLaps)); } catch (_) {}
+            }
+            const mm = Math.floor(lapSec / 60), ss = (lapSec % 60).toFixed(2).padStart(5, "0");
+            this.ui.toast(`🏁 ZOLOTOY GP LAP: ${mm}:${ss}${isPB ? " — NEW PERSONAL BEST!" : ""}`, isPB);
+          } else {
+            this.ui.toast("🏁 ZOLOTOY GP TIMED LAP STARTED! Push flat out!");
+          }
+          this.gpLapStartMs = nowMs;
+        }
+      } else if (dGate > 45) {
+        this.gpInGate = false;
+      }
+      if (this.audio && this.audio.updateTireSlip) {
+        const slipVal = Math.max(this.vehicle.driftIntensity || 0, (this.vehicle.braking && this.vehicle.speedKmh > 35) ? 0.55 : 0);
+        this.audio.updateTireSlip(slipVal, this.vehicle.speedKmh || 0, this.vehicle.currentSurface || "tarmac");
+      }
+    } else if (this.audio && this.audio.updateTireSlip) {
+      this.audio.updateTireSlip(0, 0, "tarmac");
+    }
+
+    let hasLocalPassenger = false;
+    if (this.network && this.network.remotePlayers) {
+      for (const r of this.network.remotePlayers.values()) {
+        if (r.ridingWithPeerId === this.network.myPeerId) { hasLocalPassenger = true; break; }
+      }
+    }
     this.vehicleRig.updateVisuals(dt, {
-      brakeHeat: this.vehicle.brakeHeat || 0,
+      brakeHeat: this.vehicle.brakeHeat || 0, windshieldMud: this.windshieldMud || 0, timeOfDay: this.weather ? this.weather.timeOfDay : 12, engineRunning: this.vehicle.engineRunning, rpm: this.vehicle.rpm, gear: this.vehicle.gear, hasPassenger: hasLocalPassenger, glassHp: this.vehicle.vState.health.glass !== undefined ? this.vehicle.vState.health.glass : 100, trackL: this.vehicle.vState.health.trackL !== undefined ? this.vehicle.vState.health.trackL : 100, trackR: this.vehicle.vState.health.trackR !== undefined ? this.vehicle.vState.health.trackR : 100,
       wheelOffsets: this.vehicle.wheels.map((w) => w.visualOffsetY),
       wheelSpins: this.vehicle.wheels.map((w) => w.spinAngle),
       blownTires: this.vehicle.vState.blownTires,
@@ -4295,7 +4391,7 @@ KK.Game = class Game {
         rp.rig.baseColor.set(rp.paintColor || "#5b6d5b");
         rp.rig.updateVisuals(dt, {
           wheelOffsets: rp.wheelOffsets, wheelSpins: rp.wheelSpins, blownTires: rp.blownTires, steerAngle: rp.steerAngle,
-          camberDeg: rp.camberDeg, toeDeg: 0, headlights: rp.headlights, lightbar: rp.lightbar, hasLightbar: rp.hasLightbar, headlightL: rp.headlightL, headlightR: rp.headlightR, wipersOn: rp.wipersOn, inCockpitCam: false, isEmpty: !!rp.onFoot, hasBtrTurret: !!rp.hasBtrTurret, turretYaw: rp.turretYaw || 0, gunPitch: rp.gunPitch || 0, rwsYaw: rp.rwsYaw !== undefined ? rp.rwsYaw : (rp.turretYaw || 0), rwsPitch: rp.rwsPitch || 0, autoBarrelHeat: rp.autoBarrelHeat || 0, t72Upgrades: { sturmKit: false }, isSchreckensfurst: rp.vehicleId === "pzkpfw_140a4",
+          camberDeg: rp.camberDeg, toeDeg: 0, headlights: rp.headlights, glassHp: rp.glassHp !== undefined ? rp.glassHp : 100, lightbar: rp.lightbar, hasLightbar: rp.hasLightbar, headlightL: rp.headlightL, headlightR: rp.headlightR, wipersOn: rp.wipersOn, inCockpitCam: false, isEmpty: !!rp.onFoot, hasBtrTurret: !!rp.hasBtrTurret, turretYaw: rp.turretYaw || 0, gunPitch: rp.gunPitch || 0, rwsYaw: rp.rwsYaw !== undefined ? rp.rwsYaw : (rp.turretYaw || 0), rwsPitch: rp.rwsPitch || 0, autoBarrelHeat: rp.autoBarrelHeat || 0, t72Upgrades: { sturmKit: false }, isSchreckensfurst: rp.vehicleId === "pzkpfw_140a4",
           braking: rp.braking, reversing: false, hazards: rp.hazards, hoodOpen: false,
           smokeLevel: rp.smokeLevel, dirtLevel: rp.dirtLevel, backfireTimer: rp.backfireTimer,
           cargoTilt: 0, rideHeight: rp.rideHeight, thermalMode: this.thermalMode || 0, coolantTemp: rp.coolantTemp !== undefined ? rp.coolantTemp : 82, egtTemp: rp.egtTemp !== undefined ? rp.egtTemp : 320, barrelHeat: rp.barrelHeat || 0, speedKmh: Math.hypot(rp.vx || 0, rp.vz || 0) * 3.6
@@ -4434,11 +4530,7 @@ KK.Game = class Game {
         if (this._lastDeckBarSig !== "") { this._lastDeckBarSig = ""; deckBar.classList.add("hidden"); deckBar.innerHTML = ""; }
         return;
       }
-      if (this._lastDeckBarSig !== sig) {
-        this._lastDeckBarSig = sig;
-        deckBar.innerHTML = html;
-        deckBar.classList.remove("hidden");
-      }
+      if (this._lastDeckBarSig !== "") { this._lastDeckBarSig = ""; deckBar.classList.add("hidden"); deckBar.innerHTML = ""; }
     };
     let prompt = "";
     if (this.boats && this.boats.activeBoat) {
@@ -4641,6 +4733,15 @@ KK.Game = class Game {
       return;
     }
     if (this.camMode !== 3 || this.onFoot || this.ridingWithPeerId) this.camera.up.set(0, 1, 0);
+    // v16.2 Dynamic Speed FOV (62° -> 74° at high speed)!
+    if (!this.onFoot && !this.ridingWithPeerId && !(this.boats && this.boats.activeBoat)) {
+      const spdK = this.vehicle.speedKmh || 0;
+      const targetFov = 62 + Math.min(12, Math.max(0, (spdK - 105) / 14));
+      if (Math.abs(this.camera.fov - targetFov) > 0.08) {
+        this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 4.5);
+        this.camera.updateProjectionMatrix();
+      }
+    }
     if ((this.onFoot || this.ridingWithPeerId) && Math.abs(this.camera.fov - 62) > 0.15) {
       this.camera.fov += (62 - this.camera.fov) * Math.min(1, dt * 14);
       this.camera.updateProjectionMatrix();

@@ -1699,6 +1699,34 @@ KK.AudioEngine = class AudioEngine {
     }
   }
 
+  // v16.1 Surface-Aware Tire Slip Audio (1 Pooled Bandpass Filter — 0 GC!)
+  updateTireSlip(slip, speedKmh, surface = "tarmac") {
+    if (!this.ctx || !this.masterGain || !this.noiseBuf) return;
+    if (!this._slipGain) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuf; src.loop = true;
+      const flt = this.ctx.createBiquadFilter();
+      flt.type = "bandpass"; flt.frequency.value = 1350; flt.Q.value = 3.2;
+      const gn = this.ctx.createGain();
+      gn.gain.value = 0.0;
+      src.connect(flt); flt.connect(gn); gn.connect(this.masterGain);
+      src.start();
+      this._slipFilter = flt; this._slipGain = gn;
+    }
+    const now = this.ctx.currentTime;
+    if (speedKmh < 14 || slip < 0.22) {
+      this._slipGain.gain.setTargetAtTime(0.0, now, 0.06);
+      return;
+    }
+    const surf = surface || "tarmac";
+    const freq = surf === "mud" ? 280 : (surf === "gravel" || surf === "shale" ? 580 : (surf === "snow" ? 420 : 1450));
+    const qVal = surf === "tarmac" ? 4.8 : 1.4;
+    const vol  = Math.min(0.11, (slip - 0.20) * 0.14 * Math.min(1.0, speedKmh / 55));
+    this._slipFilter.frequency.setTargetAtTime(freq, now, 0.05);
+    this._slipFilter.Q.setTargetAtTime(qVal, now, 0.05);
+    this._slipGain.gain.setTargetAtTime(vol, now, 0.04);
+  }
+
   playBackfire() {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;

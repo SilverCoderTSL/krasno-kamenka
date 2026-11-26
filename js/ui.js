@@ -426,6 +426,9 @@ KK.UIManager = class UIManager {
           <div class="paint-inline">
             <label><b>Paint:</b></label>
             <input type="color" value="${vs.paintColor}" onchange="window.__GAME__.setPaintColor(this.value)" />
+            <select style="margin-left:8px;padding:4px 6px;background:#101820;color:#e2e8f0;border:1px solid #334155;border-radius:5px;font-size:11px;" onchange="window.__GAME__.setRimStyle(this.value)">
+              ${Object.values(KK.RIM_STYLES || {}).map(r => `<option value="${r.id}" ${(vs.rimStyle || (KK.getDefaultRimStyle ? KK.getDefaultRimStyle(vs.vehicleId) : "sport5")) === r.id ? "selected" : ""}>Rims: ${r.name}</option>`).join("")}
+            </select>
           </div>
           <button class="btn primary small" onclick="window.__GAME__.washVehicle()">WASH (${dirtPct}% — $50)</button>
           <button class="btn accent small" onclick="window.__GAME__.garageFullRepair(${totalRepairCost})">OVERHAUL ALL + LIGHTS ($${totalRepairCost.toLocaleString()})</button>
@@ -940,8 +943,10 @@ KK.UIManager = class UIManager {
 
   // Live 2D Windshield Raindrops, Mud Splatters & Sweeping Wiper Arcs (Cockpit Cam ONLY!)
   updateWindshieldOverlay(dt, game) {
+    // v15.9.1: Strictly NO 2D screen-space wipers or mud — all wipers & mud live on the 3D windshield glass!
     const cv = document.getElementById("windshield-canvas");
-    if (!cv) return;
+    if (cv) cv.classList.add("hidden");
+    return;
     const inCockpit = (!game.onFoot && !game.ridingWithPeerId && game.camMode === 3);
     cv.classList.toggle("hidden", !inCockpit);
     if (!inCockpit) return;

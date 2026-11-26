@@ -156,7 +156,10 @@ KK.CockpitBuilder = {
     if (lowerPts.length >= 3) {
       // TRUE HOLLOW LOWER CABIN TUB! Carves out [zCabRear .. zCabFront] so gauges, dash, wheel & seats sit in open air!
       const zCabFront = cfg.seatZ + 0.72;
-      const zCabRear  = cfg.seatZ - 0.65;
+      let zMinLower = cfg.seatZ - 0.65;
+      for (let i = 0; i < lowerPts.length; i++) if (lowerPts[i].x < zMinLower) zMinLower = lowerPts[i].x;
+      const isLongCab = (cfg.seatZ - zMinLower) > 1.85;
+      const zCabRear  = isLongCab ? (zMinLower + 0.36) : (cfg.seatZ - 0.65);
       const frontPts = this._clipPolygonX(lowerPts, zCabFront, true);
       const rearPts  = this._clipPolygonX(lowerPts, zCabRear, false);
       const midPts   = this._clipPolygonX(this._clipPolygonX(lowerPts, zCabRear, true), zCabFront, false);
@@ -357,6 +360,16 @@ KK.CockpitBuilder = {
       ctx.fillStyle = (st.frontLock || st.rearLock) ? "#ff595e" : "#3a4552"; ctx.fillText("LCK", 122, 82);
       ctx.fillStyle = st.wipersOn ? "#00e5ff" : "#3a4552"; ctx.fillText("WPR", 144, 82);
       if (st.hasBlown) { ctx.fillStyle = "#ff2a4a"; ctx.fillText("FLAT!", 128, 12); }
+      // v15.8 Digital Dash Clock (HH:MM in-game time!)
+      if (typeof st.timeOfDay === "number") {
+        const hrs = Math.floor(((st.timeOfDay % 24) + 24) % 24);
+        const mins = Math.floor((((st.timeOfDay % 1) + 1) % 1) * 60);
+        const clk = String(hrs).padStart(2, "0") + ":" + String(mins).padStart(2, "0");
+        ctx.fillStyle = palette.accent || "#00f5ff";
+        ctx.font = "bold 11px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(clk, 128, 16);
+      }
       tex.needsUpdate = true;
     };
     draw({});
@@ -559,6 +572,30 @@ KK.CockpitBuilder = {
     };
   },
 
+  _getCrackedGlassTex() {
+    if (this._crackedGlassTex) return this._crackedGlassTex;
+    const cv = document.createElement("canvas");
+    cv.width = 256; cv.height = 256;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "rgba(76, 124, 156, 0.36)";
+    ctx.fillRect(0, 0, 256, 256);
+    // Spiderweb bullet/impact cracks
+    ctx.strokeStyle = "rgba(235, 248, 255, 0.85)";
+    ctx.lineWidth = 1.6;
+    for (const [cx, cy] of [[86, 108], [174, 146]]) {
+      for (let r = 0; r < 9; r++) {
+        const a = (r / 9) * Math.PI * 2 + 0.2;
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(a) * 44, cy + Math.sin(a) * 44);
+        ctx.stroke();
+      }
+      ctx.beginPath(); ctx.arc(cx, cy, 14, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, 28, 0, Math.PI * 2); ctx.stroke();
+    }
+    this._crackedGlassTex = new THREE.CanvasTexture(cv);
+    return this._crackedGlassTex;
+  },
+
   buildCockpit(chassis, vehicleId, spec, isLocal, hasRearBench = false) {
     const cfg = this.getConfig(vehicleId);
     if (cfg.special === "t72_periscope") {
@@ -614,10 +651,14 @@ KK.CockpitBuilder = {
     const tunnelH = (arch === "military") ? 0.44 : 0.24;
     const tunnel = new THREE.Mesh(new THREE.BoxGeometry(tunnelW, tunnelH, 1.05), matDash);
     tunnel.position.set(0, yF + tunnelH * 0.5, zC + 0.12); cockpitGrp.add(tunnel);
+    // v16.0 Animated H-Pattern Cockpit Shifter Lever!
+    const shifterPivot = new THREE.Group();
+    shifterPivot.position.set(0, yF + tunnelH, zC + 0.22);
     const shifterStick = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.020, 0.28, 6), matSpoke);
-    shifterStick.position.set(0, yF + tunnelH + 0.12, zC + 0.22); shifterStick.rotation.x = 0.12; cockpitGrp.add(shifterStick);
+    shifterStick.position.set(0, 0.14, 0); shifterPivot.add(shifterStick);
     const shiftKnob = new THREE.Mesh(new THREE.SphereGeometry(0.036, 8, 8), matAccent);
-    shiftKnob.position.set(0, yF + tunnelH + 0.26, zC + 0.24); cockpitGrp.add(shiftKnob);
+    shiftKnob.position.set(0, 0.28, 0); shifterPivot.add(shiftKnob);
+    cockpitGrp.add(shifterPivot);
 
     if (arch === "jdm") {
       const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.08, 10), matDash);
@@ -738,6 +779,15 @@ KK.CockpitBuilder = {
       arm.position.set(ax, 0.36, 0.24); arm.rotation.x = -0.18; driverGroup.add(arm);
     }
     cockpitGrp.add(driverGroup);
+    // v15.9 Seated Co-op Passenger Avatar (fills passenger seat cleanly when a friend rides shotgun!)
+    const passengerGroup = new THREE.Group();
+    passengerGroup.position.set(pasX, yF + 0.22, zC - 0.04);
+    const matPasJkt = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.86 });
+    const pTorso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.48, 0.22), matPasJkt); pTorso.position.y = 0.24; passengerGroup.add(pTorso);
+    const pHead  = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), matHead); pHead.position.set(0, 0.62, 0.02); passengerGroup.add(pHead);
+    const pCap   = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.09, 0.25), matCap); pCap.position.set(0, 0.74, 0.04); passengerGroup.add(pCap);
+    passengerGroup.visible = false;
+    cockpitGrp.add(passengerGroup);
 
     // 3D ANIMATED WINDSHIELD WIPERS
     const wiperGroup = new THREE.Group();
@@ -761,6 +811,25 @@ KK.CockpitBuilder = {
       update(dt, state) {
         steerPivot.rotation.z = -(state.steerAngle || 0) * 3.6;
         driverGroup.visible = !state.inCockpitCam && !state.isEmpty;
+        if (shifterPivot && typeof state.gear === "number") {
+          const g = state.gear;
+          const targetPitch = g === 0 ? 0.0 : ((g === -1 || g % 2 === 1) ? 0.24 : -0.22);
+          const targetRoll  = g === 0 ? 0.0 : (g === -1 ? -0.22 : (g <= 2 ? 0.18 : (g <= 4 ? 0.0 : -0.16)));
+          const sAlpha = Math.min(1, dt * 16);
+          shifterPivot.rotation.x += (targetPitch - shifterPivot.rotation.x) * sAlpha;
+          shifterPivot.rotation.z += (targetRoll  - shifterPivot.rotation.z) * sAlpha;
+        }
+        passengerGroup.visible = !!state.hasPassenger;
+        if (KK.CockpitBuilder && KK.CockpitBuilder._matFormGlass && typeof state.glassHp === "number") {
+          const wantCrack = state.glassHp < 55;
+          const mFG = KK.CockpitBuilder._matFormGlass;
+          const wMud = Math.max(0, Math.min(1, state.windshieldMud || 0));
+          if (wantCrack && !mFG.map) { mFG.map = KK.CockpitBuilder._getCrackedGlassTex(); mFG.needsUpdate = true; }
+          else if (!wantCrack && mFG.map) { mFG.map = null; mFG.needsUpdate = true; }
+          // Blend 3D windshield glass color & opacity with mud strictly on the 3D window!
+          mFG.color.setRGB(0.30 + wMud * 0.14, 0.49 - wMud * 0.17, 0.61 - wMud * 0.41);
+          mFG.opacity = (wantCrack ? 0.56 : 0.34) + wMud * 0.28;
+        }
         if (state.wipersOn) this.wiperPhase += dt * 4.2;
         else this.wiperPhase += (0 - (this.wiperPhase % (Math.PI * 2))) * Math.min(1, dt * 6);
         const sweep = state.wipersOn ? (Math.sin(this.wiperPhase) * 0.85 - 0.15) : -1.25;

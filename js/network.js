@@ -1120,7 +1120,7 @@ KK.LanNetwork = class LanNetwork {
         vx: pkt.vx || 0, vz: pkt.vz || 0, trailer: pkt.tr || null, trailerRig: null,
         qx: pkt.qx || 0, qy: pkt.qy || 0, qz: pkt.qz || 0, qw: pkt.qw || 1,
         tqx: pkt.qx || 0, tqy: pkt.qy || 0, tqz: pkt.qz || 0, tqw: pkt.qw || 1,
-        vehicleId: pkt.vid || "uaz452", paintColor: pkt.col || "#5b6d5b",
+        vehicleId: pkt.vid || "uaz452", paintColor: pkt.col || "#5b6d5b", rimStyle: pkt.rim || "", glassHp: typeof pkt.gl === "number" ? pkt.gl : 100,
         onFoot: !!pkt.foot, footX: pkt.fx || 0, footY: pkt.fy || 5, footZ: pkt.fz || 0, footYaw: pkt.fyaw || 0,
         wheelOffsets: pkt.wo || [], wheelSpins: pkt.ws || [], blownTires: pkt.bt || [], steerAngle: pkt.st || 0,
         headlights: !!pkt.hl, lightbar: !!pkt.lb, hasLightbar: !!pkt.ulb, headlightL: pkt.hll !== undefined ? pkt.hll : 100, headlightR: pkt.hlr !== undefined ? pkt.hlr : 100, engOn: pkt.eng !== undefined ? !!pkt.eng : true, rpm: pkt.rpm || 800, engineId: pkt.eid || null, throttle: pkt.thr || 0, hornActive: !!pkt.hrn, rwsYaw: pkt.rwsy !== undefined ? pkt.rwsy : (pkt.tyaw || 0), rwsPitch: pkt.rwsp || 0, gunPitch: pkt.gp || 0, autoBarrelHeat: pkt.abh || 0, wipersOn: !!pkt.wp, repairing: !!pkt.rep, hasBtrTurret: !!pkt.btur, turretYaw: pkt.tyaw || 0, carriedByPeerId: pkt.cbp || null, braking: !!pkt.br, hazards: !!pkt.hz,
@@ -1136,10 +1136,13 @@ KK.LanNetwork = class LanNetwork {
       entry.vx = pkt.vx || 0; entry.vz = pkt.vz || 0;
       entry.trailer = pkt.tr || null; entry.boat = pkt.boat || null; entry.boatMount = pkt.bm || null;
       entry.tqx = pkt.qx; entry.tqy = pkt.qy; entry.tqz = pkt.qz; entry.tqw = pkt.qw;
-      if (pkt.vid && pkt.vid !== entry.vehicleId) {
-        entry.vehicleId = pkt.vid; entry.paintColor = pkt.col || entry.paintColor;
+      if ((pkt.vid && pkt.vid !== entry.vehicleId) || (pkt.rim && pkt.rim !== entry.rimStyle)) {
+        if (pkt.vid) entry.vehicleId = pkt.vid;
+        entry.paintColor = pkt.col || entry.paintColor;
+        if (pkt.rim) entry.rimStyle = pkt.rim;
         if (this.cb.onRemoteVehicleChange) this.cb.onRemoteVehicleChange(entry);
       }
+      if (typeof pkt.gl === "number") entry.glassHp = pkt.gl;
       entry.paintColor = pkt.col || entry.paintColor;
       entry.onFoot = !!pkt.foot; entry.footX = pkt.fx || pkt.x; entry.footY = pkt.fy || pkt.y; entry.footZ = pkt.fz || pkt.z; entry.footYaw = pkt.fyaw || 0;
       entry.wheelOffsets = pkt.wo || entry.wheelOffsets; entry.wheelSpins = pkt.ws || entry.wheelSpins; entry.blownTires = pkt.bt || entry.blownTires;
@@ -1161,7 +1164,7 @@ KK.LanNetwork = class LanNetwork {
     const engHp = KK.getEngineOverallHealth(vehicle.vState);
     const smoke = Math.max(0, (vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
     this.send({
-      type: "player_state", callsign: this.callsign,
+      type: "player_state", callsign: this.callsign, rim: vehicle.vState.rimStyle || "", gl: vehicle.vState.health.glass !== undefined ? Math.round(vehicle.vState.health.glass) : 100,
       x: +vehicle.pos.x.toFixed(2), y: +vehicle.pos.y.toFixed(2), z: +vehicle.pos.z.toFixed(2),
       vx: +vehicle.vel.x.toFixed(2), vz: +vehicle.vel.z.toFixed(2),
       boat: activeBoat ? { id: activeBoat.id, x: +activeBoat.gx.toFixed(1), y: +activeBoat.gy.toFixed(2), z: +activeBoat.gz.toFixed(1), vx: +activeBoat.vx.toFixed(2), vz: +activeBoat.vz.toFixed(2), yaw: +activeBoat.yaw.toFixed(2), spd: +activeBoat.speedKmh.toFixed(1), anc: activeBoat.anchored ? 1 : 0, lock: activeBoat.deckLocked ? 1 : 0, nav: activeBoat.navLightsOn ? 1 : 0, spot: activeBoat.spotLightOn ? 1 : 0 } : null,

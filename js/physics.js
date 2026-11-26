@@ -29,6 +29,7 @@ KK.VehiclePhysics = class VehiclePhysics {
     this.carHitCooldown = 0;
     this.hydrolocked = false;
     this.steerAngle = 0;
+    this._vFwd = new THREE.Vector3(); this._vRight = new THREE.Vector3(); this._vUp = new THREE.Vector3();
     this.smoothThrottle = 0;
     this.prevRawThrottle = 0;
     this.backfireTimer = 0;
@@ -88,7 +89,7 @@ KK.VehiclePhysics = class VehiclePhysics {
   consumeEvents() { const out = this.events; this.events = []; return out; }
 
   flipUpright(world) {
-    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(this.quat);
+    const fwd = this._vFwd.set(0, 0, 1).applyQuaternion(this.quat);
     const yaw = Math.atan2(fwd.x, fwd.z);
     this.quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
     const tInfo = world.getTerrainInfo(this.pos.x, this.pos.z, true);
@@ -228,16 +229,17 @@ KK.VehiclePhysics = class VehiclePhysics {
     const Iy = mass * (spec.bodyLen * spec.bodyLen + spec.bodyWidth * spec.bodyWidth) * 0.15;
     const Iz = mass * (spec.bodyWidth * spec.bodyWidth + spec.bodyHeight * spec.bodyHeight) * (0.14 / cogBoost);
 
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.quat);
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.quat);
+    const right = this._vRight.set(1, 0, 0).applyQuaternion(this.quat);
+    const up = this._vUp.set(0, 1, 0).applyQuaternion(this.quat);
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.quat);
 
     const fwdSpeed = this.vel.dot(forward), latSpeed = this.vel.dot(right);
     this.speedKmh = Math.abs(fwdSpeed) * 3.6;
 
-    const maxSteerRad = (spec.maxSteerDeg * Math.PI) / 180;
+    const effMaxDeg = Math.max(spec.maxSteerDeg || 34, 34);
+    const maxSteerRad = (effMaxDeg * Math.PI) / 180;
     const absSpd = Math.abs(fwdSpeed);
-    const speedSteerFactor = 1.0 / (1.0 + absSpd * (spec.agileSteer ? 0.024 : 0.034) + absSpd * absSpd * (spec.agileSteer ? 0.00145 : 0.00110));
+    const speedSteerFactor = 1.0 / (1.0 + absSpd * (spec.agileSteer ? 0.014 : 0.018) + absSpd * absSpd * (spec.agileSteer ? 0.00058 : 0.00048));
     let flatPull = 0;
     if (vs.blownTires) {
       for (let wi = 0; wi < this.wheels.length; wi++) {
@@ -333,7 +335,24 @@ KK.VehiclePhysics = class VehiclePhysics {
     this.rpm += (targetRpm - this.rpm) * Math.min(1, dt * (7.5 + flywheelPerf * 4.0));
 
     if (this.autoShift && this.gear > 0 && this.engineRunning) {
-      if (this.rpm > effRedline * 0.91 && this.gear < gears.length && throttle > 0.2) this.gear++;
+      // v16.0 Antilag Launch Control (Brake + Throttle at standstill on turbo/sport cars!)
+      const isLaunchCtrl = (this.engineRunning && brake > 0.35 && input.throttle > 0.65 && this.speedKmh < 6 && (eng.hasTurbo || (vs.upgrades && vs.upgrades.turbo)));
+      if (isLaunchCtrl) {
+        const lcTarget = effRedline * 0.64;
+        this.rpm = lcTarget + Math.sin(performance.now() * 0.09) * 280;
+        this.boostPsi = Math.min(eng.maxBoost || 18, (this.boostPsi || 0) + dt * 22);
+        if (Math.random() < dt * 9.0) { this.backfireTimer = 0.10; this.justBackfired = true; }
+      }
+      // v16.0 Sharp Rev-Limiter Bounce at Redline!
+      if (this.rpm >= effRedline * 0.985 && throttle > 0.4) {
+        this.rpm = effRedline * (0.94 + Math.random() * 0.045);
+        if (this.backfireTimer <= 0 && Math.random() < dt * 11.0) { this.backfireTimer = 0.12; this.justBackfired = true; }
+      }
+      if (this.rpm > effRedline * 0.91 && this.gear < gears.length && throttle > 0.2) {
+        this.gear++;
+        this.angVel.x -= 0.22 * throttle;
+        if (throttle > 0.65) { this.backfireTimer = 0.14; this.justBackfired = true; }
+      }
       else if (this.rpm < eng.idleRpm + (effRedline - eng.idleRpm) * 0.26 && this.gear > 1) this.gear--;
     }
 
@@ -358,19 +377,22 @@ KK.VehiclePhysics = class VehiclePhysics {
       const baseLoad = throttle * (0.30 + 0.70 * rpmFrac);
       const load = baseLoad * (1.0 + overBoost * 0.018);
 
-      const radPerf = KK.getPartPerf(vs, "radiator");
-      const pumpPerf = KK.getPartPerf(vs, "waterPump");
-      const radEff = (radPerf * 0.6 + pumpPerf * 0.4) * (1.0 - hlth.mudClog * 0.0040);
-      const fanAirflow = this.coolantTemp > 92 ? 1.28 : 0.72;
+      const radHpFrac = (parts.radiator ? parts.radiator.hp : 100) / 100;
+      const icHpFrac  = (parts.intercooler ? parts.intercooler.hp : 100) / 100;
+      const pumpHpFrac = (parts.waterPump ? parts.waterPump.hp : 100) / 100;
+      const radPerf = KK.getPartPerf(vs, "radiator") * (radHpFrac < 0.35 ? Math.max(0.06, radHpFrac / 0.35) : 1.0);
+      const pumpPerf = KK.getPartPerf(vs, "waterPump") * (pumpHpFrac < 0.30 ? Math.max(0.10, pumpHpFrac / 0.30) : 1.0);
+      const radEff = (radPerf * 0.65 + pumpPerf * 0.35) * (1.0 - hlth.mudClog * 0.0055);
+      const fanAirflow = this.coolantTemp > 92 ? 1.25 : 0.72;
       const airflow = Math.max(fanAirflow, 0.78 + Math.min(1.45, this.speedKmh / 36));
-      const heatIn = (0.35 + load * 4.4) * eng.heatRate;
-      const heatOut = Math.max(0, this.coolantTemp - 76) * 0.34 * radEff * airflow;
+      const heatIn = (0.45 + load * 5.2 + (radHpFrac < 0.15 ? 2.4 : 0)) * eng.heatRate;
+      const heatOut = Math.max(0, this.coolantTemp - 74) * 0.34 * radEff * airflow;
       const targetFloor = this.coolantTemp < 80 ? (82 - this.coolantTemp) * 0.14 : 0;
-      this.coolantTemp = Math.max(32, Math.min(130, this.coolantTemp + (heatIn - heatOut + targetFloor) * dt));
+      this.coolantTemp = Math.max(32, Math.min(142, this.coolantTemp + (heatIn - heatOut + targetFloor) * dt));
 
-      // Balanced EGT: normal WOT stays ~570-760°C; only exceeds 940°C with extreme boost + damaged intercooler!
-      const targetEgt = 255 + baseLoad * 315 + (overBoost * 7.8) / Math.max(0.72, icEff);
-      this.egtTemp += (targetEgt - this.egtTemp) * Math.min(1, dt * 1.15);
+      const realIcEff = icEff * (icHpFrac < 0.35 ? Math.max(0.18, icHpFrac / 0.35) : 1.0);
+      const targetEgt = 255 + baseLoad * 335 + (overBoost * 9.5) / Math.max(0.18, realIcEff) + (icHpFrac < 0.15 ? 160 * baseLoad : 0);
+      this.egtTemp += (targetEgt - this.egtTemp) * Math.min(1, dt * 1.25);
 
       const driveWear = (0.0055 + load * 0.022) * dt;
       this._wearPart("sparkPlugs", driveWear * 1.15);
@@ -388,9 +410,14 @@ KK.VehiclePhysics = class VehiclePhysics {
       this._wearPart("driveshaft", driveWear * 0.50);
       this._wearPart("wheelHubs", (this.speedKmh / 85) * 0.012 * dt);
 
-      if (this.coolantTemp > 122) {
-        this._wearPart("headGasket", (this.coolantTemp - 121) * 0.040 * dt);
-        this._wearPart("pistons", (this.coolantTemp - 121) * 0.025 * dt);
+      if (this.coolantTemp > 110) {
+        const ohSev = (this.coolantTemp - 110) * dt;
+        this._wearPart("headGasket", ohSev * 0.085);
+        this._wearPart("pistons",    ohSev * 0.060);
+        this._wearPart("crankshaft", ohSev * 0.042);
+        this._wearPart("camshaft",   ohSev * 0.038);
+        this._wearPart("sparkPlugs", ohSev * 0.055);
+        this._wearPart("waterPump",  ohSev * 0.045);
       }
       if (this.egtTemp > 940) {
         this._wearPart("headGasket", (this.egtTemp - 935) * 0.008 * dt);
@@ -507,7 +534,10 @@ KK.VehiclePhysics = class VehiclePhysics {
             // Tie-rod bending ONLY on genuinely brutal high-speed slams (>55 km/h!) so it's realistic, not spammy!
             if (w.def.steer && this.speedKmh > 55 && impactSeverity > 0.92) {
               this._wearPart("tieRods", dmg * 0.9);
-              const bendChance = 0.22 * KK.getPartWearMult(vs, "tieRods");
+              const shockId = i === 0 ? "shockFL" : (i === 1 ? "shockFR" : (i === 2 ? "shockRL" : "shockRR"));
+              const shockHp = (parts[shockId] ? parts[shockId].hp : 100);
+              if (shockHp < 28) { this._wearPart("tieRods", 1.8); this._wearPart("wheelHubs", 1.5); vs.health.body = Math.max(5, vs.health.body - 0.6); }
+              const bendChance = (shockHp < 28 ? 0.45 : 0.22) * KK.getPartWearMult(vs, "tieRods");
               if (Math.random() < bendChance) {
                 const bendDir = (i === 0 ? -1 : 1) * (0.03 + Math.random() * 0.045);
                 hlth.tieRodBias = Math.max(-0.18, Math.min(0.18, hlth.tieRodBias + bendDir));
@@ -654,18 +684,23 @@ KK.VehiclePhysics = class VehiclePhysics {
       const maxBrakePerWheel = (spec.brakeForce / this.wheels.length) * brakePartMult;
       const isRear = (w.def.axle !== "front" && w.def.axle !== "front2");
       // When pulling handbrake, cut rear drive force & clamp hard!
-      const effDrive = (handbrake && isRear) ? 0 : (handbrake ? driveForce * 0.25 : driveForce);
+      // v15.9 Destroyable Tank Tracks: Snapped track (<15% HP) kills drive & drags that side!
+      const trackBrokenSide = spec.isTracked && ((w.def.x < 0 && (hlth.trackL !== undefined ? hlth.trackL : 100) < 15) || (w.def.x >= 0 && (hlth.trackR !== undefined ? hlth.trackR : 100) < 15));
+      const effDrive = trackBrokenSide ? 0 : ((handbrake && isRear) ? 0 : (handbrake ? driveForce * 0.25 : driveForce));
       let brakeF = (brake > 0.05 ? brake * maxBrakePerWheel * 1.35 : 0);
-      if (handbrake) {
+      if (handbrake || trackBrokenSide) {
         // Strong rear lockup + assistive front hold at low speed so the car stops crisp and NEVER coasts!
         brakeF += isRear ? (maxBrakePerWheel * 3.4) : (Math.abs(vLong) < 4.5 ? maxBrakePerWheel * 1.8 : maxBrakePerWheel * 0.45);
       }
-      const stopClamp = Math.abs(vLong) * mass * (handbrake ? 14.0 : 6.5);
+      const stopClamp = Math.abs(vLong) * mass * (handbrake ? 14.0 : 6.5) * brakeFade;
       let fLong = effDrive - Math.sign(vLong) * Math.min(stopClamp, brakeF) - vLong * rollingDrag * (fN * 0.055);
       const maxLong = fN * longMu * (spec.isTracked ? (handbrake ? 2.1 : 1.85) : (handbrake ? 1.55 : 1.28));
       fLong = Math.max(-maxLong, Math.min(maxLong, fLong));
 
-      const hbDriftScale = (handbrake && isRear && this.speedKmh > 18 && !spec.isTracked) ? 0.38 : 1.0;
+      const isPowerSlide = (isRear && throttle > 0.72 && Math.abs(this.steerAngle) > 0.16 && this.speedKmh > 28 && !spec.isTracked && (this.driveMode === "2H" || spec.agileSteer));
+      const dmDriftBias = (this.driveMode === "2H" && isRear && throttle > 0.55 && Math.abs(this.steerAngle) > 0.12) ? 0.78 : (this.driveMode === "4H" ? 1.06 : 1.0);
+      const hbDriftScale = ((handbrake && isRear && this.speedKmh > 16 && !spec.isTracked) ? 0.28 : (isPowerSlide ? 0.66 : 1.0)) * dmDriftBias;
+      const brakeFade = (this.brakeHeat > 0.85) ? (1.0 - (this.brakeHeat - 0.85) * 2.2) : 1.0;
       const isFrontAxle = (w.def.axle === "front" || w.def.axle === "front2");
       const isAeroSport = (spec.id === "gtr_r35" || spec.id === "wrx" || spec.id === "evo");
       const rearAeroGrip = (!isFrontAxle && isAeroSport) ? (1.0 + Math.min(0.42, (this.speedKmh * this.speedKmh) / 68000)) : 1.0;
