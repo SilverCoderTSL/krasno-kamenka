@@ -428,7 +428,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v16.7 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v16.8 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -1026,7 +1026,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.7 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v16.8 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1050,7 +1050,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.7 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v16.8 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1673,7 +1673,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v16.7 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v16.8 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -3331,7 +3331,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.7.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v16.8.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -3784,6 +3784,27 @@ KK.Game = class Game {
           const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
+        // v16.8 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        if (this.vehicle && this.vehicle.spec) {
+          const spC = this.vehicle.spec;
+          const dxC = this.playerFoot.x - this.vehicle.pos.x;
+          const dzC = this.playerFoot.z - this.vehicle.pos.z;
+          const fwdC = new THREE.Vector3(0, 0, 1).applyQuaternion(this.vehicle.quat);
+          const yawC = Math.atan2(fwdC.x, fwdC.z);
+          const cC = Math.cos(-yawC), sC = Math.sin(-yawC);
+          let lxC = dxC * cC + dzC * sC;
+          let lzC = -dxC * sC + dzC * cC;
+          const hW = (spC.bodyWidth || 2.0) * 0.5 + 0.38;
+          const hL = (spC.bodyLen || 4.6) * 0.5 + 0.38;
+          if (Math.abs(lxC) < hW && Math.abs(lzC) < hL) {
+            const penX = hW - Math.abs(lxC), penZ = hL - Math.abs(lzC);
+            if (penX < penZ) lxC = (lxC >= 0 ? hW : -hW);
+            else lzC = (lzC >= 0 ? hL : -hL);
+            const cB = Math.cos(yawC), sB = Math.sin(yawC);
+            this.playerFoot.x = this.vehicle.pos.x + lxC * cB + lzC * sB;
+            this.playerFoot.z = this.vehicle.pos.z - lxC * sB + lzC * cB;
+          }
+        }
           this.playerFoot.yaw = Math.atan2(dir.x, dir.z); this.playerFoot.walkPhase += dt * spd * 2.2;
         }
         const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
@@ -3894,7 +3915,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v16.7 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    // v16.8 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const dGate = Math.hypot(gx - (-62099), gz - 63132);

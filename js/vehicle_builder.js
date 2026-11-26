@@ -721,7 +721,7 @@ KK.VehicleBuilder = {
         stepTrim.position.set(sx * (w * 0.59), 0.36, 0.06); chassis.add(stepTrim);
       }
 
-      hoodPivot.position.set(0, 1.02, 1.10);
+      hoodPivot.position.set(0, 1.02, 1.10); hoodPivot.rotation.x = 0.055;
       const hoodPanel = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 0.07, 1.38), matPaint);
       hoodPanel.position.set(0, 0.02, 0.68); hoodPivot.add(hoodPanel);
       const scoop = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.11, 0.52), matPaint);
@@ -805,7 +805,7 @@ KK.VehicleBuilder = {
         skirt.position.set(sx * (w * 0.47), 0.39, -0.02); chassis.add(skirt);
       }
 
-      hoodPivot.position.set(0, 0.96, 0.88);
+      hoodPivot.position.set(0, 0.96, 0.88); hoodPivot.rotation.x = 0.072;
       const hoodPanel = new THREE.Mesh(new THREE.BoxGeometry(w * 0.80, 0.06, 1.24), matPaint);
       hoodPanel.position.set(0, 0.01, 0.62); hoodPivot.add(hoodPanel);
       const scoopV = [
@@ -881,7 +881,7 @@ KK.VehicleBuilder = {
         skirt.position.set(sx * (w * 0.48), 0.36, 0.0); chassis.add(skirt);
       }
 
-      hoodPivot.position.set(0, 0.92, 0.86);
+      hoodPivot.position.set(0, 0.92, 0.86); hoodPivot.rotation.x = 0.085;
       const hoodPanel = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 0.055, 1.30), matPaint);
       hoodPanel.position.set(0, 0.01, 0.65); hoodPivot.add(hoodPanel);
       const mainVent = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.035, 0.36), matCarbon);
@@ -1184,7 +1184,7 @@ KK.VehicleBuilder = {
       const towLoop = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.016, 6, 12), matRedNismo);
       towLoop.rotation.x = Math.PI / 2; towLoop.position.set(0.56, 0.44, 2.44); chassis.add(towLoop);
 
-      hoodPivot.position.set(0, 0.97, 0.86);
+      hoodPivot.position.set(0, 0.97, 0.86); hoodPivot.rotation.x = 0.095;
       const hoodPanel = new THREE.Mesh(new THREE.BoxGeometry(w * 0.80, 0.06, 1.34), matPaint);
       hoodPanel.position.set(0, 0.01, 0.67); hoodPivot.add(hoodPanel);
       const powerBulge = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.055, 1.06), matPaint);
@@ -1377,7 +1377,7 @@ KK.VehicleBuilder = {
         stepEdge.position.set(sx * (w * 0.57), 0.38, 0.02); chassis.add(stepEdge);
       }
 
-      hoodPivot.position.set(0, 1.06, 0.96);
+      hoodPivot.position.set(0, 1.06, 0.96); hoodPivot.rotation.x = 0.055;
       const hood = new THREE.Mesh(new THREE.BoxGeometry(w * 0.82, 0.075, 1.34), matPaint);
       hood.position.set(0, 0.02, 0.67); hoodPivot.add(hood);
       const hCreaseL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.03, 1.18), matPaint);
@@ -1699,7 +1699,7 @@ KK.VehicleBuilder = {
       grille.position.set(0, 0.70, 2.01); chassis.add(grille);
       const gTop = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.04, 0.10), matChrome);
       gTop.position.set(0, 0.78, 2.02); chassis.add(gTop);
-      hoodPivot.position.set(0, 0.95, 0.86);
+      hoodPivot.position.set(0, 0.95, 0.86); hoodPivot.rotation.x = 0.082;
       const hood = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.07, 1.06), matPaint);
       hood.position.set(0, 0.02, 0.53); hoodPivot.add(hood);
       const wind = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, 0.62, 0.06), matGlass); wind.visible = false;
@@ -4464,14 +4464,45 @@ KK.VehicleBuilder = {
         spinGroup.add(rotorDisc);
 
         const rimStyle = (vState && vState.rimStyle) || (KK.getDefaultRimStyle ? KK.getDefaultRimStyle(vehicleId) : "sport5");
-        const spokeCnt = rimStyle === "mesh" ? 10 : (rimStyle === "steel_mil" ? 8 : (rimStyle === "te37" ? 6 : 5));
-        const spokeW   = rimStyle === "mesh" ? 0.036 * rScale : (rimStyle === "steel_mil" ? 0.088 * rScale : (rimStyle === "te37" ? 0.072 * rScale : 0.058 * rScale));
+        const isDish   = (rimStyle === "oz_rally" || rimStyle === "soviet_dish" || rimStyle === "aero_disc" || rimStyle === "turbofan");
+        const isSplitY = (rimStyle === "mesh" || rimStyle === "bbs_lm" || rimStyle === "rpf1" || rimStyle === "split_y10" || rimStyle === "rotiform");
+        const isBead   = (rimStyle === "beadlock12" || rimStyle === "humvee_mil" || rimStyle === "steel_mil");
+        const spokeCnt = rimStyle === "advan_sa3r" ? 3 : (rimStyle === "wire_classic" ? 16 : (rimStyle === "turbine" ? 12
+          : (rimStyle === "ce28n" || rimStyle === "mesh" || rimStyle === "bbs_lm" || rimStyle === "split_y10" ? 10
+          : (rimStyle === "watanabe" || rimStyle === "steel_mil" || rimStyle === "rotiform" ? 8
+          : (rimStyle === "forged_7" ? 7 : (rimStyle === "te37" || rimStyle === "rpf1" ? 6 : 5))))));
+        const spokeW   = (rimStyle === "wire_classic" ? 0.022 : (isSplitY ? 0.034 : (rimStyle === "advan_sa3r" ? 0.115
+          : (rimStyle === "steel_mil" || rimStyle === "watanabe" ? 0.085 : (rimStyle === "te37" || rimStyle === "meister_s1" ? 0.072 : 0.056))))) * rScale;
+        const dishInset = (rimStyle === "meister_s1" || rimStyle === "deep_star5" || rimStyle === "ssr_prof") ? 0.36 : 0.41;
+
+        if (isDish) {
+          const disc = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.56, wRad * 0.56, 0.035, 16), matRim);
+          disc.rotation.z = Math.PI / 2;
+          disc.position.set(sideSign * (wWid * 0.41), 0, 0);
+          spinGroup.add(disc);
+        }
         for (let sp = 0; sp < spokeCnt; sp++) {
           const ang = (sp / spokeCnt) * Math.PI * 2;
           const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.038, wRad * 0.44, spokeW), matRim);
-          spoke.position.set(sideSign * (wWid * 0.41), Math.cos(ang) * (wRad * 0.32), Math.sin(ang) * (wRad * 0.32));
-          spoke.rotation.x = ang + (rimStyle === "mesh" ? (sp % 2 === 0 ? 0.22 : -0.22) : 0);
+          spoke.position.set(sideSign * (wWid * dishInset), Math.cos(ang) * (wRad * 0.32), Math.sin(ang) * (wRad * 0.32));
+          const twist = isSplitY ? (sp % 2 === 0 ? 0.24 : -0.24) : (rimStyle === "turbine" ? 0.35 : 0);
+          spoke.rotation.x = ang + twist;
           spinGroup.add(spoke);
+        }
+        if (isBead) {
+          const boltCnt = rimStyle === "beadlock12" ? 12 : 8;
+          for (let bi = 0; bi < boltCnt; bi++) {
+            const ba = (bi / boltCnt) * Math.PI * 2;
+            const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.032 * rScale, 0.032 * rScale), matChrome);
+            bolt.position.set(sideSign * (wWid * 0.45), Math.cos(ba) * (wRad * 0.53), Math.sin(ba) * (wRad * 0.53));
+            spinGroup.add(bolt);
+          }
+        }
+        if (rimStyle === "centerlock") {
+          const hexNut = new THREE.Mesh(new THREE.CylinderGeometry(0.095 * rScale, 0.095 * rScale, 0.06, 6), matBrake);
+          hexNut.rotation.z = Math.PI / 2;
+          hexNut.position.set(sideSign * (wWid * 0.44), 0, 0);
+          spinGroup.add(hexNut);
         }
       }
 
@@ -4533,7 +4564,8 @@ KK.VehicleBuilder = {
         chassis.position.y = chassisLiftY;
         this.hoodOpenTarget = state.hoodOpen ? 1.0 : 0.0;
         this.hoodOpenCurrent += (this.hoodOpenTarget - this.hoodOpenCurrent) * Math.min(1, dt * 7);
-        hoodPivot.rotation.x = -this.hoodOpenCurrent * 1.1;
+        if (this._hoodBaseRotX === undefined) this._hoodBaseRotX = hoodPivot.rotation.x;
+          hoodPivot.rotation.x = this._hoodBaseRotX - this.hoodOpenCurrent * 1.1;
         if (engineBay) {
           engineBay.visible = (this.hoodOpenCurrent > 0.02 || !!state.xrayActive);
           if (engineBay.visible && engineBay.userData.basePos) {
@@ -4576,7 +4608,8 @@ KK.VehicleBuilder = {
           for (let si = 0; si < xrayParts._suspList.length; si++) {
             const it = xrayParts._suspList[si];
             const sHp = (xhObj[it.partKey] !== undefined) ? xhObj[it.partKey] : (xhObj.shocksAvg !== undefined ? xhObj.shocksAvg : 100);
-            const sCol = sHp > 65 ? 0x2de08b : (sHp > 30 ? 0xffbe0b : 0xff3b3b);
+            const flashRedS = (Math.sin(performance.now() * 0.018) > 0) ? 0xff1a1a : 0x4a0000;
+            const sCol = sHp <= 10 ? flashRedS : (sHp > 65 ? 0x2de08b : (sHp > 30 ? 0xffbe0b : 0xff3b3b));
             it.mat.color.setHex(sCol);
             const comp = wOffs[si] || 0;
             it.mesh.position.y = it.baseY + comp * 0.55;
@@ -4584,7 +4617,8 @@ KK.VehicleBuilder = {
           }
           if (xrayParts._brakeList) {
             const bHp = xhObj.brakePads !== undefined ? xhObj.brakePads : 100;
-            const bCol = (state.brakeHeat > 0.55) ? 0xff6b1a : (bHp > 65 ? 0x2de08b : (bHp > 30 ? 0xffbe0b : 0xff3b3b));
+            const flashRedB = (Math.sin(performance.now() * 0.018) > 0) ? 0xff1a1a : 0x4a0000;
+            const bCol = (state.brakeHeat > 0.55) ? 0xff6b1a : (bHp <= 10 ? flashRedB : (bHp > 65 ? 0x2de08b : (bHp > 30 ? 0xffbe0b : 0xff3b3b)));
             for (let bi = 0; bi < xrayParts._brakeList.length; bi++) {
               xrayParts._brakeList[bi].mat.color.setHex(bCol);
             }

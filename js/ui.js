@@ -1470,7 +1470,7 @@ KK.UIManager = class UIManager {
         const celOn = (engOverall < 68 || v.coolantTemp > 110 || v.hydrolocked);
         celIcon.setAttribute("opacity", celOn ? "1.0" : "0.18");
       }
-      const odoKm = ((vs.odometerM || 0) / 1000).toFixed(1).padStart(6, "0");
+      const odoKm = (((vs.odometerM || 0) / 1000) || (game.stats ? game.stats.distanceKm : 0)).toFixed(1).padStart(6, "0");
       setTxt("hud-odo", odoKm);
       setTxt("hud-temp", Math.round(v.coolantTemp) + "°C");
       const tempEl = document.getElementById("hud-temp"); if (tempEl) tempEl.style.color = v.coolantTemp > 112 ? "#ff4d6d" : "#dce6f2";
@@ -1536,6 +1536,7 @@ KK.UIManager = class UIManager {
 
     // Live X-Ray Mechanical Overlay while holding [X]!
     const xPanel = document.getElementById("xray-hud-panel");
+    if (xPanel) { xPanel.classList.add("hidden"); return; }
     if (xPanel) {
       if (game.xrayActive) {
         const p = vs.parts;

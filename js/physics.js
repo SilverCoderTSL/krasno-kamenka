@@ -28,7 +28,7 @@ KK.VehiclePhysics = class VehiclePhysics {
     this.treeHitCooldown = 0;
     this.carHitCooldown = 0;
     this.hydrolocked = false;
-    this.steerAngle = 0;
+    this.steerAngle = 0; this.lastGroundedWheels = 4;
     this._vFwd = new THREE.Vector3(); this._vRight = new THREE.Vector3(); this._vUp = new THREE.Vector3();
     this.smoothThrottle = 0;
     this.prevRawThrottle = 0;
@@ -239,7 +239,10 @@ KK.VehiclePhysics = class VehiclePhysics {
     const effMaxDeg = Math.max(spec.maxSteerDeg || 34, 34);
     const maxSteerRad = (effMaxDeg * Math.PI) / 180;
     const absSpd = Math.abs(fwdSpeed);
-    const speedSteerFactor = 1.0 / (1.0 + absSpd * (spec.agileSteer ? 0.014 : 0.018) + absSpd * absSpd * (spec.agileSteer ? 0.00058 : 0.00048));
+    const isGtrAttesa = (spec.id === "gtr_r35");
+    const speedSteerFactor = isGtrAttesa
+      ? (1.0 / (1.0 + absSpd * 0.0085 + absSpd * absSpd * 0.00018))
+      : (1.0 / (1.0 + absSpd * (spec.agileSteer ? 0.014 : 0.018) + absSpd * absSpd * (spec.agileSteer ? 0.00058 : 0.00048)));
     let flatPull = 0;
     if (vs.blownTires) {
       for (let wi = 0; wi < this.wheels.length; wi++) {
@@ -309,7 +312,7 @@ KK.VehiclePhysics = class VehiclePhysics {
 
     this.braking = brake > 0.1 || handbrake;
     if (this.brakeHeat === undefined) this.brakeHeat = 0;
-    if (this.braking && this.speedKmh > 22) {
+    if (this.braking && this.speedKmh > 22 && this.lastGroundedWheels > 0) {
       const heatRate = (0.28 + Math.min(1.5, this.speedKmh / 140)) * (handbrake ? 1.25 : 1.0);
       this.brakeHeat = Math.min(1.0, this.brakeHeat + dt * heatRate * 0.55);
     } else {
@@ -335,6 +338,7 @@ KK.VehiclePhysics = class VehiclePhysics {
     let targetRpm = 0;
     if (this.engineRunning) {
       if (this.gear === 0) targetRpm = eng.idleRpm + throttle * (effRedline - eng.idleRpm) * 0.92;
+      else if (this.lastGroundedWheels === 0) targetRpm = eng.idleRpm + throttle * (effRedline - eng.idleRpm) * 0.86;
       else targetRpm = Math.max(eng.idleRpm + throttle * 850, wheelRpm * totalRatio * clutchSlip);
       targetRpm = Math.min(effRedline * 1.025, targetRpm);
     }
@@ -895,7 +899,14 @@ KK.VehiclePhysics = class VehiclePhysics {
     }
 
     this.angVel.addScaledVector(worldAngAccel, dt);
+    this.lastGroundedWheels = groundedWheels;
     if (groundedWheels > 0) {
+      vs.odometerM = (vs.odometerM || 0) + Math.abs(fwdSpeed) * dt;
+      // v16.8 GT-R R35 ATTESA E-TS PRO Active High-Speed Yaw Torque Vectoring!
+      if (isGtrAttesa && Math.abs(this.steerAngle) > 0.025 && this.speedKmh > 45) {
+        const attesaYaw = -Math.sign(this.steerAngle) * Math.min(1.0, Math.abs(this.steerAngle) / 0.35) * Math.min(2.6, (this.speedKmh - 40) * 0.016);
+        this.angVel.y += attesaYaw * dt * 2.4;
+      }
       const rpDamp = Math.exp(-3.6 * dt);
       const yawDamp = Math.exp(-(spec.driveType === "AWD_FULL" ? 2.75 : (spec.agileSteer ? 2.45 : 2.35)) * dt);
       this.angVel.x *= rpDamp; this.angVel.y *= yawDamp; this.angVel.z *= rpDamp;
