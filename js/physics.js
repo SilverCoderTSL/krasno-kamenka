@@ -241,7 +241,7 @@ KK.VehiclePhysics = class VehiclePhysics {
     const absSpd = Math.abs(fwdSpeed);
     const isGtrAttesa = (spec.id === "gtr_r35");
     const speedSteerFactor = isGtrAttesa
-      ? (1.0 / (1.0 + absSpd * 0.0085 + absSpd * absSpd * 0.00018))
+      ? (1.0 / (1.0 + absSpd * 0.0055 + absSpd * absSpd * 0.00008))
       : (1.0 / (1.0 + absSpd * (spec.agileSteer ? 0.014 : 0.018) + absSpd * absSpd * (spec.agileSteer ? 0.00058 : 0.00048)));
     let flatPull = 0;
     if (vs.blownTires) {
@@ -699,7 +699,15 @@ KK.VehiclePhysics = class VehiclePhysics {
         const diffEff = (!axleLocked && w.surface === "mud") ? 0.44 : ((!axleLocked && weatherGrip < 0.65) ? 0.72 : 1.0);
         let axleSplit = spec.isTracked ? (1.0 / Math.max(2, groundedDriveCount)) : (1.0 / drivenCount);
         if (spec.driveType === "AWD_FULL" && this.wheels.length === 4) {
-          axleSplit = (w.def.axle === "front") ? 0.21 : 0.29;
+          if (isGtrAttesa) {
+            // v16.9 ATTESA E-TS PRO: Rear-biased (20:80) on turn-in for razor front bite,
+            // dynamically shifts up to 50:50 under heavy throttle exit!
+            const cornerFactor = Math.min(1.0, Math.abs(this.steerAngle) / 0.22);
+            const frontPerWheel = 0.12 + (1.0 - cornerFactor) * 0.13 * throttle;
+            axleSplit = (w.def.axle === "front") ? frontPerWheel : (0.5 - frontPerWheel);
+          } else {
+            axleSplit = (w.def.axle === "front") ? 0.21 : 0.29;
+          }
         }
         const thisRad = wheelRad * (w.def.radiusScale || 1.0);
         const trackTorqueBoost = spec.isSchreckensfurst ? 1.42 : (spec.isTracked ? 1.24 : 1.0);
@@ -728,9 +736,11 @@ KK.VehiclePhysics = class VehiclePhysics {
       const hbDriftScale = ((handbrake && isRear && this.speedKmh > 16 && !spec.isTracked) ? 0.28 : (isPowerSlide ? 0.66 : 1.0)) * dmDriftBias;
       const isFrontAxle = (w.def.axle === "front" || w.def.axle === "front2");
       const isAeroSport = (spec.id === "gtr_r35" || spec.id === "wrx" || spec.id === "evo");
-      const rearAeroGrip = (!isFrontAxle && isAeroSport) ? (1.0 + Math.min(0.42, (this.speedKmh * this.speedKmh) / 68000)) : 1.0;
+      const aeroRamp = isAeroSport ? Math.min(0.46, (this.speedKmh * this.speedKmh) / 62000) : 0;
+      const frontAeroGrip = (isFrontAxle && isGtrAttesa) ? (1.0 + aeroRamp * 1.12) : 1.0;
+      const rearAeroGrip  = (!isFrontAxle && isAeroSport) ? (1.0 + aeroRamp * (isGtrAttesa ? 0.96 : 0.92)) : 1.0;
       const frontBite = isFrontAxle
-        ? (spec.driveType === "AWD_FULL" ? 1.15 : (spec.agileSteer ? 1.18 : 1.10))
+        ? (isGtrAttesa ? (1.36 * frontAeroGrip) : (spec.driveType === "AWD_FULL" ? 1.18 : (spec.agileSteer ? 1.18 : 1.10)))
         : (spec.driveType === "AWD_FULL" ? (1.13 * rearAeroGrip) : 1.04);
       const baseStiff = spec.isTracked ? 11.5 : ((w.surface === "race_tarmac" ? 9.0 : (w.surface === "asphalt" ? 7.6 : 5.2)) * (psi < 16 ? 0.80 : 1.0));
       const cornerStiff = baseStiff * frontBite;
@@ -902,10 +912,15 @@ KK.VehiclePhysics = class VehiclePhysics {
     this.lastGroundedWheels = groundedWheels;
     if (groundedWheels > 0) {
       vs.odometerM = (vs.odometerM || 0) + Math.abs(fwdSpeed) * dt;
-      // v16.8 GT-R R35 ATTESA E-TS PRO Active High-Speed Yaw Torque Vectoring!
-      if (isGtrAttesa && Math.abs(this.steerAngle) > 0.025 && this.speedKmh > 45) {
-        const attesaYaw = -Math.sign(this.steerAngle) * Math.min(1.0, Math.abs(this.steerAngle) / 0.35) * Math.min(2.6, (this.speedKmh - 40) * 0.016);
-        this.angVel.y += attesaYaw * dt * 2.4;
+      // v16.9 GT-R R35 ATTESA E-TS PRO Active Yaw Torque Vectoring (CORRECT +dirSign turn direction!)
+      if (isGtrAttesa && Math.abs(this.steerAngle) > 0.02 && this.speedKmh > 20) {
+        const dirSignA = fwdSpeed >= 0 ? 1 : -1;
+        const steerNorm = Math.max(-1.0, Math.min(1.0, this.steerAngle / 0.32));
+        const spdCurve = Math.min(1.0, (this.speedKmh - 18) / 45);
+        const targetAttesaYaw = steerNorm * dirSignA * (1.35 + Math.min(1.15, this.speedKmh / 145)) * spdCurve;
+        this.angVel.y += (targetAttesaYaw - this.angVel.y) * Math.min(1, dt * 6.5);
+        const apexPull = -steerNorm * Math.min(14.0, this.speedKmh * 0.065) * spdCurve;
+        this.vel.addScaledVector(right, apexPull * dt);
       }
       const rpDamp = Math.exp(-3.6 * dt);
       const yawDamp = Math.exp(-(spec.driveType === "AWD_FULL" ? 2.75 : (spec.agileSteer ? 2.45 : 2.35)) * dt);
