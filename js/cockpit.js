@@ -199,7 +199,7 @@ KK.CockpitBuilder = {
         if (mL) group.add(mL);
         if (mR) group.add(mR);
         const floorPts = this._clipPolygonBelowY(midPts, cfg.yFloor + 0.02);
-        const mFloor = this._extrudePts(floorPts, width - 0.04, matPaint, 0.01, 0.01, 0);
+        const mFloor = this._extrudePts(floorPts, Math.max(0.60, width - 0.58), matPaint, 0.01, 0.01, 0);
         if (mFloor) group.add(mFloor);
       }
     }

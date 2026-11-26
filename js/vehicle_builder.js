@@ -578,7 +578,7 @@ KK.VehicleBuilder = {
       const skirt = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.20, 1.38), matRubber);
       skirt.position.set(0, 0.45, 0.03); chassis.add(skirt);
       for (const sx of [-1, 1]) {
-        for (const ry of [0.76, 0.92, 1.14]) {
+        for (const ry of [1.02, 1.14]) {
           const rib = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.038, 4.16), ry === 1.14 ? matTrim : matPaint);
           rib.position.set(sx * 0.96, ry, -0.02); chassis.add(rib);
         }
@@ -732,9 +732,12 @@ KK.VehicleBuilder = {
       const bedZ = -1.78, bedLen = 1.66;
       const bedFloor = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, 0.14, bedLen), matRubber);
       bedFloor.position.set(0, 0.56, bedZ); chassis.add(bedFloor);
+      // v16.6 Carved pickup bed side walls (upper panel above rear wheel arch + rear quarter behind arch!)
       for (const sx of [-1, 1]) {
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.54, bedLen), matPaint);
-        wall.position.set(sx * (w * 0.44), 0.85, bedZ); wall.castShadow = true; chassis.add(wall);
+        const wallTop = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.22, bedLen), matPaint);
+        wallTop.position.set(sx * (w * 0.44), 1.01, bedZ); wallTop.castShadow = true; chassis.add(wallTop);
+        const wallRear = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.34, 0.56), matPaint);
+        wallRear.position.set(sx * (w * 0.44), 0.74, -2.32); chassis.add(wallRear);
         const railCap = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, bedLen + 0.02), matRubber);
         railCap.position.set(sx * (w * 0.44), 1.13, bedZ); chassis.add(railCap);
       }
@@ -1049,8 +1052,9 @@ KK.VehicleBuilder = {
       s.lineTo(1.76, 1.66); s.quadraticCurveTo(1.56, 1.94, 1.20, 1.94);
       s.lineTo(-1.88, 1.94); s.quadraticCurveTo(-2.10, 1.88, -2.10, 1.56); s.closePath();
       chassis.add(this._extrudeSideProfile(s, 1.72, matPaint, 0.06, 0.07, cockpitCfg));
-      const lowerBand = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.48, 4.18), matTrim);
-      lowerBand.position.set(0, 0.64, -0.01); chassis.add(lowerBand);
+      // v16.6 Shortened two-tone lower rocker band strictly between wheel arches!
+      const lowerBand = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.42, 1.32), matTrim);
+      lowerBand.position.set(0, 0.64, 0.08); chassis.add(lowerBand);
       const wind = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.62, 0.07), matGlass); wind.visible = false;
       wind.position.set(0, 1.38, 1.97); wind.rotation.x = -0.50; chassis.add(wind);
       for (const sx of [-1, 1]) {
@@ -1419,8 +1423,9 @@ KK.VehicleBuilder = {
       s.closePath();
       chassis.add(this._extrudeSideProfile(s, w - 0.10, matPaint, 0.06, 0.07, cockpitCfg));
 
-      const lowerClad = new THREE.Mesh(new THREE.BoxGeometry(w * 0.96, 0.40, 4.78), matGoldClad);
-      lowerClad.position.set(0, 0.62, -0.01); chassis.add(lowerClad);
+      // v16.6 Shortened two-tone lower rocker cladding strictly between wheel arches!
+      const lowerClad = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, 0.36, 1.82), matGoldClad);
+      lowerClad.position.set(0, 0.62, 0.04); chassis.add(lowerClad);
 
       const grilleBg = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.36, 0.08), matRubber);
       grilleBg.position.set(0, 0.86, 2.49); chassis.add(grilleBg);
@@ -2401,121 +2406,61 @@ KK.VehicleBuilder = {
     // 14.1B-1. PORSCHE 911 DAKAR (992 RALLY) — Lifted Twin-Turbo AWD Rally Icon!
     // ========================================================================
     else if (vehicleId === "porsche_dakar") {
-      // v15.4.2 DRASTIC 992 PORSCHE 911 DAKAR REDESIGN — Sculpted Faceted 911 Silhouette!
-      plateText = "911-DKR"; roundHL = true; hlY = 0.78; hlZ = 2.12; hlSpread = 0.68;
+      // v16.6 CLEAN 992 PORSCHE 911 DAKAR REMODEL — Carved Wheel Arches, Smooth Fastback & Roof Rack!
+      plateText = "911-DKR"; roundHL = true; hlY = 0.78; hlZ = 2.16; hlSpread = 0.66;
       const w = spec.bodyWidth;
       const matRallyBlue = new THREE.MeshStandardMaterial({ color: 0x0f2d5e, roughness: 0.36, metalness: 0.32 });
       const matRallyRed  = new THREE.MeshStandardMaterial({ color: 0xd92626, roughness: 0.40, metalness: 0.18 });
       const matRallyGold = new THREE.MeshStandardMaterial({ color: 0xebba46, roughness: 0.34, metalness: 0.55 });
       const matClad      = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.84, metalness: 0.18 });
-      const mat911Glass  = new THREE.MeshStandardMaterial({ color: 0x162634, roughness: 0.08, metalness: 0.55, transparent: true, opacity: 0.36, side: THREE.DoubleSide });
-      const matDrl       = new THREE.MeshBasicMaterial({ color: 0xf4fbff });
-      const matAmber     = new THREE.MeshBasicMaterial({ color: 0xffb703 });
 
-      // 1. Sculpted 992 Lower Tub (Two-Tone Rally Blue lower body + crisp wide rear haunches!)
-      const lowerV = [
-        [-0.86, 0.40,  2.22], [ 0.86, 0.40,  2.22],
-        [-0.92, 0.74,  2.14], [ 0.92, 0.74,  2.14],
-        [-0.96, 0.42,  1.35], [ 0.96, 0.42,  1.35],
-        [-0.95, 0.92,  1.35], [ 0.95, 0.92,  1.35],
-        [-0.94, 0.42, -0.15], [ 0.94, 0.42, -0.15],
-        [-0.92, 0.92, -0.15], [ 0.92, 0.92, -0.15],
-        [-1.02, 0.44, -1.35], [ 1.02, 0.44, -1.35],
-        [-1.00, 0.98, -1.35], [ 1.00, 0.98, -1.35],
-        [-0.88, 0.48, -2.24], [ 0.88, 0.48, -2.24],
-        [-0.90, 0.94, -2.20], [ 0.90, 0.94, -2.20]
-      ];
-      const lowerF = [
-        [0,1,3,2], [0,2,6,4], [1,5,7,3], [4,6,10,8], [5,9,11,7],
-        [8,10,14,12], [9,13,15,11], [12,14,18,16], [13,17,19,15], [16,18,19,17],
-        [2,3,7,6], [6,7,11,10], [10,11,15,14], [14,15,19,18]
-      ];
-      chassis.add(this._buildFacetedMesh(lowerV, lowerF, matRallyBlue, 0.35));
+      const s = new THREE.Shape();
+      this._traceBottomWithWheelArches(s, -2.18, 2.16, 0.38, spec, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.88));
+      s.quadraticCurveTo(2.28, 0.62, 2.14, 0.84);
+      s.lineTo(0.86, 0.94);
+      s.lineTo(0.22, 1.42);
+      s.quadraticCurveTo(-0.32, 1.45, -0.78, 1.38);
+      s.lineTo(-1.82, 0.98);
+      s.lineTo(-2.18, 0.92);
+      s.lineTo(-2.22, 0.48);
+      s.closePath();
+      chassis.add(this._extrudeSideProfile(s, w - 0.08, matPaint, 0.06, 0.07, cockpitCfg, matRallyBlue));
 
-      // 2. Sculpted White/Paint Upper Body + Sloping 911 Frunk Hood & Fastback Rear Deck!
-      const upperV = [
-        [-0.86, 0.74,  2.14], [ 0.86, 0.74,  2.14],
-        [-0.92, 0.94,  1.26], [ 0.92, 0.94,  1.26],
-        [-0.86, 0.96,  0.92], [ 0.86, 0.96,  0.92],
-        [-0.64, 1.38,  0.22], [ 0.64, 1.38,  0.22],
-        [-0.62, 1.36, -0.58], [ 0.62, 1.36, -0.58],
-        [-0.96, 1.00, -1.35], [ 0.96, 1.00, -1.35],
-        [-0.88, 0.95, -2.20], [ 0.88, 0.95, -2.20]
-      ];
-      const hoodRoofF = [[0,1,3,2], [2,3,5,4], [6,7,9,8], [8,9,11,10], [10,11,13,12]];
-      chassis.add(this._buildFacetedMesh(upperV, hoodRoofF, matPaint, 0.30));
-
-      // 3. Translucent Raked 911 Windshield + Side Windows + Slim A/B/C Pillars + Frog-Eye LEDs!
-      const wShield = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.76, 0.05), mat911Glass);
-      wShield.position.set(0, 1.17, 0.57); wShield.rotation.x = -0.98; chassis.add(wShield);
-      const rGlass = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.84, 0.05), mat911Glass);
-      rGlass.position.set(0, 1.18, -0.96); rGlass.rotation.x = 1.08; chassis.add(rGlass);
       for (const sx of [-1, 1]) {
-        const aPil = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.78, 0.08), matPaint);
-        aPil.position.set(sx * 0.74, 1.17, 0.56); aPil.rotation.x = -0.98; aPil.rotation.z = sx * 0.24; chassis.add(aPil);
-        const cPil = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.88, 0.16), matPaint);
-        cPil.position.set(sx * 0.76, 1.17, -0.94); cPil.rotation.x = 1.04; cPil.rotation.z = sx * 0.28; chassis.add(cPil);
-        const swGeo = new THREE.BufferGeometry();
-        swGeo.setAttribute("position", new THREE.Float32BufferAttribute([
-          sx * 0.85, 0.96,  0.90,  sx * 0.94, 0.99, -1.32,  sx * 0.63, 1.35, -0.58,
-          sx * 0.85, 0.96,  0.90,  sx * 0.63, 1.35, -0.58,  sx * 0.65, 1.37,  0.22
-        ], 3));
-        swGeo.computeVertexNormals();
-        chassis.add(new THREE.Mesh(swGeo, mat911Glass));
-        const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.24, 0.76, 12), matPaint);
-        pod.rotation.x = Math.PI / 2 - 0.14; pod.position.set(sx * 0.68, 0.82, 1.78); chassis.add(pod);
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.024, 8, 16), matDrl);
-        ring.position.set(sx * 0.68, 0.84, 2.16); chassis.add(ring);
-        const stG = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 4.18), matRallyGold);
-        stG.position.set(sx * 0.96, 0.76, -0.02); chassis.add(stG);
-        const stR = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 4.18), matRallyRed);
-        stR.position.set(sx * 0.96, 0.70, -0.02); chassis.add(stR);
+        const rock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.24, 1.44), matRallyBlue);
+        rock.position.set(sx * (w * 0.49), 0.52, 0.08); chassis.add(rock);
+        const stG = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 1.48), matRallyGold);
+        stG.position.set(sx * (w * 0.50), 0.72, 0.08); chassis.add(stG);
+        const stR = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 1.48), matRallyRed);
+        stR.position.set(sx * (w * 0.50), 0.67, 0.08); chassis.add(stR);
       }
 
-      // 4. Aggressive Front Chin Splitter, Tow Hook & Stainless Skid Plates!
-      const fGrill = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.20, 0.10), matClad);
-      fGrill.position.set(0, 0.54, 2.22); chassis.add(fGrill);
-      const fSkid = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.07, 0.56), matMetal);
-      fSkid.position.set(0, 0.38, 2.08); fSkid.rotation.x = 0.32; chassis.add(fSkid);
-      const rSkid = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.09, 0.48), matMetal);
-      rSkid.position.set(0, 0.44, -2.14); rSkid.rotation.x = -0.24; chassis.add(rSkid);
-      const towHook = new THREE.Mesh(new THREE.TorusGeometry(0.065, 0.02, 6, 10), matRallyRed);
-      towHook.position.set(0.46, 0.50, 2.28); chassis.add(towHook);
+      const fSkid = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.07, 0.44), matGalv);
+      fSkid.position.set(0, 0.38, 2.12); fSkid.rotation.x = 0.28; chassis.add(fSkid);
+      const rSkid = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.14, 0.14), matGalv);
+      rSkid.position.set(0, 0.42, -2.22); chassis.add(rSkid);
+      const lightBar = new THREE.Mesh(new THREE.BoxGeometry(w * 0.84, 0.075, 0.06), matTaillightL);
+      lightBar.position.set(0, 0.88, -2.22); chassis.add(lightBar);
+      const ducktail = new THREE.Mesh(new THREE.BoxGeometry(w * 0.86, 0.07, 0.28), matPaint);
+      ducktail.position.set(0, 1.04, -2.08); ducktail.rotation.x = 0.22; ducktail.castShadow = true; chassis.add(ducktail);
 
-      // 5. Iconic Full-Width 992 Crimson LED Lightbar, Engine Louvers, Dual Exhausts & Dakar Wing!
-      const rearBar = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.055, 0.06), matTaillightL);
-      rearBar.position.set(0, 0.86, -2.23); chassis.add(rearBar);
-      const deckLouvers = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.04, 0.62), matClad);
-      deckLouvers.position.set(0, 1.00, -1.62); deckLouvers.rotation.x = 0.14; chassis.add(deckLouvers);
-      const ducktail = new THREE.Mesh(new THREE.BoxGeometry(1.58, 0.08, 0.38), matPaint);
-      ducktail.position.set(0, 1.04, -2.08); ducktail.rotation.x = -0.26; ducktail.castShadow = true; chassis.add(ducktail);
-      // v16.0 Exhaust tips handled dynamically by _buildDynamicExhaust()
-
-      // 6. Expedition Roof Basket with Amber LED Rally Light Pod & Recovery Boards!
-      const basket = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.08, 1.24), matClad);
-      basket.position.set(0, 1.44, -0.18); chassis.add(basket);
-      for (const lx of [-0.32, -0.11, 0.11, 0.32]) {
-        const podL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.07, 0.08), matAmber);
-        podL.position.set(lx, 1.47, 0.45); chassis.add(podL);
-      }
-      const matBoard = new THREE.MeshStandardMaterial({ color: 0xff6b1a, roughness: 0.75 });
-      for (const bx of [-0.28, 0.28]) {
-        const bd = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.98), matBoard);
-        bd.position.set(bx, 1.50, -0.18); chassis.add(bd);
+      const basket = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.07, 1.12), matClad);
+      basket.position.set(0, 1.48, -0.34); chassis.add(basket);
+      for (const bx of [-0.30, 0.30]) {
+        const board = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.96), new THREE.MeshStandardMaterial({ color: 0xff6b1a, roughness: 0.7 }));
+        board.position.set(bx, 1.53, -0.34); chassis.add(board);
       }
 
-      hoodPivot.position.set(0, 0.92, 1.26);
-      const frunk = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.04, 0.92), matPaint);
-      frunk.position.set(0, 0.02, 0.44); hoodPivot.add(frunk);
+      hoodPivot.position.set(0, 0.95, 0.86);
+      const frunk = new THREE.Mesh(new THREE.BoxGeometry(w * 0.74, 0.06, 1.20), matPaint);
+      frunk.position.set(0, 0.01, 0.60); hoodPivot.add(frunk);
 
-      cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, false) : null;
-      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matClad, 0.14);
-      this._addMirrors(chassis, w * 0.46, 1.06, 0.62, matPaint, matClad, 0.16);
+      cockpit = KK.CockpitBuilder ? KK.CockpitBuilder.buildCockpit(chassis, vehicleId, spec, isLocal, true) : null;
+      this._addWheelWellLiners(chassis, spec, matMetal, 0.38, (cockpitCfg ? cockpitCfg.beltY - 0.06 : 0.88));
+      this._addFenderFlares(chassis, spec.wheels, spec.wheelRadius, matClad, 0.13, 0.42);
+      this._addMirrors(chassis, w * 0.47, 1.08, 0.42, matClad, matPaint, 0.18);
     }
 
-    // ========================================================================
-    // 14.1B-2. TOYOTA COASTER 4.2D EXPEDITION MINIBUS!
-    // ========================================================================
     else if (vehicleId === "toyota_coaster") {
       plateText = "COASTER"; roundHL = false; hlY = 0.86; hlZ = 3.46; hlSpread = 0.78;
       const w = spec.bodyWidth;
@@ -4310,13 +4255,18 @@ KK.VehicleBuilder = {
       addXPart("crankshaft",  new THREE.CylinderGeometry(0.08, 0.08, 0.78, 8), 0, engY - 0.14, engZ, Math.PI / 2);
       const rearWz = spec.wheels[spec.wheels.length - 1].z;
       addXPart("rearAxle",    new THREE.CylinderGeometry(0.055, 0.055, spec.bodyWidth * 0.86, 8), 0, isKomodo ? 0.58 : 0.32, rearWz, 0, Math.PI / 2);
+      const xraySuspList = [];
       for (let wi = 0; wi < spec.wheels.length; wi++) {
         const wd = spec.wheels[wi];
-        const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.56, 6), makeXrayMat());
-        sk.position.set(wd.x * 0.82, isKomodo ? 0.86 : 0.56, wd.z);
+        const sMat = makeXrayMat();
+        const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.56, 6), sMat);
+        const baseY = isKomodo ? 0.86 : 0.56;
+        sk.position.set(wd.x * 0.82, baseY, wd.z);
         sk.renderOrder = 10;
         xrayGroup.add(sk);
+        xraySuspList.push({ mesh: sk, mat: sMat, baseY });
       }
+      xrayParts._suspList = xraySuspList;
     }
 
     // v15.9 Tracked Tank X-Ray: Left & Right Destroyable Track Runs!
@@ -4608,6 +4558,18 @@ KK.VehicleBuilder = {
         // Real-Time X-Ray Mechanical View ([X] Hold)!
         const isXray = !!state.xrayActive;
         xrayGroup.visible = isXray;
+        if (isXray && xrayParts._suspList) {
+          const sHp = (state.health && state.health.suspension !== undefined) ? state.health.suspension : 100;
+          const sCol = sHp > 65 ? 0x2de08b : (sHp > 35 ? 0xffbe0b : 0xff3b3b);
+          const wOffs = state.wheelOffsets || [];
+          for (let si = 0; si < xrayParts._suspList.length; si++) {
+            const it = xrayParts._suspList[si];
+            it.mat.color.setHex(sCol);
+            const comp = wOffs[si] || 0;
+            it.mesh.position.y = it.baseY + comp * 0.55;
+            it.mesh.scale.y = Math.max(0.55, Math.min(1.35, 1.0 - comp * 0.7));
+          }
+        }
         for (const sm of shellMaterials) {
           sm.transparent = isXray;
           sm.opacity = isXray ? 0.22 : 1.0;
