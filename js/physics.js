@@ -263,7 +263,13 @@ KK.VehiclePhysics = class VehiclePhysics {
 
     let rawThrottle = 0, brake = 0;
     const handbrake = !!input.handbrake || !!this.parkingBrake;
-    if (this.autoShift) {
+    // v16.3 Launch Control / Brake+Throttle Standstill Rev (works in both Auto & Manual!)
+    const launchHeld = this.engineRunning && (input.brake > 0.35 || input.handbrake) && input.throttle > 0.65 && this.speedKmh < 8;
+    if (launchHeld) {
+      if (this.gear <= 0) this.gear = 1;
+      rawThrottle = input.throttle;
+      brake = 1.0;
+    } else if (this.autoShift) {
       if (input.throttle > 0.05) {
         if (fwdSpeed < -0.6) brake = input.throttle;
         else { if (this.gear <= 0) this.gear = 1; rawThrottle = input.throttle; }
@@ -335,13 +341,16 @@ KK.VehiclePhysics = class VehiclePhysics {
     this.rpm += (targetRpm - this.rpm) * Math.min(1, dt * (7.5 + flywheelPerf * 4.0));
 
     if (this.autoShift && this.gear > 0 && this.engineRunning) {
-      // v16.0 Antilag Launch Control (Brake + Throttle at standstill on turbo/sport cars!)
-      const isLaunchCtrl = (this.engineRunning && brake > 0.35 && input.throttle > 0.65 && this.speedKmh < 6 && (eng.hasTurbo || (vs.upgrades && vs.upgrades.turbo)));
-      if (isLaunchCtrl) {
-        const lcTarget = effRedline * 0.64;
-        this.rpm = lcTarget + Math.sin(performance.now() * 0.09) * 280;
-        this.boostPsi = Math.min(eng.maxBoost || 18, (this.boostPsi || 0) + dt * 22);
-        if (Math.random() < dt * 9.0) { this.backfireTimer = 0.10; this.justBackfired = true; }
+      // v16.3 Antilag Launch Control (Brake + Throttle at standstill — fires multi-tip flames & pops!)
+      if (launchHeld) {
+        const lcTarget = effRedline * 0.68;
+        this.rpm = lcTarget + Math.sin(performance.now() * 0.09) * 320;
+        this.boostPsi = Math.min(eng.maxBoost || 18, (this.boostPsi || 0) + dt * 26);
+        if (Math.random() < dt * 10.5) {
+          this.backfireTimer = 0.16;
+          this.justBackfired = true;
+          this.emit("backfire", { pos: this.pos.clone(), backDir: forward.clone().negate() });
+        }
       }
       // v16.0 Sharp Rev-Limiter Bounce at Redline!
       if (this.rpm >= effRedline * 0.985 && throttle > 0.4) {
@@ -483,7 +492,9 @@ KK.VehiclePhysics = class VehiclePhysics {
       const tInfo = world.getTerrainInfo(worldMount.x, worldMount.z, true, worldMount.y);
       w.surface = tInfo.surface; w.waterDepth = tInfo.waterDepth; w.mudDepth = tInfo.mudDepth;
       dominantSurface = tInfo.surface;
-      if (tInfo.waterDepth > maxWater) { maxWater = tInfo.waterDepth; topWaterY = Math.max(topWaterY, tInfo.waterSurfaceY); }
+      // v16.3 True Altitude-Aware Submersion: Compare water surface Y against actual chassis altitude!
+      const actualSub = (tInfo.waterDepth > 0.05 && tInfo.waterSurfaceY > -5000) ? Math.max(0, tInfo.waterSurfaceY - (this.pos.y - spec.wheelRadius)) : 0;
+      if (actualSub > maxWater) { maxWater = actualSub; topWaterY = Math.max(topWaterY, tInfo.waterSurfaceY); }
       if (tInfo.surface === "mud" || tInfo.surface === "gravel" || tInfo.surface === "shale") onDirtySurface = true;
 
       if ((tInfo.mudDepth > 0.15 || tInfo.waterDepth > 0.25) && this.speedKmh > 6) {

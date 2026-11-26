@@ -346,8 +346,7 @@ KK.VehicleBuilder = {
 
     const muffler = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.65, 8), matMetal);
     muffler.rotation.x = Math.PI / 2; muffler.position.set(spec.bodyWidth * 0.22, 0.22, -spec.bodyLen * 0.25); chassis.add(muffler);
-    const tailPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.58, 8), matMetal);
-    tailPipe.rotation.x = Math.PI / 2; tailPipe.position.set(spec.bodyWidth * 0.26, 0.24, -spec.bodyLen * 0.45); chassis.add(tailPipe);
+    // v16.3 Removed hardcoded default tailPipe — exhausts are built dynamically per vehicle!
 
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, spec.bodyLen * 0.58, 6), matMetal);
     shaft.rotation.x = Math.PI / 2; shaft.position.set(0, 0.16, 0); chassis.add(shaft);
@@ -437,7 +436,9 @@ KK.VehicleBuilder = {
     const matTire = new THREE.MeshStandardMaterial({ color: cleanTireColor.clone(), roughness: 0.95, metalness: 0.03, side: THREE.DoubleSide });
     const rimHex = (vehicleId === "wrx") ? 0xd4af37 : ((vehicleId === "evo" || vehicleId === "fortuner") ? 0x2a2f36 : ((vehicleId === "gtr_r35") ? 0x2f343b : ((vehicleId === "humvee" || vehicleId === "btr80" || vehicleId === "maz537") ? 0x454a3d : 0xadb6c0)));
     const matRim = new THREE.MeshStandardMaterial({ color: rimHex, roughness: 0.28, metalness: 0.72 });
+    if (vState && vState.rimColor) matRim.color.set(vState.rimColor);
     const matBrake = new THREE.MeshStandardMaterial({ color: (vehicleId === "wrx" || vehicleId === "gtr_r35") ? 0xe89c1c : 0xc92a2a, roughness: 0.45, metalness: 0.3 });
+    if (vState && vState.caliperColor) matBrake.color.set(vState.caliperColor);
     const matBrakeRotor = new THREE.MeshStandardMaterial({ color: 0x7a828c, emissive: 0xff2a00, emissiveIntensity: 0.0, roughness: 0.34, metalness: 0.84 });
     const matBarrelIn = matRubber.clone(); matBarrelIn.side = THREE.DoubleSide;
     const matHeadlightL = new THREE.MeshBasicMaterial({ color: 0xfff6d1 });
@@ -2451,8 +2452,11 @@ KK.VehicleBuilder = {
       s.lineTo(3.16, 2.54); s.lineTo(-3.36, 2.54); s.lineTo(-3.48, 1.44); s.closePath();
       chassis.add(this._extrudeSideProfile(s, w - 0.08, matPaint, 0.05, 0.05, cockpitCfg));
 
-      const belt = new THREE.Mesh(new THREE.BoxGeometry(w - 0.04, 0.24, 6.86), matStripe);
-      belt.position.set(0, 1.18, -0.02); chassis.add(belt);
+      // v16.3 Exterior-only side blue stripes (eliminates the solid blue box cutting through the seats!)
+      for (const sx of [-1, 1]) {
+        const sideStripe = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.24, 6.82), matStripe);
+        sideStripe.position.set(sx * (w * 0.5 - 0.015), 1.18, -0.02); chassis.add(sideStripe);
+      }
       const grille = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.34, 0.08), matRubber);
       grille.position.set(0, 0.90, 3.46); chassis.add(grille);
       const fBump = new THREE.Mesh(new THREE.BoxGeometry(w * 0.98, 0.24, 0.26), matRubber);
@@ -3015,10 +3019,10 @@ KK.VehicleBuilder = {
         return tex;
       };
 
-      const matCamo    = new THREE.MeshStandardMaterial({ map: makeTniCamoTex("hull"), color: basePaintColor.clone().lerp(new THREE.Color(0xffffff), 0.72), roughness: 0.76, metalness: 0.16 });
-      const matInsig   = new THREE.MeshStandardMaterial({ map: makeTniCamoTex("insignia"), roughness: 0.74, metalness: 0.14 });
-      const matArmorDk = new THREE.MeshStandardMaterial({ color: 0x1e221d, roughness: 0.80, metalness: 0.42 });
-      const matArmorMd = new THREE.MeshStandardMaterial({ color: 0x2e3729, roughness: 0.74, metalness: 0.24 });
+      const matCamo    = new THREE.MeshStandardMaterial({ map: makeTniCamoTex("hull"), color: basePaintColor.clone().lerp(new THREE.Color(0xffffff), 0.72), roughness: 0.76, metalness: 0.16, side: THREE.DoubleSide });
+      const matInsig   = new THREE.MeshStandardMaterial({ map: makeTniCamoTex("insignia"), roughness: 0.74, metalness: 0.14, side: THREE.DoubleSide });
+      const matArmorDk = new THREE.MeshStandardMaterial({ color: 0x1e221d, roughness: 0.80, metalness: 0.42, side: THREE.DoubleSide });
+      const matArmorMd = new THREE.MeshStandardMaterial({ color: 0x2e3729, roughness: 0.74, metalness: 0.24, side: THREE.DoubleSide });
       const matSteel   = new THREE.MeshStandardMaterial({ color: 0x3b4248, roughness: 0.42, metalness: 0.76 });
       const matBrass   = new THREE.MeshStandardMaterial({ color: 0xd4a437, roughness: 0.36, metalness: 0.80 });
       const matLens    = new THREE.MeshStandardMaterial({ color: 0x183c52, emissive: 0x0b4b69, emissiveIntensity: 0.65, roughness: 0.12, metalness: 0.82 });
@@ -4001,11 +4005,12 @@ KK.VehicleBuilder = {
 
     const makeXrayMat = () => new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.90, depthTest: false });
     const xrayParts = {};
-    const addXPart = (key, geo, px, py, pz, rx = 0) => {
+    const addXPart = (key, geo, px, py, pz, rx = 0, rz = 0) => {
       const mat = makeXrayMat();
       const m = new THREE.Mesh(geo, mat);
       m.position.set(px, py, pz);
       if (rx) m.rotation.x = rx;
+      if (rz) m.rotation.z = rz;
       m.renderOrder = 10;
       xrayGroup.add(m);
       xrayParts[key] = mat;
@@ -4227,7 +4232,7 @@ KK.VehicleBuilder = {
       addXPart("tieRods",     new THREE.BoxGeometry(spec.bodyWidth * 0.84, 0.09, 0.09), 0, isKomodo ? 0.58 : 0.30, spec.wheels[0].z);
       addXPart("crankshaft",  new THREE.CylinderGeometry(0.08, 0.08, 0.78, 8), 0, engY - 0.14, engZ, Math.PI / 2);
       const rearWz = spec.wheels[spec.wheels.length - 1].z;
-      addXPart("rearAxle",    new THREE.CylinderGeometry(0.055, 0.055, spec.bodyWidth * 0.86, 8), 0, isKomodo ? 0.58 : 0.32, rearWz, 0);
+      addXPart("rearAxle",    new THREE.CylinderGeometry(0.055, 0.055, spec.bodyWidth * 0.86, 8), 0, isKomodo ? 0.58 : 0.32, rearWz, 0, Math.PI / 2);
       for (let wi = 0; wi < spec.wheels.length; wi++) {
         const wd = spec.wheels[wi];
         const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.56, 6), makeXrayMat());

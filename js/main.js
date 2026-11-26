@@ -428,7 +428,7 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v16.2.2 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v16.3 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
@@ -1026,7 +1026,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.2.2 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v16.3 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1050,7 +1050,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.2.2 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v16.3 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1673,7 +1673,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v16.2.2 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v16.3 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -1697,6 +1697,25 @@ KK.Game = class Game {
       this.ui.toast("💥 TIRE SHOT OUT! Swap spare or Field Repair [X]!", true);
     }
     if (this.audio) this.audio.playImpact(0.75);
+  }
+
+  _rebuildActiveVehicleMesh() {
+    if (this.vehicleRig) this.scene.remove(this.vehicleRig.root);
+    this.vehicleRig = KK.VehicleBuilder.buildVehicle(this.activeVehicleId, this.vehicle.vState, true);
+    this.vehicleRig.setCargoVisual(this.vehicle.cargoCount, this.vehicle.cargoType, this.vehicle.cargoStrapped);
+    this.scene.add(this.vehicleRig.root);
+  }
+
+  setRimColor(hex) {
+    this.vehicle.vState.rimColor = hex;
+    this._rebuildActiveVehicleMesh();
+    this._saveProgress();
+  }
+
+  setCaliperColor(hex) {
+    this.vehicle.vState.caliperColor = hex;
+    this._rebuildActiveVehicleMesh();
+    this._saveProgress();
   }
 
   setRimStyle(rimId) {
@@ -3312,7 +3331,7 @@ KK.Game = class Game {
     }
   }
 
-  // v16.2.2.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v16.3.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -3875,7 +3894,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v16.2.2 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    // v16.3 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const dGate = Math.hypot(gx - (-62099), gz - 63132);
@@ -4733,15 +4752,7 @@ KK.Game = class Game {
       return;
     }
     if (this.camMode !== 3 || this.onFoot || this.ridingWithPeerId) this.camera.up.set(0, 1, 0);
-    // v16.2.2 Dynamic Speed FOV (62° -> 74° at high speed)!
-    if (!this.onFoot && !this.ridingWithPeerId && !(this.boats && this.boats.activeBoat)) {
-      const spdK = this.vehicle.speedKmh || 0;
-      const targetFov = 62 + Math.min(12, Math.max(0, (spdK - 105) / 14));
-      if (Math.abs(this.camera.fov - targetFov) > 0.08) {
-        this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 4.5);
-        this.camera.updateProjectionMatrix();
-      }
-    }
+
     if ((this.onFoot || this.ridingWithPeerId) && Math.abs(this.camera.fov - 62) > 0.15) {
       this.camera.fov += (62 - this.camera.fov) * Math.min(1, dt * 14);
       this.camera.updateProjectionMatrix();
@@ -4795,7 +4806,8 @@ KK.Game = class Game {
     const isShilkaAim = (aVid === "shilka");
     const aimingGunner = (!this.onFoot && !this.ridingWithPeerId && !this.ui.activeModal && this.mouseAimHeld &&
                           (isTankAim || isBm21Aim || isShilkaAim || aVid === "komodo_turret" || aVid === "komodo_std" || (aVid === "btr80" && !!this.vehicle.vState.upgrades.btrTurret)));
-    const targetFov = aimingGunner ? (isTankAim ? 28 : (isBm21Aim ? 46 : 32)) : 62;
+    const speedFovBoost = Math.min(14, Math.max(0, ((this.vehicle.speedKmh || 0) - 85) / 11));
+    const targetFov = aimingGunner ? (isTankAim ? 28 : (isBm21Aim ? 46 : 32)) : (62 + speedFovBoost);
     if (Math.abs(this.camera.fov - targetFov) > 0.15) {
       this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 14);
       this.camera.updateProjectionMatrix();

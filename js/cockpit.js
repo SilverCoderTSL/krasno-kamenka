@@ -253,10 +253,7 @@ KK.CockpitBuilder = {
 
       // v15.6 FORM-FITTING TRAPEZOIDAL SIDE WINDOWS, WINDSHIELD & REAR GLASS!
       if (!this._matFormGlass) {
-        this._matFormGlass = new THREE.MeshStandardMaterial({
-          color: 0x4c7c9c, roughness: 0.08, metalness: 0.35,
-          transparent: true, opacity: 0.34, side: THREE.DoubleSide, depthWrite: false
-        });
+        this._matFormGlass = new THREE.MeshBasicMaterial({ color: 0x4c7c9c, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
       }
       const makeQuad = (p0, p1, p2, p3) => {
         const g = new THREE.BufferGeometry();
@@ -565,7 +562,7 @@ KK.CockpitBuilder = {
           leverR.rotation.x = -0.18 - Math.max(0, -st) * 0.85;
           if (gaugeSys) {
             this.gaugeAccum += dt;
-            if (this.gaugeAccum >= 0.15) { this.gaugeAccum = 0; gaugeSys.draw(state); }
+            if (this.gaugeAccum >= 0.22) { this.gaugeAccum = 0; gaugeSys.draw(state); }
           }
         }
       }
@@ -836,7 +833,7 @@ KK.CockpitBuilder = {
         wiperL.rotation.z = sweep; wiperR.rotation.z = sweep;
         if (gaugeSys && state.inCockpitCam) {
           this.gaugeAccum += dt;
-          if (this.gaugeAccum >= 0.15) { this.gaugeAccum = 0; gaugeSys.draw(state); }
+          if (this.gaugeAccum >= 0.22) { this.gaugeAccum = 0; gaugeSys.draw(state); }
         }
       }
     };

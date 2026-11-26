@@ -1714,14 +1714,25 @@ KK.AudioEngine = class AudioEngine {
       this._slipFilter = flt; this._slipGain = gn;
     }
     const now = this.ctx.currentTime;
-    if (speedKmh < 14 || slip < 0.22) {
+    if (speedKmh < 6) {
       this._slipGain.gain.setTargetAtTime(0.0, now, 0.06);
       return;
     }
-    const surf = surface || "tarmac";
-    const freq = surf === "mud" ? 280 : (surf === "gravel" || surf === "shale" ? 580 : (surf === "snow" ? 420 : 1450));
-    const qVal = surf === "tarmac" ? 4.8 : 1.4;
-    const vol  = Math.min(0.11, (slip - 0.20) * 0.14 * Math.min(1.0, speedKmh / 55));
+    const surf = surface || "asphalt";
+    const isHard = (surf === "asphalt" || surf === "race_tarmac" || surf === "tarmac" || surf === "concrete");
+    const isSlipping = (slip >= 0.20 && speedKmh >= 12);
+    let freq, qVal, vol;
+    if (isSlipping) {
+      freq = surf === "mud" ? 310 : (surf === "gravel" || surf === "shale" || surf === "dirt" ? 680 : (surf === "snow" ? 460 : 1520));
+      qVal = isHard ? 5.2 : 1.6;
+      vol  = Math.min(0.24, (slip - 0.16) * 0.28 * Math.min(1.0, speedKmh / 48));
+    } else {
+      const spdFrac = Math.min(1.0, speedKmh / 75);
+      if (surf === "mud") { freq = 260; qVal = 1.2; vol = 0.12 * spdFrac; }
+      else if (surf === "gravel" || surf === "shale" || surf === "dirt" || surf === "sand") { freq = 620; qVal = 1.1; vol = 0.11 * spdFrac; }
+      else if (surf === "snow") { freq = 390; qVal = 1.4; vol = 0.08 * spdFrac; }
+      else { freq = 190; qVal = 0.9; vol = 0.032 * spdFrac; }
+    }
     this._slipFilter.frequency.setTargetAtTime(freq, now, 0.05);
     this._slipFilter.Q.setTargetAtTime(qVal, now, 0.05);
     this._slipGain.gain.setTargetAtTime(vol, now, 0.04);

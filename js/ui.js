@@ -429,6 +429,8 @@ KK.UIManager = class UIManager {
             <select style="margin-left:8px;padding:4px 6px;background:#101820;color:#e2e8f0;border:1px solid #334155;border-radius:5px;font-size:11px;" onchange="window.__GAME__.setRimStyle(this.value)">
               ${Object.values(KK.RIM_STYLES || {}).map(r => `<option value="${r.id}" ${(vs.rimStyle || (KK.getDefaultRimStyle ? KK.getDefaultRimStyle(vs.vehicleId) : "sport5")) === r.id ? "selected" : ""}>Rims: ${r.name}</option>`).join("")}
             </select>
+            <label style="margin-left:8px;font-size:11px;color:#94a3b8;">Rim <input type="color" value="${vs.rimColor || "#c8d0d8"}" onchange="window.__GAME__.setRimColor(this.value)" style="width:26px;height:20px;vertical-align:middle;" /></label>
+            <label style="margin-left:6px;font-size:11px;color:#94a3b8;">Caliper <input type="color" value="${vs.caliperColor || "#d92626"}" onchange="window.__GAME__.setCaliperColor(this.value)" style="width:26px;height:20px;vertical-align:middle;" /></label>
           </div>
           <button class="btn primary small" onclick="window.__GAME__.washVehicle()">WASH (${dirtPct}% — $50)</button>
           <button class="btn accent small" onclick="window.__GAME__.garageFullRepair(${totalRepairCost})">OVERHAUL ALL + LIGHTS ($${totalRepairCost.toLocaleString()})</button>
