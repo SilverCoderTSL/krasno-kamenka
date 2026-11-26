@@ -334,42 +334,64 @@ KK.TrailerPhysics = class TrailerPhysics {
     return rearLocal.applyQuaternion(vehicle.quat).add(vehicle.pos);
   }
 
+  // v17.0 REVAMPED TRAILER PHYSICS: Velocity-Integrated Articulated Hitch + Lateral Tire Grip & Sway Damping!
   step(dt, vehicle, world) {
-    const sdt = Math.min(0.04, dt);
+    const sdt = Math.min(0.035, Math.max(0.001, dt));
     const prevX = this.pos.x, prevZ = this.pos.z;
+    if (this.yawVel === undefined) this.yawVel = 0;
 
     if (this.hitched && vehicle) {
       const hitchPos = this.getRearHitchWorldPos(vehicle);
+      const vehFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(vehicle.quat);
+      const vehYaw = Math.atan2(vehFwd.x, vehFwd.z);
+
+      const curFwdX = Math.sin(this.yaw), curFwdZ = Math.cos(this.yaw);
+      const tongueX = this.pos.x + curFwdX * this.spec.hitchDist;
+      const tongueZ = this.pos.z + curFwdZ * this.spec.hitchDist;
+
+      const errX = hitchPos.x - tongueX;
+      const errZ = hitchPos.z - tongueZ;
+      this.vel.x += errX * 42.0 * sdt;
+      this.vel.z += errZ * 42.0 * sdt;
+
+      const rightX = Math.cos(this.yaw), rightZ = -Math.sin(this.yaw);
+      const vFwd = this.vel.x * curFwdX + this.vel.z * curFwdZ;
+      const vLat = this.vel.x * rightX + this.vel.z * rightZ;
+      const newVLat = vLat * Math.exp(-9.5 * sdt);
+      this.vel.x = curFwdX * vFwd + rightX * newVLat;
+      this.vel.z = curFwdZ * vFwd + rightZ * newVLat;
+
+      this.pos.x += this.vel.x * sdt;
+      this.pos.z += this.vel.z * sdt;
+
       const dx = hitchPos.x - this.pos.x;
       const dz = hitchPos.z - this.pos.z;
       const dist = Math.hypot(dx, dz);
-
       if (dist > 0.05) {
-        // Articulated trailer yaw naturally follows the hitch ball!
         let desiredYaw = Math.atan2(dx, dz);
-
-        // Clamp jackknife angle so reversing & sharp turns don't clip into the tow car!
-        const vehFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(vehicle.quat);
-        const vehYaw = Math.atan2(vehFwd.x, vehFwd.z);
         let rel = desiredYaw - vehYaw;
         while (rel > Math.PI) rel -= Math.PI * 2;
         while (rel < -Math.PI) rel += Math.PI * 2;
-        const maxJack = 1.22; // ~70 degrees max articulation
+        const maxJack = 1.28;
         if (Math.abs(rel) > maxJack) {
           desiredYaw = vehYaw + Math.sign(rel) * maxJack;
         }
+        let yawErr = desiredYaw - this.yaw;
+        while (yawErr > Math.PI) yawErr -= Math.PI * 2;
+        while (yawErr < -Math.PI) yawErr += Math.PI * 2;
+        this.yawVel += yawErr * 28.0 * sdt;
+        this.yawVel *= Math.exp(-8.5 * sdt);
+        this.yaw += this.yawVel * sdt;
 
-        this.yaw = desiredYaw;
         this.pos.x = hitchPos.x - Math.sin(this.yaw) * this.spec.hitchDist;
         this.pos.z = hitchPos.z - Math.cos(this.yaw) * this.spec.hitchDist;
       }
 
-      // Apply realistic trailer tow mass drag back onto the tow vehicle!
-      const dragRatio = (this.getTotalMassKg() / Math.max(1200, vehicle.getTotalMassKg())) * 0.14;
-      vehicle.vel.x *= Math.max(0.92, 1.0 - dragRatio * sdt * 1.4);
-      vehicle.vel.z *= Math.max(0.92, 1.0 - dragRatio * sdt * 1.4);
+      const massRatio = this.getTotalMassKg() / Math.max(1200, vehicle.getTotalMassKg());
+      const dragFactor = Math.max(0.93, 1.0 - massRatio * 0.14 * sdt);
+      vehicle.vel.x *= dragFactor;
+      vehicle.vel.z *= dragFactor;
 
-      // Bridge plank weight stress under heavy loaded trailer!
       const tCheck = world.getTerrainInfo(this.pos.x, this.pos.z, true, this.pos.y + 1.0);
       if (tCheck.onBridge && tCheck.bridgeHit) {
         const spd = Math.hypot(this.pos.x - prevX, this.pos.z - prevZ) / Math.max(0.005, sdt);
@@ -382,27 +404,25 @@ KK.TrailerPhysics = class TrailerPhysics {
         }
       }
     } else {
-      // Unhitched trailer coasts & stops smoothly on terrain
-      this.vel.multiplyScalar(Math.exp(-3.0 * sdt));
+      this.vel.multiplyScalar(Math.exp(-3.4 * sdt));
       this.pos.x += this.vel.x * sdt;
       this.pos.z += this.vel.z * sdt;
     }
 
-    // Align trailer elevation, pitch & roll to terrain under its wheels
     const fwdX = Math.sin(this.yaw), fwdZ = Math.cos(this.yaw);
     const rightX = Math.cos(this.yaw), rightZ = -Math.sin(this.yaw);
     const hCenter = world.getTerrainInfo(this.pos.x, this.pos.z, true, this.pos.y + 1.0).height;
     const hFront = world.getTerrainInfo(this.pos.x + fwdX * 1.8, this.pos.z + fwdZ * 1.8, true, this.pos.y + 1.0).height;
-    const hBack = world.getTerrainInfo(this.pos.x - fwdX * 1.8, this.pos.z - fwdZ * 1.8, true, this.pos.y + 1.0).height;
-    const hLeft = world.getTerrainInfo(this.pos.x - rightX * 0.9, this.pos.z - rightZ * 0.9, true, this.pos.y + 1.0).height;
+    const hBack  = world.getTerrainInfo(this.pos.x - fwdX * 1.8, this.pos.z - fwdZ * 1.8, true, this.pos.y + 1.0).height;
+    const hLeft  = world.getTerrainInfo(this.pos.x - rightX * 0.9, this.pos.z - rightZ * 0.9, true, this.pos.y + 1.0).height;
     const hRight = world.getTerrainInfo(this.pos.x + rightX * 0.9, this.pos.z + rightZ * 0.9, true, this.pos.y + 1.0).height;
 
     const targetY = Math.max(hCenter, (hFront + hBack) * 0.5);
-    this.pos.y += (targetY - this.pos.y) * Math.min(1, sdt * 16);
+    this.pos.y += (targetY - this.pos.y) * Math.min(1, sdt * 14);
     const targetPitch = -Math.atan2(hFront - hBack, 3.6);
-    const targetRoll = Math.atan2(hLeft - hRight, 1.8);
-    this.pitch += (targetPitch - this.pitch) * Math.min(1, sdt * 12);
-    this.roll += (targetRoll - this.roll) * Math.min(1, sdt * 12);
+    const targetRoll  = Math.atan2(hLeft - hRight, 1.8);
+    this.pitch += (targetPitch - this.pitch) * Math.min(1, sdt * 10);
+    this.roll  += (targetRoll - this.roll) * Math.min(1, sdt * 10);
 
     const moved = (this.pos.x - prevX) * fwdX + (this.pos.z - prevZ) * fwdZ;
     this.spinAngle += moved / this.spec.wheelRadius;

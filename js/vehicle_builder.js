@@ -2345,51 +2345,95 @@ KK.VehicleBuilder = {
       };
       trackSys = { left: makeTrackSide(-1), right: makeTrackSide(1), idlers: trackIdlers, sprockets: trackSprockets, isShilka: true };
 
-      // 2. Iconic Wide Low-Profile Armored Shilka Turret + Spinning 1RL33 RPK-2 Radar Dish!
+      // v17.0 DESPERATE SHILKA REMODEL: Sloped Faceted ZSU-23-4 Turret + Parabolic 1RL33 "Gun Dish" Radar!
       shilkaTurretPivot = new THREE.Group();
-      shilkaTurretPivot.position.set(0, 1.50, -0.05);
+      shilkaTurretPivot.position.set(0, 1.48, -0.05);
       chassis.add(shilkaTurretPivot);
 
-      const tBox = new THREE.Mesh(new THREE.BoxGeometry(2.34, 0.72, 2.42), matPaint);
-      tBox.position.y = 0.36; tBox.castShadow = true; shilkaTurretPivot.add(tBox);
-      const tTop = new THREE.Mesh(new THREE.BoxGeometry(1.96, 0.14, 1.98), matArmorDk);
-      tTop.position.y = 0.78; shilkaTurretPivot.add(tTop);
+      const stV = [
+        [-1.18, 0.00,  1.24], [ 1.18, 0.00,  1.24],
+        [-1.32, 0.00,  0.10], [ 1.32, 0.00,  0.10],
+        [-1.18, 0.00, -1.26], [ 1.18, 0.00, -1.26],
+        [-0.96, 0.78,  1.02], [ 0.96, 0.78,  1.02],
+        [-1.10, 0.78,  0.06], [ 1.10, 0.78,  0.06],
+        [-0.96, 0.78, -1.08], [ 0.96, 0.78, -1.08]
+      ];
+      const stF = [
+        [0,1,7,6], [0,6,8,2], [2,8,10,4], [1,3,9,7], [3,5,11,9], [4,10,11,5],
+        [6,7,9,8], [8,9,11,10]
+      ];
+      const stMesh = this._buildFacetedMesh(stV, stF, matPaint, 0.35);
+      stMesh.castShadow = true;
+      shilkaTurretPivot.add(stMesh);
 
-      // Iconic Folding / Spinning Circular 1RL33 RPK-2 Radar Dish on Rear Turret Roof!
-      const rMast = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.62, 10), matArmorDk);
-      rMast.position.set(0, 1.06, -0.68); shilkaTurretPivot.add(rMast);
+      const cupola = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.22, 12), matArmorDk);
+      cupola.position.set(-0.46, 0.88, 0.26); shilkaTurretPivot.add(cupola);
+      const hatch2 = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.30, 0.12, 10), matArmorDk);
+      hatch2.position.set(0.46, 0.84, 0.26); shilkaTurretPivot.add(hatch2);
+      const optHood = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.22, 0.34), matArmorDk);
+      optHood.position.set(-0.56, 0.88, 0.86); shilkaTurretPivot.add(optHood);
+      for (const sx of [-1, 1]) {
+        const ammoBox = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.36, 0.94), matArmorDk);
+        ammoBox.position.set(sx * 1.24, 0.34, -0.32); shilkaTurretPivot.add(ammoBox);
+      }
+
+      const rBase = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.26, 12), matArmorDk);
+      rBase.position.set(0, 0.88, -0.78); shilkaTurretPivot.add(rBase);
+      for (const sx of [-0.22, 0.22]) {
+        const yoke = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.62, 0.16), matArmorDk);
+        yoke.position.set(sx, 1.24, -0.78); shilkaTurretPivot.add(yoke);
+      }
       shilkaRadarDish = new THREE.Group();
-      shilkaRadarDish.position.set(0, 1.48, -0.68);
-      const dishCone = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.18, 0.28, 16), matDish);
-      dishCone.rotation.x = Math.PI / 2; shilkaRadarDish.add(dishCone);
-      const feedHorn = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.45, 6), matSteel);
-      feedHorn.rotation.x = Math.PI / 2; feedHorn.position.z = 0.22; shilkaRadarDish.add(feedHorn);
+      shilkaRadarDish.position.set(0, 1.56, -0.78);
+      const rTrans = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.36, 0.38), matArmorDk);
+      rTrans.position.set(0, 0, -0.22); shilkaRadarDish.add(rTrans);
+      const dishOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.46, 0.18, 20, 1, true), matDish);
+      dishOuter.rotation.x = Math.PI / 2; dishOuter.position.z = 0.06; shilkaRadarDish.add(dishOuter);
+      const dishInner = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.14, 0.12, 16), matDish);
+      dishInner.rotation.x = Math.PI / 2; dishInner.position.z = -0.02; shilkaRadarDish.add(dishInner);
+      const dishRim = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.032, 8, 24), matSteel);
+      dishRim.position.z = 0.15; shilkaRadarDish.add(dishRim);
+      for (let fi = 0; fi < 3; fi++) {
+        const fa = (fi / 3) * Math.PI * 2;
+        const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.62, 6), matSteel);
+        strut.position.set(Math.cos(fa) * 0.28, Math.sin(fa) * 0.28, 0.28);
+        strut.rotation.x = Math.PI / 2; strut.rotation.z = fa;
+        shilkaRadarDish.add(strut);
+      }
+      const feedHorn = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.04, 0.56, 8), matSteel);
+      feedHorn.rotation.x = Math.PI / 2; feedHorn.position.z = 0.30; shilkaRadarDish.add(feedHorn);
+      const feedTip = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 8), matArmorDk);
+      feedTip.position.z = 0.58; shilkaRadarDish.add(feedTip);
       shilkaTurretPivot.add(shilkaRadarDish);
 
-      // 3. QUAD 23mm AZP-23 WATER-COOLED AUTOCANNON ARRAY (4 Independent Reciprocating Barrels!)
       shilkaGunPitch = new THREE.Group();
-      shilkaGunPitch.position.set(0, 0.40, 1.18);
+      shilkaGunPitch.position.set(0, 0.42, 1.12);
       shilkaTurretPivot.add(shilkaGunPitch);
 
-      const qMantlet = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.44, 0.46), matArmorDk);
+      const qMantlet = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.48, 0.52), matArmorDk);
       shilkaGunPitch.add(qMantlet);
 
       shilkaBarrels = [];
       shilkaFlashes = [];
-      const bOffsets = [[-0.32, 0.11], [0.32, 0.11], [-0.32, -0.11], [0.32, -0.11]];
+      var shilkaMuzzleTips = [];
+      const bOffsets = [[-0.34, 0.12], [0.34, 0.12], [-0.34, -0.12], [0.34, -0.12]];
       const flashMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.94 });
       for (const [bx, by] of bOffsets) {
         const bGrp = new THREE.Group();
         bGrp.position.set(bx, by, 0);
-        const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.062, 1.15, 8), matArmorDk);
+        const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.066, 1.18, 8), matArmorDk);
         jacket.rotation.x = Math.PI / 2; jacket.position.z = 0.62; bGrp.add(jacket);
         if (!matAutoBarrelHot) matAutoBarrelHot = matSteel.clone();
-        const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.038, 1.65, 8), matAutoBarrelHot);
-        tube.rotation.x = Math.PI / 2; tube.position.z = 1.65; tube.castShadow = true; bGrp.add(tube);
-        const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.032, 0.20, 8), matSteel);
-        cone.rotation.x = Math.PI / 2; cone.position.z = 2.52; bGrp.add(cone);
+        const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.040, 1.70, 8), matAutoBarrelHot);
+        tube.rotation.x = Math.PI / 2; tube.position.z = 1.66; tube.castShadow = true; bGrp.add(tube);
+        const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.054, 0.032, 0.22, 8), matSteel);
+        cone.rotation.x = Math.PI / 2; cone.position.z = 2.56; bGrp.add(cone);
+        const mTip = new THREE.Object3D();
+        mTip.position.set(0, 0, 2.68);
+        bGrp.add(mTip);
+        shilkaMuzzleTips.push(mTip);
         const fl = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.72, 6), flashMat);
-        fl.rotation.x = Math.PI / 2; fl.position.z = 2.95; fl.visible = false; bGrp.add(fl);
+        fl.rotation.x = Math.PI / 2; fl.position.z = 2.98; fl.visible = false; bGrp.add(fl);
         shilkaGunPitch.add(bGrp);
         shilkaBarrels.push(bGrp);
         shilkaFlashes.push(fl);
@@ -2623,12 +2667,49 @@ KK.VehicleBuilder = {
       hullShape.closePath();
       chassis.add(this._extrudeSideProfile(hullShape, 2.54, matCamo, 0.03, 0.04));
 
-      // Sloped Front Upper Glacis Armor Plate w/ Twin White Tactical Stripes!
+      // v17.0 140A4 ANGLED UFP GLACIS HOOD (Matches exact 0.20 rad UFP slope + reveals massive V12 Powerpack!)
+      hoodPivot.position.set(0, 1.66, 1.72);
+      hoodPivot.rotation.x = 0.20;
       const glacisPlate = new THREE.Mesh(new THREE.BoxGeometry(2.38, 0.08, 2.42), matGlacis);
-      glacisPlate.position.set(0, 1.44, 2.88);
-      glacisPlate.rotation.x = 0.20;
+      glacisPlate.position.set(0, 0.02, 1.20);
       glacisPlate.castShadow = true;
-      chassis.add(glacisPlate);
+      hoodPivot.add(glacisPlate);
+
+      const ppGrp = new THREE.Group();
+      ppGrp.position.set(0, 1.05, 2.55);
+      const ppMatBlk   = new THREE.MeshStandardMaterial({ color: 0x242a30, roughness: 0.55, metalness: 0.65 });
+      const ppMatAlum  = new THREE.MeshStandardMaterial({ color: 0xaab4be, roughness: 0.28, metalness: 0.85 });
+      const ppMatBrass = new THREE.MeshStandardMaterial({ color: 0xc8963e, roughness: 0.32, metalness: 0.78 });
+      const ppMatRed   = new THREE.MeshStandardMaterial({ color: 0xcc2229, roughness: 0.35, metalness: 0.40 });
+      const ppMatGlow  = new THREE.MeshBasicMaterial({ color: 0x00f5d4 });
+
+      const mainBlock = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.64, 1.68), ppMatBlk);
+      ppGrp.add(mainBlock);
+      for (const sx of [-1, 1]) {
+        const bank = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.34, 1.56), ppMatRed);
+        bank.position.set(sx * 0.56, 0.36, 0); bank.rotation.z = sx * -0.42; ppGrp.add(bank);
+        for (let ci = -2; ci <= 3; ci++) {
+          const inj = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.14, 6), ppMatBrass);
+          inj.position.set(sx * 0.62, 0.52, ci * 0.24 - 0.12); ppGrp.add(inj);
+        }
+        for (const tz of [-0.42, 0.42]) {
+          const turbo = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.055, 8, 12), ppMatAlum);
+          turbo.rotation.y = Math.PI / 2; turbo.position.set(sx * 0.84, 0.28, tz); ppGrp.add(turbo);
+        }
+        const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 1.48, 8), ppMatAlum);
+        pipe.rotation.x = Math.PI / 2; pipe.position.set(sx * 0.28, 0.54, 0.06); ppGrp.add(pipe);
+      }
+      const radCore = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.44, 0.22), ppMatAlum);
+      radCore.position.set(0, 0.14, 0.98); ppGrp.add(radCore);
+      for (const fx of [-0.45, 0.45]) {
+        const fanRing = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.03, 6, 14), ppMatBlk);
+        fanRing.position.set(fx, 0.16, 1.12); ppGrp.add(fanRing);
+      }
+      const ecuCore = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.12, 0.32), ppMatBlk);
+      ecuCore.position.set(0, 0.46, -0.58); ppGrp.add(ecuCore);
+      const ecuLed = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.03, 0.05), ppMatGlow);
+      ecuLed.position.set(0, 0.53, -0.58); ppGrp.add(ecuLed);
+      chassis.add(ppGrp);
 
       // Front Sponson Cheeks w/ Recessed Rectangular White LED Headlights & Engine Louvers!
       for (const sx of [-1, 1]) {
@@ -4515,7 +4596,7 @@ KK.VehicleBuilder = {
     }
 
     const rig = {
-      root, chassis, hoodPivot, cockpit, wheelAssemblies, cargoGroup, cargoMeshes, strapGroup, smokePuffs, spec, p140RwsGunPitch, p140RwsMuzzleTip, btrMuzzleTip, btrGunGroup, tankGunPitch, shilkaGunPitch,
+      root, chassis, hoodPivot, cockpit, wheelAssemblies, shilkaGunPitch, shilkaMuzzleTips: (typeof shilkaMuzzleTips !== 'undefined' ? shilkaMuzzleTips : null), cargoGroup, cargoMeshes, strapGroup, smokePuffs, spec, p140RwsGunPitch, p140RwsMuzzleTip, btrMuzzleTip, btrGunGroup, tankGunPitch, shilkaGunPitch,
       matPaint, matTire, matDirtOverlay, matHeadlight, matTaillight, matBlinker, matReverse, matLedStrip,
       snorkelGroup, bullbarGroup, lightbarGroup, spotL, spotR, ledSpot, remoteHeadLight, hlGlows, ledGlow, flameMesh,
       hoodOpenTarget: 0, hoodOpenCurrent: 0, baseColor: basePaintColor, _baseRimColor: matRim.color.clone(),

@@ -26,6 +26,11 @@ KK.CryptidManager = class CryptidManager {
     this.sandworm = this._createSandworm();
     this.sirenhead = this._createSirenHead();
     this.trex = this._createTRex();
+    this.brachios = [
+      this._createBrachiosaurus(-4210, 1210, 1.05),
+      this._createBrachiosaurus(-4490, 1430, 0.95),
+      this._createBrachiosaurus(-4140, 1480, 1.12)
+    ];
     this.godzilla = this._createGodzilla();
 
     this.allList = [this.yeti, this.snowman, this.sandworm, this.sirenhead, this.trex, this.godzilla];
@@ -454,6 +459,57 @@ KK.CryptidManager = class CryptidManager {
     };
   }
 
+  // v17.0 NEUTRAL LONG-NECKED BRACHIOSAURUS (Peaceful giant — kicks you away ONLY if you ram it!)
+  _createBrachiosaurus(gx, gz, sc = 1.0) {
+    const grp = new THREE.Group();
+    const skinMat  = new THREE.MeshStandardMaterial({ color: 0x5d6e55, roughness: 0.88 });
+    const bellyMat = new THREE.MeshStandardMaterial({ color: 0x8a9178, roughness: 0.92 });
+    const spotMat  = new THREE.MeshStandardMaterial({ color: 0x414f3b, roughness: 0.86 });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(4.2, 4.4, 8.6), skinMat);
+    body.position.set(0, 7.6, 0); body.rotation.x = -0.16; body.castShadow = true; grp.add(body);
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.2, 7.2), bellyMat);
+    belly.position.set(0, 5.4, 0.2); grp.add(belly);
+    const backRidge = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 6.8), spotMat);
+    backRidge.position.set(0, 9.8, -0.2); backRidge.rotation.x = -0.16; grp.add(backRidge);
+
+    const neckPivot = new THREE.Group();
+    neckPivot.position.set(0, 9.0, 3.6);
+    const neck1 = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.45, 7.2, 8), skinMat);
+    neck1.position.set(0, 3.2, 1.4); neck1.rotation.x = 0.42; neck1.castShadow = true; neckPivot.add(neck1);
+    const neck2 = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.95, 6.2, 8), skinMat);
+    neck2.position.set(0, 8.2, 3.3); neck2.rotation.x = 0.28; neck2.castShadow = true; neckPivot.add(neck2);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.2, 2.2), skinMat);
+    head.position.set(0, 11.4, 4.7); neckPivot.add(head);
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.75, 1.1), spotMat);
+    crest.position.set(0, 12.1, 4.4); neckPivot.add(crest);
+    grp.add(neckPivot);
+
+    const tailPivot = new THREE.Group();
+    tailPivot.position.set(0, 6.8, -4.1);
+    const tail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.35, 6.8, 8), skinMat);
+    tail1.rotation.x = Math.PI / 2 + 0.18; tail1.position.set(0, -0.6, -3.2); tailPivot.add(tail1);
+    const tail2 = new THREE.Mesh(new THREE.ConeGeometry(0.75, 7.2, 7), skinMat);
+    tail2.rotation.x = -Math.PI / 2; tail2.position.set(0, -1.6, -9.8); tailPivot.add(tail2);
+    grp.add(tailPivot);
+
+    const legs = [];
+    for (const [lx, lz, h] of [[-1.6, 2.8, 6.8], [1.6, 2.8, 6.8], [-1.5, -2.8, 5.8], [1.5, -2.8, 5.8]]) {
+      const lp = new THREE.Group(); lp.position.set(lx, h, lz);
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.84, h, 8), skinMat);
+      leg.position.y = -h * 0.5; leg.castShadow = true; lp.add(leg);
+      grp.add(lp); legs.push(lp);
+    }
+
+    grp.scale.set(sc, sc, sc);
+    this.scene.add(grp);
+    return {
+      gx, gy: 38, gz, yaw: Math.random() * Math.PI * 2,
+      homeX: gx, homeZ: gz, phase: Math.random() * 6.28,
+      kickCd: 0, mesh: grp, neckPivot, tailPivot, legs, scale: sc
+    };
+  }
+
   _createTRex() {
     const grp = new THREE.Group();
     const scaleMat = new THREE.MeshStandardMaterial({ color: 0x3b4a2c, roughness: 0.85 });
@@ -511,6 +567,7 @@ KK.CryptidManager = class CryptidManager {
       grp.add(piv); return piv;
     };
     const legL = makeLeg(-1.45), legR = makeLeg(1.45);
+    grp.scale.set(1.75, 1.75, 1.75);
     this.scene.add(grp);
     return {
       kind: "trex", gx: -4350, gy: 38, gz: 1320, tx: -4350, ty: 38, tz: 1320,
@@ -1185,6 +1242,51 @@ KK.CryptidManager = class CryptidManager {
     if (!this._isLandSafe(rx.gx, rx.gz, 8.0, 14.0, true)) { rx.state = "prowl"; rx.dormantCd = 40.0; rx.gx = -8500; rx.gz = 1800; }
     rx.gy = this.world.getTerrainInfo(rx.gx, rx.gz, false).height;
 
+    // 5B. NEUTRAL BRACHIOSAURUS HERD (Peaceful grazers — ONLY kick you away if you ram into them!)
+    if (this.brachios) {
+      for (const br of this.brachios) {
+        br.phase += dt * 1.1;
+        if (br.kickCd > 0) br.kickCd = Math.max(0, br.kickCd - dt);
+        const toHomeX = br.homeX - br.gx, toHomeZ = br.homeZ - br.gz;
+        if (Math.hypot(toHomeX, toHomeZ) > 130) {
+          const hYaw = Math.atan2(toHomeX, toHomeZ);
+          let diff = hYaw - br.yaw;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          br.yaw += diff * Math.min(1, dt * 0.6);
+        } else {
+          br.yaw += Math.sin(br.phase * 0.25) * dt * 0.14;
+        }
+        br.gx += Math.sin(br.yaw) * 2.4 * dt;
+        br.gz += Math.cos(br.yaw) * 2.4 * dt;
+        const tBr = world.getTerrainInfo(br.gx, br.gz, false);
+        br.gy = tBr ? tBr.height : br.gy;
+        br.mesh.position.set(br.gx - world.originX, br.gy, br.gz - world.originZ);
+        br.mesh.rotation.y = br.yaw;
+        const dBr = Math.hypot(br.gx - px, br.gz - pz);
+        br.mesh.visible = dBr < 540;
+        if (br.mesh.visible) {
+          br.neckPivot.rotation.x = Math.sin(br.phase * 0.55) * 0.16;
+          br.tailPivot.rotation.y = Math.sin(br.phase * 0.7) * 0.22;
+          for (let li = 0; li < br.legs.length; li++) {
+            br.legs[li].rotation.x = Math.sin(br.phase + (li % 2 === 0 ? 0 : Math.PI)) * 0.18;
+          }
+        }
+        const hitRad = 5.4 * br.scale;
+        if (dBr < hitRad && Math.abs(br.gy - vehicle.pos.y) < 9.0 && br.kickCd <= 0) {
+          br.kickCd = 2.6;
+          const pushX = (px - br.gx) / Math.max(0.5, dBr);
+          const pushZ = (pz - br.gz) / Math.max(0.5, dBr);
+          vehicle.vel.x = pushX * 26.0;
+          vehicle.vel.z = pushZ * 26.0;
+          vehicle.vel.y = Math.max(vehicle.vel.y, 11.5);
+          vehicle.angVel.y += (Math.random() - 0.5) * 5.0;
+          if (audio) audio.playImpact(0.95);
+          if (ui) ui.toast("🦕 BRACHIOSAURUS KICKED YOU AWAY! Don't ram the gentle giants!", true);
+        }
+      }
+    }
+
     // 6. GODZILLA (v14.2: Fair Snow-Delivery Pacing + Stalk-From-Afar + Standoff Tail Whip + Titan Kick + 3-Min Rest!)
     const gz = this.godzilla;
     if (gz.adaptTimer > 0) { gz.adaptTimer -= dt; if (gz.adaptTimer <= 0) gz.adaptedToMil = false; }
@@ -1632,7 +1734,7 @@ KK.CryptidManager = class CryptidManager {
       }
 
       // ATTACK 1 — JAW CHOMP & MASSIVE FLING (Triggers in chase/stalk OR if you ram straight into it!)
-      const inBiteRange = (dJaw < 8.4 || dRex < 11.8);
+      const inBiteRange = (dJaw < 12.2 || dRex < 16.5);
       const canBite = (rx.state === "chase" || rx.state === "stalk" || (rx.state === "prowl" && vehicle.speedKmh > 4.0));
       if (canBite && inBiteRange && altAboveGround < 6.5 && rx.attackCd <= 0) {
         rx.attackCd = 5.5;

@@ -403,6 +403,34 @@ KK.EntityManager = class EntityManager {
     if (c) { this.scene.remove(c.mesh); this.looseCrates.splice(idx, 1); }
   }
 
+  // v17.0 KILLABLE ANIMALS FROM MG, AUTOCANNON & TANK CANNON FIRE!
+  hitAnimalAt(wx, wy, wz, radius = 3.2, dmg = 100, weaponName = "gunfire") {
+    const lists = [
+      { arr: this.deers,  label: "Deer" },
+      { arr: this.goats,  label: "Mountain Goat" },
+      { arr: this.camels, label: "Desert Camel" }
+    ];
+    for (const grp of lists) {
+      if (!grp.arr) continue;
+      for (const a of grp.arr) {
+        if (a.deadTimer > 0) continue;
+        const d = Math.hypot(a.gx - wx, a.gz - wz);
+        if (d <= radius && Math.abs((a.gy || wy) - wy) < 4.5) {
+          a.hp = (a.hp !== undefined ? a.hp : 60) - dmg;
+          if (a.hp <= 0) {
+            a.deadTimer = 28.0;
+            a.stunTimer = 28.0;
+            if (a.mesh) a.mesh.rotation.z = Math.PI / 2;
+            return { hit: true, killed: true, label: grp.label, x: a.gx, y: a.gy, z: a.gz };
+          }
+          a.stunTimer = 2.0;
+          return { hit: true, killed: false, label: grp.label, x: a.gx, y: a.gy, z: a.gz };
+        }
+      }
+    }
+    return null;
+  }
+
   update(dt, vehicle, weatherSys, onDeerImpact, sirenPos, seaFocus = null) {
     const px = seaFocus ? seaFocus.x : vehicle.pos.x, pz = seaFocus ? seaFocus.z : vehicle.pos.z;
     const playerBiomes = this.world.getBiomeWeights(px, pz);
@@ -411,6 +439,7 @@ KK.EntityManager = class EntityManager {
     // 1. TAIGA-ONLY DEER
     const inTaiga = playerBiomes.taiga > 0.28;
     for (const d of this.deers) {
+      if (d.deadTimer > 0) { d.deadTimer -= dt; if (d.deadTimer <= 0) { d.hp = 60; if (d.mesh) d.mesh.rotation.z = 0; } continue; }
       if (!inTaiga) { d.mesh.visible = false; continue; }
       const distToPlayer = Math.hypot(d.gx - px, d.gz - pz);
       if (distToPlayer > 340 || this.world.getBiomeWeights(d.gx, d.gz).taiga < 0.26) {
@@ -447,6 +476,7 @@ KK.EntityManager = class EntityManager {
     // 2. SNOWY MOUNTAIN GOATS
     const inSnowMtn = (playerBiomes.mountains > 0.32 || vehicle.pos.y > 135 || weatherSys.weather === "snow");
     for (const g of this.goats) {
+      if (g.deadTimer > 0) { g.deadTimer -= dt; if (g.deadTimer <= 0) { g.hp = 60; if (g.mesh) g.mesh.rotation.z = 0; } continue; }
       if (!inSnowMtn) { g.mesh.visible = false; continue; }
       const dP = Math.hypot(g.gx - px, g.gz - pz);
       if (dP > 320) {
@@ -474,6 +504,7 @@ KK.EntityManager = class EntityManager {
     // 3. DESERT CAMELS
     const inDesert = playerBiomes.desert > 0.34;
     for (const c of this.camels) {
+      if (c.deadTimer > 0) { c.deadTimer -= dt; if (c.deadTimer <= 0) { c.hp = 80; if (c.mesh) c.mesh.rotation.z = 0; } continue; }
       if (!inDesert) { c.mesh.visible = false; continue; }
       const dP = Math.hypot(c.gx - px, c.gz - pz);
       if (dP > 360 || this.world.getBiomeWeights(c.gx, c.gz).desert < 0.30) {
