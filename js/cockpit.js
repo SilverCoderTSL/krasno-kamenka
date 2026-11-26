@@ -224,6 +224,40 @@ KK.CockpitBuilder = {
       const fHeader = new THREE.Mesh(new THREE.BoxGeometry(roofW, 0.07, 0.09), pMat);
       fHeader.position.set(0, roofY - 0.04, zFrontTop);
       group.add(fHeader);
+
+      // v15.6 FORM-FITTING TRAPEZOIDAL SIDE WINDOWS, WINDSHIELD & REAR GLASS!
+      if (!this._matFormGlass) {
+        this._matFormGlass = new THREE.MeshStandardMaterial({
+          color: 0x162b3b, roughness: 0.08, metalness: 0.45,
+          transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false
+        });
+      }
+      const makeQuad = (p0, p1, p2, p3) => {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute([
+          p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2],
+          p0[0], p0[1], p0[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2]
+        ], 3));
+        g.computeVertexNormals();
+        return new THREE.Mesh(g, this._matFormGlass);
+      };
+      const yB = beltY - 0.01, yT = roofY - 0.05;
+      const hwG = halfW - 0.015;
+      for (const sx of [-1, 1]) {
+        const xS = sx * hwG;
+        group.add(makeQuad(
+          [xS, yB, zFrontBot - 0.03], [xS, yB, zRearBot + 0.03],
+          [xS, yT, zRearTop + 0.03],  [xS, yT, zFrontTop - 0.03]
+        ));
+      }
+      group.add(makeQuad(
+        [-hwG, yB, zFrontBot], [hwG, yB, zFrontBot],
+        [ hwG, yT, zFrontTop], [-hwG, yT, zFrontTop]
+      ));
+      group.add(makeQuad(
+        [-hwG, yB, zRearBot], [hwG, yB, zRearBot],
+        [ hwG, yT, zRearTop], [-hwG, yT, zRearTop]
+      ));
     }
     return group;
   },

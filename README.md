@@ -1,11 +1,11 @@
-# Krasno-Kamenka Oblast (v15.5 ONLINE — Major World, Maritime & Weather Expansion)
+# Krasno-Kamenka Oblast (v15.6 ONLINE — Vehicle Detail, Accurate X-Ray & Zero-FPS-Loss Revamp)
 
-## What's New in Version 15.5 ONLINE
-1. **Minimal Brand-Colored Tire Sidewalls (`js/vehicle_builder.js`):** Every tire displays its brand name, subtle accent ring, and geometric logo in its signature brand color (`KRASNY`, `VOLGA`, `BOREAL`, `KUROGANE`, `VALKYRIE`).
-2. **Boat Anchor Key = `[P]` & Saved Ship Ownership (`js/main.js`, `js/boats.js`, `index.html`):** Press `[P]` at the helm to drop/weigh anchor (or dump/inflate Zubr cushion), and purchased ships now persist across sessions and servers in your save file.
-3. **Colossal Scale Sea Monsters & Yamato (`js/ocean_cryptids.js`):** Scaled up the Possessed Yamato (`1.55×`), Megalodon (`1.85×`), and Kraken (`1.75×`) with matching hitboxes and solid hull bounce.
-4. **3-Wave Avalanches, Tamed Rockfalls & Cat 1–5 Ocean Hurricanes (`js/hazards.js`, `js/main.js`):** Massive 3-wave avalanches (~21–24 snow boulders), rarer true-downhill mountain rockfalls, zero ocean tornadoes, and occasional **Category 1–5 Ocean Hurricanes** that physically push and roll ships at sea.
-5. **Car Deck Ride-Height Fix (`js/boats.js`):** Parked cars now sit cleanly on top of the steel deck (`wheelRadius + rideHeight + 0.10`) with zero upward launch when unparking.
-6. **7 Tall Night-Rotating Ocean Lighthouses (`js/config.js`, `js/world.js`):** `46–50 m` striped lighthouses on rocky islets with twin `175 m` rotating beams that switch ON at night.
-7. **Massive 5.6 km Savanna Grand Prix Circuit (`js/config.js`, `js/world.js`):** Relocated and expanded into the **Zolotoy International GP Circuit** on Zolotoy Savanna with a 1.3 km pit straight, sweeping S-curves, hairpins, pit lane, and tiered grandstands.
-8. **Ostrov Tropika 7-Village Redesign & Expanded Wildlife (`js/config.js`, `js/world.js`, `js/ai_entities.js`):** Expanded to 7 dense Indonesian villages with clean mountain-climbing switchbacks, terrible mud-slide roads, 4 instanced tropical flora species (palms, banyans, bamboo groves, ferns), and significantly more wildlife across every biome.
+## What's New in Version 15.6 ONLINE
+1. **Accurate X-Ray Engine & Drivetrain Positions (`js/vehicle_builder.js`):**
+   - Fixed X-Ray (`[X]`) engine, radiator, intercooler, gearbox, and driveshaft alignment across the entire fleet—including **Pindad Komodo** (inside the front armored sloped engine bay), **Porsche 911 Dakar** (rear Flat-6 + front radiator), **BTR-80**, **MAZ-537**, cab-over trucks, and all front-engine cars anchored directly inside their hood bays.
+2. **Hood-Culled Modular Engine Bays (`js/vehicle_builder.js`):**
+   - Opening the hood (`[H]`) reveals a detailed engine bay tailored to your installed engine (valve covers, intake plenum, turbo snail & piping, radiator, battery, strut brace)—with `0` draw calls while the hood is shut.
+3. **Open-Spoke Custom Rims + Glowing Brake Discs (`js/vehicle_builder.js`, `js/physics.js`, `js/main.js`):**
+   - 5 vehicle-matched open-spoke rim styles (`TE37 6-spoke`, `BBS Mesh`, `Rally Turbofan`, `8-Lug Military`, `Classic 5-Spoke`) revealing a detailed **brake rotor disc** and **caliper** that glow cherry-red -> bright orange on hard braking.
+4. **Dynamic Per-Vehicle Exhausts & Form-Fitting Trapezoidal Windows (`js/vehicle_builder.js`, `js/cockpit.js`):**
+   - Distinct exhaust setups per vehicle (Quad/Dual/Side-Exit/Single + burnt-titanium Race tips) and exact 4-corner trapezoidal side windows, raked windshields, and rear glass flush with A & C pillars.

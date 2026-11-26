@@ -133,6 +133,92 @@ KK.VehicleBuilder = {
     return mesh;
   },
 
+  // v15.6 MODULAR HOOD-CULLED ENGINE BAY (0 Draw Calls While Hood Is Closed!)
+  _buildEngineBay(vehicleId, vState, spec, hoodPivot) {
+    if (spec && (spec.isTracked || spec.id === "btr80" || spec.id === "komodo_std" || spec.id === "komodo_recon" || spec.id === "komodo_turret")) {
+      return null;
+    }
+    const bay = new THREE.Group();
+    const hz = hoodPivot.position.z || (spec.bodyLen * 0.25);
+    const hy = Math.max(0.46, (hoodPivot.position.y || 0.92) - 0.30);
+    const isRearEng = (vehicleId === "porsche_dakar");
+    bay.position.set(0, hy, isRearEng ? -1.45 : (hz + 0.42));
+
+    const engId = (vState && vState.engineId) || "i4_stock";
+    const isV = engId.includes("v6") || engId.includes("v8") || engId.includes("vr38") || engId.includes("v12") || vehicleId === "gtr_r35";
+    const isTurbo = engId.includes("turbo") || engId.includes("tt") || engId.includes("vr38") || (vState && vState.upgrades && vState.upgrades.turbo);
+    const isJdm = (vehicleId === "gtr_r35" || vehicleId === "evo" || vehicleId === "wrx" || vehicleId === "supra" || vehicleId === "silvia");
+
+    const matBlock = new THREE.MeshStandardMaterial({ color: 0x3b4046, roughness: 0.72, metalness: 0.58 });
+    const matCover = new THREE.MeshStandardMaterial({ color: isJdm ? 0xc92a2a : (isV ? 0xd9a016 : 0x2a6f97), roughness: 0.35, metalness: 0.48 });
+    const matPipe  = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.24, metalness: 0.85 });
+    const matRad   = new THREE.MeshStandardMaterial({ color: 0x1e2228, roughness: 0.85, metalness: 0.35 });
+    const matBat   = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.8 });
+    const matRedP  = new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.4 });
+
+    const block = new THREE.Mesh(new THREE.BoxGeometry(isV ? 0.56 : 0.36, 0.34, 0.58), matBlock);
+    bay.add(block);
+    if (isV) {
+      for (const sx of [-0.22, 0.22]) {
+        const vc = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.54), matCover);
+        vc.position.set(sx, 0.21, 0); vc.rotation.z = sx > 0 ? -0.35 : 0.35; bay.add(vc);
+      }
+      const plenum = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.48), matPipe);
+      plenum.position.set(0, 0.26, 0); bay.add(plenum);
+    } else {
+      const vc = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.11, 0.56), matCover);
+      vc.position.set(0, 0.22, 0); bay.add(vc);
+      const intake = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.44), matPipe);
+      intake.position.set(0.22, 0.16, 0); bay.add(intake);
+    }
+    if (isTurbo) {
+      const snail = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.042, 7, 12), matPipe);
+      snail.position.set(-0.28, 0.14, 0.12); snail.rotation.y = Math.PI / 2; bay.add(snail);
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.48, 8), matPipe);
+      pipe.rotation.z = Math.PI / 2; pipe.position.set(0, 0.26, 0.24); bay.add(pipe);
+    }
+    const rad = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.36, 0.08), matRad);
+    rad.position.set(0, 0.06, isRearEng ? -0.38 : 0.44); bay.add(rad);
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.04, 0.05), matRedP);
+    strut.position.set(0, 0.30, -0.08); bay.add(strut);
+    const bat = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.18), matBat);
+    bat.position.set(0.46, 0.08, -0.14); bay.add(bat);
+
+    bay.visible = false;
+    return bay;
+  },
+
+  // v15.6 DYNAMIC PER-VEHICLE EXHAUSTS
+  _buildDynamicExhaust(chassis, vehicleId, vState, spec) {
+    if (spec && spec.isTracked) return;
+    const isRaceExh = !!(vState && vState.upgrades && (vState.upgrades.raceExhaust || vState.upgrades.exhaust));
+    const matTip = new THREE.MeshStandardMaterial({
+      color: isRaceExh ? 0x6ba6ff : 0x9aa4ae,
+      emissive: isRaceExh ? 0x241638 : 0x000000,
+      roughness: 0.26, metalness: 0.88
+    });
+    const matPipeDk = new THREE.MeshStandardMaterial({ color: 0x3b3532, roughness: 0.85, metalness: 0.45 });
+    const hl = (spec.bodyLen || 4.4) * 0.5;
+    const rearZ = -hl - 0.04;
+    const tipY = 0.38;
+
+    const addTip = (x, y, z, rad = 0.055, len = 0.24) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad * 1.08, len, 10), matTip);
+      m.rotation.x = Math.PI / 2; m.position.set(x, y, z); chassis.add(m);
+    };
+
+    if (vehicleId === "gtr_r35" || vehicleId === "porsche_dakar" || vehicleId === "supra") {
+      for (const sx of [-1, 1]) { addTip(sx * 0.46, tipY, rearZ, 0.052, 0.22); addTip(sx * 0.59, tipY, rearZ, 0.052, 0.22); }
+    } else if (vehicleId === "wrx" || vehicleId === "evo" || vehicleId === "camry" || vehicleId === "bmw_e39" || vehicleId === "audi_quattro") {
+      for (const sx of [-0.48, 0.48]) addTip(sx, tipY, rearZ, 0.058, 0.24);
+    } else if (vehicleId === "kamaz" || vehicleId === "maz537" || vehicleId === "ural") {
+      const sideP = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.08, 0.55, 8), matPipeDk);
+      sideP.rotation.z = Math.PI / 2; sideP.position.set(-spec.bodyWidth * 0.48, 0.62, -0.4); chassis.add(sideP);
+    } else {
+      addTip(-0.42, tipY, rearZ, 0.048, 0.22);
+    }
+  },
+
   _extrudeSideProfile(shape, width, material, bevelSize = 0.06, bevelThick = 0.07, hollowCfg = null, pillarMat = null) {
     if (hollowCfg && KK.CockpitBuilder) {
       return KK.CockpitBuilder.buildHollowExtrudedBody(shape, width, material, bevelSize, bevelThick, hollowCfg, pillarMat);
@@ -298,6 +384,7 @@ KK.VehicleBuilder = {
     const rimHex = (vehicleId === "wrx") ? 0xd4af37 : ((vehicleId === "evo" || vehicleId === "fortuner") ? 0x2a2f36 : ((vehicleId === "gtr_r35") ? 0x2f343b : ((vehicleId === "humvee" || vehicleId === "btr80" || vehicleId === "maz537") ? 0x454a3d : 0xadb6c0)));
     const matRim = new THREE.MeshStandardMaterial({ color: rimHex, roughness: 0.28, metalness: 0.72 });
     const matBrake = new THREE.MeshStandardMaterial({ color: (vehicleId === "wrx" || vehicleId === "gtr_r35") ? 0xe89c1c : 0xc92a2a, roughness: 0.45, metalness: 0.3 });
+    const matBrakeRotor = new THREE.MeshStandardMaterial({ color: 0x7a828c, emissive: 0xff2a00, emissiveIntensity: 0.0, roughness: 0.34, metalness: 0.84 });
     const matHeadlightL = new THREE.MeshBasicMaterial({ color: 0xfff6d1 });
     const matHeadlightR = new THREE.MeshBasicMaterial({ color: 0xfff6d1 });
     const matHeadlight = matHeadlightL;
@@ -3738,6 +3825,10 @@ KK.VehicleBuilder = {
     // Shows live health-colored Engine, Pistons, Radiator, Intercooler,
     // Gearbox, Clutch, Transfer Case, Driveshaft & Tie-Rod Rack!
     // ========================================================================
+    const engineBay = this._buildEngineBay(vehicleId, vState, spec, hoodPivot);
+    if (engineBay) chassis.add(engineBay);
+    this._buildDynamicExhaust(chassis, vehicleId, vState, spec);
+
     const xrayGroup = new THREE.Group();
     xrayGroup.visible = false;
     chassis.add(xrayGroup);
@@ -3919,14 +4010,55 @@ KK.VehicleBuilder = {
 
       tankXrayAnim = { carouselRotor, carouselShells, turretXray, breechX, hoistGrp, liftProj, liftChg, rammerRod, spentStub, spinAngle: 0 };
     } else {
-      const engZ = spec.id === "btr80" ? -1.85 : (spec.id === "maz537" ? 0.95 : halfLen * 0.34);
-      addXPart("engine",      new THREE.BoxGeometry(0.68, 0.56, 0.88), 0, 0.64, engZ);
-      addXPart("radiator",    new THREE.BoxGeometry(spec.bodyWidth * 0.55, 0.46, 0.14), 0, 0.66, halfLen * 0.82);
-      addXPart("intercooler", new THREE.BoxGeometry(spec.bodyWidth * 0.48, 0.24, 0.12), 0, 0.42, halfLen * 0.88);
-      addXPart("gearbox",     new THREE.BoxGeometry(0.46, 0.38, 0.72), 0, 0.52, engZ - 0.85);
-      addXPart("transfer",    new THREE.BoxGeometry(0.44, 0.34, 0.46), 0, 0.44, engZ - 1.50);
-      addXPart("driveshaft",  new THREE.CylinderGeometry(0.07, 0.07, spec.bodyLen * 0.56, 8), 0, 0.34, -0.15, Math.PI / 2);
-      addXPart("tieRods",     new THREE.BoxGeometry(spec.bodyWidth * 0.84, 0.09, 0.09), 0, 0.30, spec.wheels[0].z);
+      // v15.6 ACCURATE X-RAY ENGINE & DRIVETRAIN POSITIONS (Matches Actual Engine Bays!)
+      const isKomodo = (vehicleId === "komodo_std" || vehicleId === "komodo_recon" || vehicleId === "komodo_turret");
+      const isRear911 = (vehicleId === "porsche_dakar" || !!spec.rearEngine);
+      const isCabOver = (vehicleId === "toyota_coaster" || vehicleId === "kamaz" || vehicleId === "uaz_buhanka");
+      let engZ, engY = 0.66, radZ = halfLen * 0.86, radY = 0.68, gbZ, tfZ, dsZ = -0.10, dsLen = spec.bodyLen * 0.52;
+
+      if (isKomodo) {
+        // Pindad Komodo: Front armored sloped hood engine bay (cowlZ = 1.24 .. front = +2.85)!
+        engZ = 1.88; engY = 1.12;
+        radZ = 2.52; radY = 1.16;
+        gbZ  = 0.92; tfZ  = 0.15;
+        dsZ  = -0.85; dsLen = 2.05;
+      } else if (isRear911) {
+        // Porsche 911 Dakar: Rear-mounted Flat-6 behind rear axle + front radiator!
+        engZ = -1.52; engY = 0.68;
+        radZ =  1.88; radY = 0.58;
+        gbZ  = -0.78; tfZ  = -0.18;
+        dsZ  =  0.55; dsLen = 1.55;
+      } else if (spec.id === "btr80") {
+        engZ = -2.25; engY = 0.95;
+        radZ = -2.95; radY = 1.15;
+        gbZ  = -1.25; tfZ  = -0.45;
+        dsZ  =  0.20; dsLen = 3.6;
+      } else if (spec.id === "maz537") {
+        engZ = 0.95; engY = 1.25;
+        radZ = 2.45; radY = 1.35;
+        gbZ  = -0.15; tfZ  = -0.95;
+        dsZ  = -1.20; dsLen = 4.2;
+      } else if (isCabOver) {
+        engZ = halfLen * 0.54; engY = 0.72;
+        radZ = halfLen * 0.86; radY = 0.78;
+        gbZ  = engZ - 0.88; tfZ = engZ - 1.55;
+      } else {
+        // Standard Front-Engine Cars & Trucks: Anchor directly inside the actual hood bay!
+        engZ = (hoodPivot && hoodPivot.position.z > 0.2) ? (hoodPivot.position.z + 0.42) : (halfLen * 0.60);
+        engY = (hoodPivot && hoodPivot.position.y > 0.5) ? Math.max(0.56, hoodPivot.position.y - 0.28) : 0.66;
+        radZ = Math.min(halfLen * 0.88, engZ + 0.52);
+        radY = engY + 0.02;
+        gbZ  = engZ - 0.82;
+        tfZ  = engZ - 1.45;
+      }
+
+      addXPart("engine",      new THREE.BoxGeometry(isKomodo ? 0.78 : 0.68, isKomodo ? 0.62 : 0.54, isKomodo ? 0.96 : 0.84), 0, engY, engZ);
+      addXPart("radiator",    new THREE.BoxGeometry(spec.bodyWidth * 0.54, 0.44, 0.14), 0, radY, radZ);
+      addXPart("intercooler", new THREE.BoxGeometry(spec.bodyWidth * 0.46, 0.22, 0.12), 0, radY - 0.22, radZ + (isRear911 ? 0.06 : 0.08));
+      addXPart("gearbox",     new THREE.BoxGeometry(0.46, 0.36, 0.68), 0, engY - 0.12, gbZ);
+      addXPart("transfer",    new THREE.BoxGeometry(0.44, 0.32, 0.44), 0, engY - 0.18, tfZ);
+      addXPart("driveshaft",  new THREE.CylinderGeometry(0.07, 0.07, dsLen, 8), 0, isKomodo ? 0.64 : 0.36, dsZ, Math.PI / 2);
+      addXPart("tieRods",     new THREE.BoxGeometry(spec.bodyWidth * 0.84, 0.09, 0.09), 0, isKomodo ? 0.58 : 0.30, spec.wheels[0].z);
     }
 
     const shellMaterials = [matPaint, matTrim, matGalv, matMetal, matCarbon, ...(chassis.userData.extraShellMats || [])];
@@ -4084,23 +4216,36 @@ KK.VehicleBuilder = {
           lug.rotation.x = ang; tireRubberGroup.add(lug);
         }
 
-        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.58, wRad * 0.58, wWid + 0.015, 14), matRubber);
-        barrel.rotation.z = Math.PI / 2; spinGroup.add(barrel);
-        const outerLip = new THREE.Mesh(new THREE.TorusGeometry(wRad * 0.55, 0.032 * rScale, 6, 16), matRim);
+        // v15.6 OPEN-SPOKE CUSTOM RIMS + VISIBLE GLOWING BRAKE ROTOR DISC!
+        const innerBarrel = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.58, wRad * 0.58, wWid * 0.86, 16, 1, true), matRubber);
+        innerBarrel.rotation.z = Math.PI / 2; spinGroup.add(innerBarrel);
+        const outerLip = new THREE.Mesh(new THREE.TorusGeometry(wRad * 0.56, 0.032 * rScale, 6, 18), matRim);
         outerLip.rotation.y = Math.PI / 2; outerLip.position.x = sideSign * (wWid * 0.44); spinGroup.add(outerLip);
-        const hub = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.18, wRad * 0.18, wWid + 0.05, 8), matChrome);
-        hub.rotation.z = Math.PI / 2; spinGroup.add(hub);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.16, wRad * 0.16, wWid * 0.55, 10), matChrome);
+        hub.rotation.z = Math.PI / 2; hub.position.x = sideSign * (wWid * 0.16); spinGroup.add(hub);
 
-        for (let sp = 0; sp < 5; sp++) {
-          const ang = (sp / 5) * Math.PI * 2;
-          const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.045, wRad * 0.48, 0.065 * rScale), matRim);
-          spoke.position.set(sideSign * (wWid * 0.36), Math.cos(ang) * (wRad * 0.28), Math.sin(ang) * (wRad * 0.28));
-          spoke.rotation.x = ang; spinGroup.add(spoke);
+        const rotorDisc = new THREE.Mesh(new THREE.CylinderGeometry(wRad * 0.44, wRad * 0.44, 0.036, 16), matBrakeRotor);
+        rotorDisc.rotation.z = Math.PI / 2;
+        rotorDisc.position.x = sideSign * (wWid * 0.14);
+        spinGroup.add(rotorDisc);
+
+        const rimStyle = (vehicleId === "gtr_r35" || vehicleId === "supra" || vehicleId === "evo" || vehicleId === "wrx") ? "te37"
+          : (vehicleId === "porsche_dakar" || vehicleId === "audi_quattro" ? "turbofan"
+          : (vehicleId === "bmw_e39" || vehicleId === "camry" ? "mesh"
+          : (vehicleId === "kamaz" || vehicleId === "ural" || vehicleId === "maz537" || vehicleId === "btr80" ? "mil8" : "sport5")));
+        const spokeCnt = rimStyle === "mesh" ? 10 : (rimStyle === "mil8" ? 8 : (rimStyle === "te37" ? 6 : 5));
+        const spokeW   = rimStyle === "mesh" ? 0.036 * rScale : (rimStyle === "te37" ? 0.072 * rScale : 0.058 * rScale);
+        for (let sp = 0; sp < spokeCnt; sp++) {
+          const ang = (sp / spokeCnt) * Math.PI * 2;
+          const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.038, wRad * 0.44, spokeW), matRim);
+          spoke.position.set(sideSign * (wWid * 0.36), Math.cos(ang) * (wRad * 0.30), Math.sin(ang) * (wRad * 0.30));
+          spoke.rotation.x = ang + (rimStyle === "mesh" ? (sp % 2 === 0 ? 0.22 : -0.22) : 0);
+          spinGroup.add(spoke);
         }
       }
 
-      const caliper = new THREE.Mesh(new THREE.BoxGeometry(0.07, wRad * 0.26, wRad * 0.18), matBrake);
-      caliper.position.set(-sideSign * 0.04, 0.04, wRad * 0.28); camberPivot.add(caliper);
+      const caliper = new THREE.Mesh(new THREE.BoxGeometry(0.075, wRad * 0.26, wRad * 0.19), matBrake);
+      caliper.position.set(sideSign * (wWid * 0.16), 0.04, wRad * 0.34); camberPivot.add(caliper);
 
       const strutMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 1.0, 8), matSpring); root.add(strutMesh);
       const armMesh = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.075, 1.0), matMetal); root.add(armMesh);
@@ -4158,6 +4303,13 @@ KK.VehicleBuilder = {
         this.hoodOpenTarget = state.hoodOpen ? 1.0 : 0.0;
         this.hoodOpenCurrent += (this.hoodOpenTarget - this.hoodOpenCurrent) * Math.min(1, dt * 7);
         hoodPivot.rotation.x = -this.hoodOpenCurrent * 1.1;
+        if (engineBay) engineBay.visible = (this.hoodOpenCurrent > 0.02 || !!state.xrayActive);
+        const bHeat = Math.max(0, Math.min(1, state.brakeHeat || 0));
+        if (matBrakeRotor) {
+          matBrakeRotor.emissiveIntensity = bHeat > 0.12 ? (bHeat - 0.12) * 2.6 : 0.0;
+          if (bHeat > 0.55) matBrakeRotor.emissive.setHex(0xff6b1a);
+          else matBrakeRotor.emissive.setHex(0xff2200);
+        }
 
         // Dynamic Body & Tire Dirt Accumulation!
         const dirt = Math.max(0, Math.min(1, state.dirtLevel || 0));
