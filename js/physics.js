@@ -692,6 +692,7 @@ KK.VehiclePhysics = class VehiclePhysics {
         // Strong rear lockup + assistive front hold at low speed so the car stops crisp and NEVER coasts!
         brakeF += isRear ? (maxBrakePerWheel * 3.4) : (Math.abs(vLong) < 4.5 ? maxBrakePerWheel * 1.8 : maxBrakePerWheel * 0.45);
       }
+      const brakeFade = (this.brakeHeat > 0.85) ? (1.0 - (this.brakeHeat - 0.85) * 2.2) : 1.0;
       const stopClamp = Math.abs(vLong) * mass * (handbrake ? 14.0 : 6.5) * brakeFade;
       let fLong = effDrive - Math.sign(vLong) * Math.min(stopClamp, brakeF) - vLong * rollingDrag * (fN * 0.055);
       const maxLong = fN * longMu * (spec.isTracked ? (handbrake ? 2.1 : 1.85) : (handbrake ? 1.55 : 1.28));
@@ -700,7 +701,6 @@ KK.VehiclePhysics = class VehiclePhysics {
       const isPowerSlide = (isRear && throttle > 0.72 && Math.abs(this.steerAngle) > 0.16 && this.speedKmh > 28 && !spec.isTracked && (this.driveMode === "2H" || spec.agileSteer));
       const dmDriftBias = (this.driveMode === "2H" && isRear && throttle > 0.55 && Math.abs(this.steerAngle) > 0.12) ? 0.78 : (this.driveMode === "4H" ? 1.06 : 1.0);
       const hbDriftScale = ((handbrake && isRear && this.speedKmh > 16 && !spec.isTracked) ? 0.28 : (isPowerSlide ? 0.66 : 1.0)) * dmDriftBias;
-      const brakeFade = (this.brakeHeat > 0.85) ? (1.0 - (this.brakeHeat - 0.85) * 2.2) : 1.0;
       const isFrontAxle = (w.def.axle === "front" || w.def.axle === "front2");
       const isAeroSport = (spec.id === "gtr_r35" || spec.id === "wrx" || spec.id === "evo");
       const rearAeroGrip = (!isFrontAxle && isAeroSport) ? (1.0 + Math.min(0.42, (this.speedKmh * this.speedKmh) / 68000)) : 1.0;
