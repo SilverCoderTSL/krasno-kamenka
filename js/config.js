@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v15.6-hf";
-KK.VERSION_FULL = "v15.6-hf ONLINE";
+KK.VERSION = "v15.6.1";
+KK.VERSION_FULL = "v15.6.1 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -138,7 +138,7 @@ KK.TOWNS = [
   { id: 19, name: "Savanna Marina Port", survivability: "HIGH", survScore: 92, survColor: "#ffd166", survNote: "Modern waterfront suburb & deep-water container port", biome: "savanna", x: -64800, z: 67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Sleek coastal marina suburb with paved boat ramps and highway access to Zolotoy City." },
   { id: 20, name: "Poligon-9 Gunnery Range", survivability: "LOW", survScore: 34, survColor: "#8ecae6", survNote: "Frozen tank proving ground • Target hulks & heavy ice runway", biome: "arctic", x: -65200, z: -67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Wide open arctic weapons testing range with target tank hulks, concrete blast walls & ice runway." },
   { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -74600, z: -74800, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" },
-  // v15.6-hf OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
+  // v15.6.1 OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
   { id: 22, name: "Kampung Nelayan (West Coast)", survivability: "MODERATE", survScore: 66, survColor: "#2de08b", survNote: "Crowded stilt fishing village • Flooded rutted dirt lanes", biome: "tropical", x: 61800, z: 62600, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense coastal stilt village packed with wooden boats, warungs & mud-choked lanes." },
   { id: 23, name: "Desa Lereng Api (Volcano Ridge)", survivability: "LOW", survScore: 44, survColor: "#ff9f1c", survNote: "High mountain switchback village on Gunung Api's slope", biome: "tropical", x: 73400, z: 57200, hasGarage: true, hasDock: true, isIsland: true, desc: "Steep terraced clove-farm village clinging to Gunung Api's winding volcanic hairpins." },
   { id: 24, name: "Bukit Bambu (Bamboo Pass)", survivability: "MODERATE", survScore: 58, survColor: "#ffd166", survNote: "Misty bamboo-forest highland pass • Broken washboard tracks", biome: "tropical", x: 75800, z: 64200, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense bamboo-grove crossroads linking the volcanic summit road to the southern lake." },
@@ -151,7 +151,7 @@ KK.ROAD_LINKS = [
   [3, 4], [3, 8], [4, 6], [4, 7],
   [5, 6], [6, 7],
   [0, 9], [2, 9], [5, 9],
-  // v15.6-hf Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
+  // v15.6.1 Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
   [10, 22], [22, 15], [15, 25], [25, 16], [16, 24], [24, 23], [23, 10], [15, 23], [15, 24],
   // Zolotoy Savanna (Modernized Pristine Highway Network!)
   [11, 17], [11, 18], [11, 19], [17, 19], [18, 19],

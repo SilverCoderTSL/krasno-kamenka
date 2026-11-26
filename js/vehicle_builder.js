@@ -140,7 +140,7 @@ KK.VehicleBuilder = {
     }
     const bay = new THREE.Group();
     const hz = hoodPivot.position.z || (spec.bodyLen * 0.25);
-    const hy = Math.max(0.46, (hoodPivot.position.y || 0.92) - 0.30);
+    const hy = Math.max(0.50, (hoodPivot.position.y || 0.92) - 0.26);
     const isRearEng = (vehicleId === "porsche_dakar");
     bay.position.set(0, hy, isRearEng ? -1.45 : (hz + 0.42));
 

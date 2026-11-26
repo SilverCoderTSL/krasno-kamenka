@@ -161,8 +161,31 @@ KK.CockpitBuilder = {
       const rearPts  = this._clipPolygonX(lowerPts, zCabRear, false);
       const midPts   = this._clipPolygonX(this._clipPolygonX(lowerPts, zCabRear, true), zCabFront, false);
 
-      const mFront = this._extrudePts(frontPts, width, matPaint, bevelSize, bevelThick, 0);
-      if (mFront) group.add(mFront);
+      // v15.6.1 TRUE HOLLOW ENGINE BAY! Carves out front bay between left/right fenders & front nose!
+      let zNoseMax = zCabFront;
+      for (let i = 0; i < frontPts.length; i++) if (frontPts[i].x > zNoseMax) zNoseMax = frontPts[i].x;
+      if (frontPts.length >= 3 && (zNoseMax - zCabFront) > 0.72) {
+        const zNoseCut = zNoseMax - 0.24;
+        const nosePts = this._clipPolygonX(frontPts, zNoseCut, true);
+        const bayPts  = this._clipPolygonX(frontPts, zNoseCut, false);
+        const mNose = this._extrudePts(nosePts, width, matPaint, bevelSize * 0.7, bevelThick * 0.7, 0);
+        if (mNose) group.add(mNose);
+        if (bayPts.length >= 3) {
+          const fenderThick = Math.min(0.28, width * 0.16);
+          const fOff = Math.max(0.25, width * 0.5 - fenderThick * 0.5);
+          const fL = this._extrudePts(bayPts, fenderThick, matPaint, 0.02, 0.02, -fOff);
+          const fR = this._extrudePts(bayPts, fenderThick, matPaint, 0.02, 0.02,  fOff);
+          if (fL) group.add(fL);
+          if (fR) group.add(fR);
+          const bayFloorPts = this._clipPolygonBelowY(bayPts, cfg.yFloor + 0.06);
+          if (!this._matBayDark) this._matBayDark = new THREE.MeshStandardMaterial({ color: 0x16191e, roughness: 0.92, metalness: 0.2 });
+          const mBayFloor = this._extrudePts(bayFloorPts, width - fenderThick * 1.6, this._matBayDark, 0.01, 0.01, 0);
+          if (mBayFloor) group.add(mBayFloor);
+        }
+      } else {
+        const mFront = this._extrudePts(frontPts, width, matPaint, bevelSize, bevelThick, 0);
+        if (mFront) group.add(mFront);
+      }
       const mRear = this._extrudePts(rearPts, width, matPaint, bevelSize, bevelThick, 0);
       if (mRear) group.add(mRear);
       if (midPts.length >= 3) {
