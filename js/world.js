@@ -430,51 +430,42 @@ KK.World = class World {
       }
     };
 
-    // 1. KAMENKA VALLEY ORBITAL RING ROAD (Connects HQ East, South, West & North arteries via T-junctions!)
+    // 1. KAMENKA VALLEY ORBITAL RING ROAD (Clean closed loop connecting HQ East, South, West & North arteries!)
     addSmoothRoad([
       [ 1350,   180], [ 2450,  1600], [ 1200,  3600], [ -1200,  4100],
       [-3400,  2600], [-3900,   200], [-2800, -2400], [  -400, -3200],
       [ 1800, -2100], [ 1350,   180]
     ], { width: 7.6, subs: 5 });
 
-    // 2. WEST VALLEY BRANCH -> JAMES MAY'S PUB & CLARKSON'S FARM LOOP
+    // 2. JAMES MAY'S PUB COMPACT DRIVE-THRU BRANCH (Small loop off the HQ -> Vulkan road — zero dead ends!)
     if (KK.JAMES_MAY_BAR) {
+      const jb = KK.JAMES_MAY_BAR;
       addSmoothRoad([
-        [0, 0], [-620, 120], [KK.JAMES_MAY_BAR.x, KK.JAMES_MAY_BAR.z], [-2450, 920], [-3400, 2600]
-      ], { width: 6.2, subs: 5 });
-    }
-    if (KK.CLARKSON_FARM) {
-      addSmoothRoad([
-        [1350, 180], [1850, -680], [KK.CLARKSON_FARM.x, KK.CLARKSON_FARM.z], [1800, -2100]
-      ], { width: 5.4, isDirtSpur: true, subs: 5 });
+        [-980, 300], [jb.x + 85, jb.z + 35], [jb.x, jb.z + 22], [jb.x - 95, jb.z + 45], [-1560, 480]
+      ], { width: 5.8, subs: 4 });
     }
 
-    // 3. BLACK TIMBER TAIGA BRANCHING LOGGING SPURS (T-forks off East Highway!)
+    // 3. BLACK TIMBER TAIGA LOGGING BYPASS LOOP (Starts on East Hwy -> loops through taiga -> rejoins Cherny Les!)
     addSmoothRoad([
-      [6200, 1150], [7400, -1400], [10800, -2900], [14600, -1100], [17200, 2100]
-    ], { width: 5.0, isDirtSpur: true, subs: 5 });
-    addSmoothRoad([
-      [10800, -2900], [12900, -6400], [16800, -8200]
-    ], { width: 4.8, isDirtSpur: true, subs: 4 });
+      [6200, 1150], [9800, -1800], [15600, -1400], [21200, 1400], [24500, 3800]
+    ], { width: 5.2, isDirtSpur: true, subs: 5 });
 
-    // 4. SOUTHERN DESERT CANYON BYPASS & HAMMOND'S MESA SPUR
-    addSmoothRoad([
-      [1200, 3600], [2800, 9200], [5400, 14800], [3100, 19800], [6200, 25800]
-    ], { width: 6.4, subs: 6 });
+    // 4. SOUTHERN DESERT CANYON BYPASS & HAMMOND'S MESA ACCESS SPUR (Connects Orbital Ring -> Hammond's Mesa -> Gorge Oasis!)
     if (KK.HAMMOND_MESA) {
+      const hm = KK.HAMMOND_MESA;
       addSmoothRoad([
-        [5400, 14800], [KK.HAMMOND_MESA.x, KK.HAMMOND_MESA.z]
-      ], { width: 5.2, isDirtSpur: true, subs: 4 });
+        [1200, 3600], [2400, 8200], [hm.x, hm.z], [4800, 18400], [6200, 25800]
+      ], { width: 6.2, subs: 6 });
     }
 
-    // 5. VOLCANIC CALDERA RIM & WESTERN RUST BASIN CROSS-LINK
+    // 5. VOLCANIC CALDERA WESTERN CROSS-LINK (Connects Orbital Ring West -> T-Rex Valley -> Rzhavsk Depot!)
     addSmoothRoad([
       [-3900, 200], [-4350, 1320], [-6800, 4200], [-9200, 8800], [-11800, 14200]
     ], { width: 5.8, isDirtSpur: true, subs: 5 });
 
-    // 6. NORTHERN ALPINE SWITCHBACK FORK (Connects Klyuchi <-> Severny via high mountain ridge!)
+    // 6. NORTHERN ALPINE SWITCHBACK CROSS-LINK (Connects Klyuchi Weather Station <-> Severny Iron Quarry!)
     addSmoothRoad([
-      [-12500, -14200], [-6200, -17800], [-1200, -15400], [4800, -19600], [11200, -23400]
+      [-22000, -24500], [-12500, -18200], [-2400, -21400], [7800, -25600], [18200, -31500]
     ], { width: 5.6, isMountain: true, subs: 6 });
   }
 
@@ -543,6 +534,41 @@ KK.World = class World {
           minZ: Math.min(p0.z, p1.z) - pad, maxZ: Math.max(p0.z, p1.z) + pad,
           halfWidth: rp.halfWidth, depth: rp.depth
         });
+      }
+    }
+
+    // v17.2.1 SNAP ALL SHALLOW RIVER FORDS DIRECTLY ONTO THE EXACT RIVER CENTERLINE!
+    if (KK.RIVER_FORDS && this.riverSegments.length > 0) {
+      for (const fd of KK.RIVER_FORDS) {
+        let bestD = Infinity, bestX = fd.x, bestZ = fd.z;
+        for (const seg of this.riverSegments) {
+          const dx = seg.x1 - seg.x0, dz = seg.z1 - seg.z0;
+          const len2 = dx * dx + dz * dz || 1;
+          const t = Math.max(0, Math.min(1, ((fd.x - seg.x0) * dx + (fd.z - seg.z0) * dz) / len2));
+          const px = seg.x0 + dx * t, pz = seg.z0 + dz * t;
+          const d = Math.hypot(fd.x - px, fd.z - pz);
+          if (d < bestD) { bestD = d; bestX = px; bestZ = pz; }
+        }
+        if (bestD < 1200) { fd.x = bestX; fd.z = bestZ; }
+      }
+    }
+
+    // v17.2.1 ALIGN EVERY BRIDGE (INCLUDING DESERT SPANS) TO ITS ACTUAL ROAD SEGMENT!
+    if (KK.BRIDGES && this.roadSegments.length > 0) {
+      for (const br of KK.BRIDGES) {
+        let bestD = Infinity, bestX = br.x, bestZ = br.z;
+        for (const seg of this.roadSegments) {
+          if (seg.isCityGrid || seg.isDirtSpur) continue;
+          const dx = seg.x1 - seg.x0, dz = seg.z1 - seg.z0;
+          const len2 = dx * dx + dz * dz || 1;
+          const t = Math.max(0, Math.min(1, ((br.x - seg.x0) * dx + (br.z - seg.z0) * dz) / len2));
+          const px = seg.x0 + dx * t, pz = seg.z0 + dz * t;
+          const d = Math.hypot(br.x - px, br.z - pz);
+          if (d < bestD) { bestD = d; bestX = px; bestZ = pz; }
+        }
+        if (bestD > 4.0 && bestD < 450) {
+          br.x = bestX; br.z = bestZ;
+        }
       }
     }
   }
@@ -2011,18 +2037,18 @@ KK.World = class World {
       const bedY = rWaterY - targetDepth;
       const bankTopY = rWaterY + (ford.blend > 0.35 ? 0.85 : 1.15);
 
-      if (rc.dist > hw * 0.90 && rc.dist < hw + 46 && abutSuppress < 0.5) {
-        const dRim = Math.abs(rc.dist - (hw + 22.0));
-        const rimU = Math.max(0, 1.0 - dRim / 24.0);
-        const rimBlend = rimU * rimU * (3 - 2 * rimU) * (1.0 - abutSuppress);
+      // v17.2.1 Smoother, wider graded riverbanks (hw*0.50 -> hw+42) with gentle levee blend!
+      if (rc.dist > hw * 0.85 && rc.dist < hw + 52 && abutSuppress < 0.5) {
+        const dRim = Math.abs(rc.dist - (hw + 26.0));
+        const rimU = Math.max(0, 1.0 - dRim / 28.0);
+        const rimBlend = rimU * rimU * (3 - 2 * rimU) * (1.0 - abutSuppress) * 0.85;
         if (h < bankTopY) h = h * (1.0 - rimBlend) + bankTopY * rimBlend;
       }
 
-      // Wide gentle concave beach/bank slope (hw*0.52 -> hw+32) so BTR-80 & 4x4s drive cleanly up riverbanks!
       let channelBlend = 0;
-      if (rc.dist <= hw * 0.52) channelBlend = 1.0;
-      else if (rc.dist < hw + 32.0) {
-        const u = 1.0 - (rc.dist - hw * 0.52) / (hw * 0.48 + 32.0);
+      if (rc.dist <= hw * 0.50) channelBlend = 1.0;
+      else if (rc.dist < hw + 42.0) {
+        const u = 1.0 - (rc.dist - hw * 0.50) / (hw * 0.50 + 42.0);
         channelBlend = u * u * (3 - 2 * u);
       }
       const effBlend = channelBlend * (1.0 - abutSuppress);
