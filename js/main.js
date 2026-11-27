@@ -445,12 +445,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v17.6 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v17.6.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v17.6 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v17.6.1 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -470,12 +470,47 @@ KK.Game = class Game {
     this._nextTutorialLine();
   }
 
+  _ensureTutorialBox() {
+    let box = document.getElementById("tutorial-box");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "tutorial-box";
+      box.innerHTML = `
+        <div class="tut-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span class="tut-speaker" style="color:#c084fc;font-weight:900;font-size:12.5px;">📡 [DEV // DISPATCH]</span>
+          <button id="tut-skip-btn" class="tut-skip" style="background:transparent;border:1px solid #475569;color:#94a3b8;border-radius:4px;font-family:monospace;font-size:10px;padding:2px 7px;cursor:pointer;" onclick="window.__GAME__ && window.__GAME__.skipTutorial()">SKIP</button>
+        </div>
+        <div id="tutorial-obj" class="tut-obj" style="background:rgba(168,85,247,0.18);border-left:3px solid #a855f7;color:#e9d5ff;font-size:11px;font-weight:800;padding:4px 8px;margin-bottom:8px;border-radius:3px;">STEP 1/4: Drive to HQ Warehouse &amp; press [F]</div>
+        <div id="tutorial-text" class="tut-text" style="font-size:13px;line-height:1.48;min-height:48px;color:#f1f5f9;white-space:pre-wrap;"></div>
+        <div class="tut-footer" style="display:flex;justify-content:space-between;align-items:center;margin-top:9px;">
+          <span class="tut-hint" style="font-size:10.5px;color:#94a3b8;">[ENTER] or NEXT</span>
+          <button id="tut-next-btn" class="tut-next" style="background:#a855f7;color:#070a0f;border:none;border-radius:5px;font-family:monospace;font-weight:900;font-size:11.5px;padding:4px 11px;cursor:pointer;" onclick="window.__GAME__ && window.__GAME__.advanceTutorialDialog()">NEXT ▶</button>
+        </div>`;
+      document.body.appendChild(box);
+    }
+    // Enforce inline positioning so browser CSS cache can NEVER hide or misplace it!
+    box.style.position = "fixed";
+    box.style.left = "14px";
+    box.style.top = "50%";
+    box.style.transform = "translateY(-50%)";
+    box.style.width = "min(350px, 88vw)";
+    box.style.background = "rgba(7, 10, 16, 0.95)";
+    box.style.border = "2px solid #c084fc";
+    box.style.borderRadius = "10px";
+    box.style.padding = "11px 14px";
+    box.style.zIndex = "9999";
+    box.style.fontFamily = "monospace";
+    box.style.color = "#f8fafc";
+    return box;
+  }
+
   _nextTutorialLine() {
-    const box = document.getElementById("tutorial-box");
+    const box = this._ensureTutorialBox();
     const txt = document.getElementById("tutorial-text");
     if (!box || !txt) return;
     if (!this._tutQueue.length) {
       box.classList.add("hidden");
+      box.style.display = "none";
       const cb = this._tutOnDone; this._tutOnDone = null;
       if (cb) cb();
       return;
@@ -485,6 +520,7 @@ KK.Game = class Game {
     this._tutTypeAccum = 0;
     txt.textContent = "";
     box.classList.remove("hidden");
+    box.style.display = "block";
   }
 
   advanceTutorialDialog() {
@@ -504,7 +540,7 @@ KK.Game = class Game {
     this._tutQueue = [];
     if (this.vehicle) this.vehicle.tutorialSensitiveDmg = false;
     const box = document.getElementById("tutorial-box");
-    if (box) box.classList.add("hidden");
+    if (box) { box.classList.add("hidden"); box.style.display = "none"; }
     if (this._tutArrow) this._tutArrow.visible = false;
     this._saveProgress(true);
     this.ui.toast("Tutorial skipped — all towns, contracts & dealerships unlocked!");
@@ -616,7 +652,7 @@ KK.Game = class Game {
     if (!d || typeof d !== "object") return;
     if (typeof d.money === "number") this.money = d.money;
     if (typeof d.tutorialV17Done === "boolean") this.tutorialComplete = d.tutorialV17Done;
-    // v17.6 All players attend tutorial until completed or skipped!
+    // v17.6.1 All players attend tutorial until completed or skipped!
     if (d.stats && typeof d.stats === "object") {
       this.stats.deliveries = Number(d.stats.deliveries) || 0;
       this.stats.distanceKm = Number(d.stats.distanceKm) || 0;
@@ -985,7 +1021,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        // v17.6 Garage is strictly [F] only — [G] is exclusively military/flare!
+        // v17.6.1 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -1230,7 +1266,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.6 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v17.6.1 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1254,7 +1290,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.6 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v17.6.1 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1881,7 +1917,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v17.6 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v17.6.1 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -3045,7 +3081,7 @@ KK.Game = class Game {
     const hasK5 = (spec.id === "t72" && !!vs.upgrades.t72Kontakt5);
     const calMult = Math.pow(Math.max(14, caliberMm) / 125.0, 1.4);
 
-    // v17.6 REAL ARMOR (mm RHA) vs WEAPON PENETRATION MATRIX!
+    // v17.6.1 REAL ARMOR (mm RHA) vs WEAPON PENETRATION MATRIX!
     const vehicleArmorMm = is140 ? 680
       : (spec.id === "t72" ? (hasK5 ? 520 : 420)
       : (spec.id === "harimau" ? 180
@@ -3621,7 +3657,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.6.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v17.6.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -4083,7 +4119,7 @@ KK.Game = class Game {
           const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v17.6 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v17.6.1 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -4214,7 +4250,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v17.6 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    // v17.6.1 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const dGate = Math.hypot(gx - (-62099), gz - 63132);
@@ -4249,7 +4285,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v17.6 Auto-save persistent vehicle odometer every 10s when driving!
+    // v17.6.1 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -4257,7 +4293,7 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
-    // v17.6 Animate On-Foot Player Actions [1-5] on localAvatar!
+    // v17.6.1 Animate On-Foot Player Actions [1-5] on localAvatar!
     if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
       this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
       const tE = performance.now() * 0.012;
@@ -4283,7 +4319,7 @@ KK.Game = class Game {
         if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
       }
     }
-    // v17.6 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    // v17.6.1 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
     if (this.network && this.network.remotePlayers) {
       const nowMs = performance.now();
       for (const [pid, rp] of this.network.remotePlayers.entries()) {
