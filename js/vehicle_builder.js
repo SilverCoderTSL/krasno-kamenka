@@ -2676,7 +2676,9 @@ KK.VehicleBuilder = {
       hoodPivot.add(glacisPlate);
 
       const ppGrp = new THREE.Group();
-      ppGrp.position.set(0, 1.05, 2.55);
+      ppGrp.position.set(0, 0.94, 2.30);
+      ppGrp.rotation.x = 0.16;
+      ppGrp.scale.set(0.84, 0.84, 0.84);
       const ppMatBlk   = new THREE.MeshStandardMaterial({ color: 0x242a30, roughness: 0.55, metalness: 0.65 });
       const ppMatAlum  = new THREE.MeshStandardMaterial({ color: 0xaab4be, roughness: 0.28, metalness: 0.85 });
       const ppMatBrass = new THREE.MeshStandardMaterial({ color: 0xc8963e, roughness: 0.32, metalness: 0.78 });

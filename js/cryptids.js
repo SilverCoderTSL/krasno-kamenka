@@ -459,45 +459,106 @@ KK.CryptidManager = class CryptidManager {
     };
   }
 
-  // v17.0 NEUTRAL LONG-NECKED BRACHIOSAURUS (Peaceful giant — kicks you away ONLY if you ram it!)
+  // v17.0.2 DETAILED NEUTRAL BRACHIOSAURUS (Sculpted Torso, 6-Segment Smooth Neck & 7-Segment Articulated Sweeping Tail!)
   _createBrachiosaurus(gx, gz, sc = 1.0) {
     const grp = new THREE.Group();
-    const skinMat  = new THREE.MeshStandardMaterial({ color: 0x5d6e55, roughness: 0.88 });
-    const bellyMat = new THREE.MeshStandardMaterial({ color: 0x8a9178, roughness: 0.92 });
-    const spotMat  = new THREE.MeshStandardMaterial({ color: 0x414f3b, roughness: 0.86 });
+    const skinMat  = new THREE.MeshStandardMaterial({ color: 0x586b50, roughness: 0.86 });
+    const darkMat  = new THREE.MeshStandardMaterial({ color: 0x3b4a35, roughness: 0.84 });
+    const bellyMat = new THREE.MeshStandardMaterial({ color: 0x8e967b, roughness: 0.92 });
+    const eyeMat   = new THREE.MeshBasicMaterial({ color: 0xf4c430 });
+    const clawMat  = new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 0.75 });
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(4.2, 4.4, 8.6), skinMat);
-    body.position.set(0, 7.6, 0); body.rotation.x = -0.16; body.castShadow = true; grp.add(body);
-    const belly = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.2, 7.2), bellyMat);
-    belly.position.set(0, 5.4, 0.2); grp.add(belly);
-    const backRidge = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 6.8), spotMat);
-    backRidge.position.set(0, 9.8, -0.2); backRidge.rotation.x = -0.16; grp.add(backRidge);
+    // Sculpted organic torso (chest, mid-ribcage, sloping pelvis & underbelly)
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(2.55, 12, 10), skinMat);
+    chest.scale.set(0.95, 1.05, 1.35); chest.position.set(0, 8.2, 1.6); chest.castShadow = true; grp.add(chest);
+    const midBody = new THREE.Mesh(new THREE.SphereGeometry(2.65, 12, 10), skinMat);
+    midBody.scale.set(1.0, 1.0, 1.55); midBody.position.set(0, 7.6, -0.4); midBody.castShadow = true; grp.add(midBody);
+    const pelvis = new THREE.Mesh(new THREE.SphereGeometry(2.15, 12, 10), skinMat);
+    pelvis.scale.set(0.95, 0.92, 1.25); pelvis.position.set(0, 6.8, -2.9); pelvis.castShadow = true; grp.add(pelvis);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(2.2, 10, 8), bellyMat);
+    belly.scale.set(0.92, 0.55, 1.85); belly.position.set(0, 5.7, -0.2); grp.add(belly);
 
+    // Subtle dorsal ridge bumps along back
+    for (let i = 0; i < 6; i++) {
+      const sp = new THREE.Mesh(new THREE.SphereGeometry(0.42 - i * 0.03, 8, 6), darkMat);
+      sp.scale.set(1.1, 0.65, 1.4);
+      sp.position.set(0, 10.2 - i * 0.45, 2.2 - i * 1.05);
+      grp.add(sp);
+    }
+
+    // 6-Segment Smooth Tapered & Curved Neck -> Sculpted Domed-Crest Head!
     const neckPivot = new THREE.Group();
-    neckPivot.position.set(0, 9.0, 3.6);
-    const neck1 = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.45, 7.2, 8), skinMat);
-    neck1.position.set(0, 3.2, 1.4); neck1.rotation.x = 0.42; neck1.castShadow = true; neckPivot.add(neck1);
-    const neck2 = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.95, 6.2, 8), skinMat);
-    neck2.position.set(0, 8.2, 3.3); neck2.rotation.x = 0.28; neck2.castShadow = true; neckPivot.add(neck2);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.2, 2.2), skinMat);
-    head.position.set(0, 11.4, 4.7); neckPivot.add(head);
-    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.75, 1.1), spotMat);
-    crest.position.set(0, 12.1, 4.4); neckPivot.add(crest);
+    neckPivot.position.set(0, 9.2, 3.3);
+    const neckSegs = [];
+    let nParent = neckPivot;
+    const nRadii = [1.42, 1.22, 1.04, 0.88, 0.74, 0.62, 0.52];
+    const nLen = 2.35;
+    for (let i = 0; i < 6; i++) {
+      const segPiv = new THREE.Group();
+      if (i > 0) segPiv.position.set(0, nLen * 0.90, 0);
+      segPiv.rotation.x = (i === 0) ? 0.44 : -0.055; // graceful upward S-curve
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(nRadii[i + 1], nRadii[i], nLen, 10), skinMat);
+      cyl.position.y = nLen * 0.48; cyl.castShadow = true; segPiv.add(cyl);
+      const joint = new THREE.Mesh(new THREE.SphereGeometry(nRadii[i + 1] * 1.01, 8, 8), skinMat);
+      joint.position.y = nLen * 0.92; segPiv.add(joint);
+      nParent.add(segPiv);
+      neckSegs.push(segPiv);
+      nParent = segPiv;
+    }
+    // Detailed Sauropod Head with Nasal Crest, Snout & Eyes
+    const headGrp = new THREE.Group();
+    headGrp.position.set(0, nLen * 0.95, 0.15);
+    headGrp.rotation.x = -0.18;
+    const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.76, 10, 8), skinMat);
+    cranium.scale.set(0.92, 0.95, 1.25); headGrp.add(cranium);
+    const crest = new THREE.Mesh(new THREE.SphereGeometry(0.56, 10, 8), darkMat);
+    crest.scale.set(0.75, 1.15, 1.05); crest.position.set(0, 0.58, 0.25); headGrp.add(crest);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.54, 1.28), skinMat);
+    snout.position.set(0, -0.12, 1.02); headGrp.add(snout);
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), eyeMat);
+      eye.position.set(sx * 0.62, 0.16, 0.42); headGrp.add(eye);
+    }
+    nParent.add(headGrp);
     grp.add(neckPivot);
 
+    // 7-Segment Smooth Articulated Sweeping Tail (Parented chain — zero broken seams!)
     const tailPivot = new THREE.Group();
-    tailPivot.position.set(0, 6.8, -4.1);
-    const tail1 = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.35, 6.8, 8), skinMat);
-    tail1.rotation.x = Math.PI / 2 + 0.18; tail1.position.set(0, -0.6, -3.2); tailPivot.add(tail1);
-    const tail2 = new THREE.Mesh(new THREE.ConeGeometry(0.75, 7.2, 7), skinMat);
-    tail2.rotation.x = -Math.PI / 2; tail2.position.set(0, -1.6, -9.8); tailPivot.add(tail2);
+    tailPivot.position.set(0, 6.9, -4.4);
+    const tailSegs = [];
+    let tParent = tailPivot;
+    const tRadii = [1.55, 1.28, 1.02, 0.78, 0.56, 0.38, 0.22, 0.08];
+    const tLen = 2.35;
+    for (let i = 0; i < 7; i++) {
+      const segPiv = new THREE.Group();
+      if (i > 0) segPiv.position.set(0, 0, -tLen * 0.90);
+      segPiv.rotation.x = (i < 3) ? -0.10 : 0.05; // smooth natural droop then gentle lift
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(tRadii[i + 1], tRadii[i], tLen, 10), skinMat);
+      cyl.rotation.x = -Math.PI / 2; cyl.position.z = -tLen * 0.48; cyl.castShadow = true; segPiv.add(cyl);
+      const joint = new THREE.Mesh(new THREE.SphereGeometry(tRadii[i + 1] * 1.01, 8, 8), skinMat);
+      joint.position.z = -tLen * 0.92; segPiv.add(joint);
+      tParent.add(segPiv);
+      tailSegs.push(segPiv);
+      tParent = segPiv;
+    }
     grp.add(tailPivot);
 
+    // 4 Muscular Pillar Legs w/ Knees, Feet & Claws
     const legs = [];
-    for (const [lx, lz, h] of [[-1.6, 2.8, 6.8], [1.6, 2.8, 6.8], [-1.5, -2.8, 5.8], [1.5, -2.8, 5.8]]) {
+    for (const [lx, lz, h] of [[-1.75, 2.3, 7.2], [1.75, 2.3, 7.2], [-1.65, -2.8, 6.2], [1.65, -2.8, 6.2]]) {
       const lp = new THREE.Group(); lp.position.set(lx, h, lz);
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.84, h, 8), skinMat);
-      leg.position.y = -h * 0.5; leg.castShadow = true; lp.add(leg);
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.86, 0.72, h * 0.55, 10), skinMat);
+      upper.position.y = -h * 0.27; upper.castShadow = true; lp.add(upper);
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.74, 8, 8), skinMat);
+      knee.position.y = -h * 0.54; lp.add(knee);
+      const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.70, 0.78, h * 0.46, 10), skinMat);
+      lower.position.y = -h * 0.77; lower.castShadow = true; lp.add(lower);
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.90, 0.45, 10), darkMat);
+      foot.position.y = -h + 0.22; lp.add(foot);
+      for (const cx of [-0.36, 0, 0.36]) {
+        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.36, 6), clawMat);
+        claw.rotation.x = Math.PI / 2; claw.position.set(cx, -h + 0.14, 0.82); lp.add(claw);
+      }
       grp.add(lp); legs.push(lp);
     }
 
@@ -506,74 +567,132 @@ KK.CryptidManager = class CryptidManager {
     return {
       gx, gy: 38, gz, yaw: Math.random() * Math.PI * 2,
       homeX: gx, homeZ: gz, phase: Math.random() * 6.28,
-      kickCd: 0, mesh: grp, neckPivot, tailPivot, legs, scale: sc
+      kickCd: 0, mesh: grp, neckPivot, neckSegs, tailPivot, tailSegs, legs, scale: sc
     };
   }
 
+  // v17.0.2 DETAILED VOLCANIC T-REX (Sculpted Skull, Teeth, Osteoderms, Muscular Limbs & 5-Segment Sweeping Tail!)
   _createTRex() {
     const grp = new THREE.Group();
-    const scaleMat = new THREE.MeshStandardMaterial({ color: 0x3b4a2c, roughness: 0.85 });
-    const bellyMat = new THREE.MeshStandardMaterial({ color: 0x6b6043, roughness: 0.90 });
-    const lavaStripe = new THREE.MeshStandardMaterial({ color: 0x8f2912, emissive: 0x380b02, roughness: 0.75 });
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-    const toothMat = new THREE.MeshBasicMaterial({ color: 0xf7f2e1 });
+    const scaleMat  = new THREE.MeshStandardMaterial({ color: 0x354428, roughness: 0.84 });
+    const darkMat   = new THREE.MeshStandardMaterial({ color: 0x222b1a, roughness: 0.86 });
+    const bellyMat  = new THREE.MeshStandardMaterial({ color: 0x6b6043, roughness: 0.90 });
+    const lavaMat   = new THREE.MeshStandardMaterial({ color: 0xa82e12, emissive: 0x4a1004, roughness: 0.65 });
+    const eyeMat    = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+    const toothMat  = new THREE.MeshBasicMaterial({ color: 0xf7f2e1 });
+    const tongueMat = new THREE.MeshStandardMaterial({ color: 0x8a2430, roughness: 0.6 });
+    const clawMat   = new THREE.MeshStandardMaterial({ color: 0x1a1816, roughness: 0.65 });
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.7, 5.6), scaleMat);
-    body.position.set(0, 4.9, 0); body.rotation.x = -0.14; body.castShadow = true; grp.add(body);
-    const ridge = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 5.0), lavaStripe);
-    ridge.position.set(0, 6.25, -0.1); ridge.rotation.x = -0.14; grp.add(ridge);
-    const belly = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.65, 4.8), bellyMat);
-    belly.position.set(0, 3.6, 0.1); grp.add(belly);
+    // Sculpted muscular theropod torso (ribcage + pelvis + underbelly)
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(1.58, 12, 10), scaleMat);
+    chest.scale.set(0.92, 1.05, 1.55); chest.position.set(0, 5.15, 0.95); chest.rotation.x = -0.14; chest.castShadow = true; grp.add(chest);
+    const hip = new THREE.Mesh(new THREE.SphereGeometry(1.62, 12, 10), scaleMat);
+    hip.scale.set(0.98, 1.02, 1.35); hip.position.set(0, 4.75, -1.15); hip.castShadow = true; grp.add(hip);
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(1.35, 10, 8), bellyMat);
+    belly.scale.set(0.86, 0.62, 1.85); belly.position.set(0, 3.85, 0.1); grp.add(belly);
 
-    const tailPivot = new THREE.Group(); tailPivot.position.set(0, 5.0, -2.6);
-    const tail1 = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.7, 4.4), scaleMat);
-    tail1.position.set(0, -0.1, -2.0); tailPivot.add(tail1);
-    const tail2 = new THREE.Mesh(new THREE.ConeGeometry(0.95, 5.2, 6), scaleMat);
-    tail2.rotation.x = -Math.PI / 2; tail2.position.set(0, -0.2, -6.5); tailPivot.add(tail2);
+    // Volcanic dorsal osteoderm plates along spine
+    for (let i = 0; i < 8; i++) {
+      const plate = new THREE.Mesh(new THREE.ConeGeometry(0.32 - i * 0.02, 0.68 - i * 0.04, 5), lavaMat);
+      plate.position.set(0, 6.45 - i * 0.14, 2.2 - i * 0.78);
+      plate.rotation.x = -0.28;
+      grp.add(plate);
+    }
+
+    // 5-Segment Smooth Articulated T-Rex Tail (Parented chain)
+    const tailPivot = new THREE.Group();
+    tailPivot.position.set(0, 4.9, -2.5);
+    const tailSegs = [];
+    let tParent = tailPivot;
+    const trRadii = [1.28, 1.02, 0.76, 0.52, 0.30, 0.10];
+    const trLen = 1.95;
+    for (let i = 0; i < 5; i++) {
+      const segPiv = new THREE.Group();
+      if (i > 0) segPiv.position.set(0, 0, -trLen * 0.90);
+      segPiv.rotation.x = (i === 0) ? -0.06 : 0.03;
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(trRadii[i + 1], trRadii[i], trLen, 9), scaleMat);
+      cyl.rotation.x = -Math.PI / 2; cyl.position.z = -trLen * 0.48; cyl.castShadow = true; segPiv.add(cyl);
+      const jnt = new THREE.Mesh(new THREE.SphereGeometry(trRadii[i + 1] * 1.01, 8, 8), scaleMat);
+      jnt.position.z = -trLen * 0.92; segPiv.add(jnt);
+      tParent.add(segPiv);
+      tailSegs.push(segPiv);
+      tParent = segPiv;
+    }
     grp.add(tailPivot);
 
-    const neck = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.0, 2.4), scaleMat);
-    neck.position.set(0, 6.4, 3.0); neck.rotation.x = -0.45; grp.add(neck);
-    const headGrp = new THREE.Group(); headGrp.position.set(0, 7.6, 4.2);
-    const upperSkull = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.45, 3.2), scaleMat);
-    upperSkull.position.set(0, 0.35, 1.1); upperSkull.castShadow = true; headGrp.add(upperSkull);
-    for (const ex of [-0.96, 0.96]) {
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.28), eyeMat);
-      eye.position.set(ex, 0.68, 0.55); headGrp.add(eye);
-    }
-    for (let tz = 0.4; tz <= 2.4; tz += 0.5) {
-      for (const tx of [-0.82, 0.82]) {
-        const th = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.38, 4), toothMat);
-        th.rotation.x = Math.PI; th.position.set(tx, -0.48, tz); headGrp.add(th);
+    // Thick Muscular Neck + Sculpted T-Rex Skull, Brow Ridges, Eyes & Hinged Tooth-Lined Jaw!
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.25, 2.6, 10), scaleMat);
+    neck.position.set(0, 6.05, 3.05); neck.rotation.x = 0.52; neck.castShadow = true; grp.add(neck);
+
+    const headGrp = new THREE.Group();
+    headGrp.position.set(0, 6.95, 4.25);
+    const skullBack = new THREE.Mesh(new THREE.BoxGeometry(1.78, 1.52, 1.65), scaleMat);
+    skullBack.position.set(0, 0.15, 0.1); skullBack.castShadow = true; headGrp.add(skullBack);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(1.38, 1.12, 2.25), scaleMat);
+    snout.position.set(0, 0.05, 1.65); snout.castShadow = true; headGrp.add(snout);
+    const noseTip = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.88, 0.65), darkMat);
+    noseTip.position.set(0, 0.02, 2.85); headGrp.add(noseTip);
+    for (const sx of [-1, 1]) {
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.28, 0.95), lavaMat);
+      brow.position.set(sx * 0.82, 0.72, 0.68); headGrp.add(brow);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), eyeMat);
+      eye.position.set(sx * 0.86, 0.42, 0.65); headGrp.add(eye);
+      for (let ti = 0; ti < 5; ti++) {
+        const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.34, 5), toothMat);
+        tooth.rotation.x = Math.PI;
+        tooth.position.set(sx * 0.56, -0.58, 0.85 + ti * 0.44);
+        headGrp.add(tooth);
       }
     }
-    const jawPivot = new THREE.Group(); jawPivot.position.set(0, -0.35, 0.2);
-    const lowerJaw = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.55, 2.7), bellyMat);
-    lowerJaw.position.set(0, -0.22, 1.2); jawPivot.add(lowerJaw);
-    headGrp.add(jawPivot); grp.add(headGrp);
-
-    for (const sx of [-1.2, 1.2]) {
-      const tinyArm = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.1, 0.42), scaleMat);
-      tinyArm.position.set(sx, 4.5, 2.4); tinyArm.rotation.x = -0.65; grp.add(tinyArm);
+    const jawPivot = new THREE.Group();
+    jawPivot.position.set(0, -0.55, 0.25);
+    const lowerJaw = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.46, 2.75), bellyMat);
+    lowerJaw.position.set(0, -0.18, 1.25); jawPivot.add(lowerJaw);
+    const tongue = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.16, 1.85), tongueMat);
+    tongue.position.set(0, 0.08, 1.15); jawPivot.add(tongue);
+    for (const sx of [-1, 1]) {
+      for (let ti = 0; ti < 4; ti++) {
+        const lTooth = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.28, 5), toothMat);
+        lTooth.position.set(sx * 0.50, 0.16, 0.85 + ti * 0.46);
+        jawPivot.add(lTooth);
+      }
     }
-    const makeLeg = (px) => {
-      const piv = new THREE.Group(); piv.position.set(px, 4.2, -0.3);
-      const thigh = new THREE.Mesh(new THREE.BoxGeometry(1.25, 2.4, 1.85), scaleMat);
-      thigh.position.set(0, -1.1, 0); thigh.castShadow = true; piv.add(thigh);
-      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.85, 2.2, 1.0), scaleMat);
-      shin.position.set(0, -2.9, -0.2); piv.add(shin);
-      const foot = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.45, 2.1), bellyMat);
-      foot.position.set(0, -4.0, 0.45); piv.add(foot);
+    headGrp.add(jawPivot);
+    grp.add(headGrp);
+
+    // Iconic Tiny 2-Clawed Forearms
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 1.15, 7), scaleMat);
+      arm.position.set(sx * 1.15, 4.15, 2.55); arm.rotation.x = 0.68; grp.add(arm);
+      for (const cx of [-0.08, 0.08]) {
+        const cl = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.26, 5), clawMat);
+        cl.rotation.x = 1.2; cl.position.set(sx * 1.15 + cx, 3.62, 2.95); grp.add(cl);
+      }
+    }
+
+    // Muscular Reverse-Jointed Hind Legs w/ 3-Toed Clawed Feet
+    const makeLeg = (sx) => {
+      const piv = new THREE.Group(); piv.position.set(sx, 4.4, -0.65);
+      const thigh = new THREE.Mesh(new THREE.SphereGeometry(1.05, 10, 8), scaleMat);
+      thigh.scale.set(0.85, 1.35, 1.15); thigh.position.set(0, -1.0, 0.25); thigh.castShadow = true; piv.add(thigh);
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.36, 2.55, 8), scaleMat);
+      shin.position.set(0, -2.75, -0.35); shin.rotation.x = -0.22; shin.castShadow = true; piv.add(shin);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.42, 1.55), darkMat);
+      foot.position.set(0, -4.18, 0.35); piv.add(foot);
+      for (const tx of [-0.38, 0, 0.38]) {
+        const toeClaw = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.48, 5), clawMat);
+        toeClaw.rotation.x = Math.PI / 2; toeClaw.position.set(tx, -4.22, 1.28); piv.add(toeClaw);
+      }
       grp.add(piv); return piv;
     };
-    const legL = makeLeg(-1.45), legR = makeLeg(1.45);
+    const legL = makeLeg(-1.52), legR = makeLeg(1.52);
     grp.scale.set(1.75, 1.75, 1.75);
     this.scene.add(grp);
     return {
       kind: "trex", gx: -4350, gy: 38, gz: 1320, tx: -4350, ty: 38, tz: 1320,
       yaw: 0, tyaw: 0, phase: 0, state: "prowl",
       stageTimer: 0, fleeTimer: 0, attackCd: 0, counterAccum: 0, cueCd: 0, dormantCd: 0,
-      mesh: grp, legL, legR, tailPivot, jawPivot
+      mesh: grp, legL, legR, tailPivot, tailSegs, jawPivot
     };
   }
 
@@ -1669,7 +1788,12 @@ KK.CryptidManager = class CryptidManager {
     if (rx.mesh.visible) {
       const sw = Math.sin(rx.phase) * 0.62;
       rx.legL.rotation.x = sw; rx.legR.rotation.x = -sw;
-      rx.tailPivot.rotation.y = Math.sin(rx.phase * 0.8) * 0.42;
+      rx.tailPivot.rotation.y = Math.sin(rx.phase * 0.8) * 0.22;
+      if (rx.tailSegs) {
+        for (let ti = 1; ti < rx.tailSegs.length; ti++) {
+          rx.tailSegs[ti].rotation.y = Math.sin(rx.phase * 0.8 - ti * 0.5) * 0.14;
+        }
+      }
       rx.jawPivot.rotation.x = (rx.state === "chase" || rx.state === "flare" || dJaw < 14) ? (0.42 + Math.abs(Math.sin(rx.phase * 1.5)) * 0.48) : 0.10;
     }
 
@@ -1755,8 +1879,18 @@ KK.CryptidManager = class CryptidManager {
         const dBr = Math.hypot(br.gx - px, br.gz - pz);
         br.mesh.visible = dBr < 540;
         if (br.mesh.visible) {
-          br.neckPivot.rotation.x = Math.sin(br.phase * 0.55) * 0.16;
-          br.tailPivot.rotation.y = Math.sin(br.phase * 0.7) * 0.22;
+          br.neckPivot.rotation.x = Math.sin(br.phase * 0.45) * 0.10;
+          if (br.neckSegs) {
+            for (let ni = 1; ni < br.neckSegs.length; ni++) {
+              br.neckSegs[ni].rotation.z = Math.sin(br.phase * 0.45 - ni * 0.35) * 0.04;
+            }
+          }
+          br.tailPivot.rotation.y = Math.sin(br.phase * 0.65) * 0.12;
+          if (br.tailSegs) {
+            for (let ti = 1; ti < br.tailSegs.length; ti++) {
+              br.tailSegs[ti].rotation.y = Math.sin(br.phase * 0.65 - ti * 0.45) * 0.11;
+            }
+          }
           for (let li = 0; li < br.legs.length; li++) {
             br.legs[li].rotation.x = Math.sin(br.phase + (li % 2 === 0 ? 0 : Math.PI)) * 0.18;
           }

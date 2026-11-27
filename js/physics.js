@@ -1047,6 +1047,7 @@ KK.VehiclePhysics = class VehiclePhysics {
             hlth.body = Math.max(0, hlth.body - hitDmg * 0.95);
             if (!spec.isTracked || impactSpd > 14.0) this.damageHeadlights(hitDmg * (spec.isTracked ? 0.45 : 1.6), sideSign);
             this.emit("impact", Math.min(1.0, impactSpd / 16));
+            if (this.tutorialSensitiveDmg && impactSpd > 2.8) { this._wearPart("radiator", 16); this.emit("tutorial_first_dmg"); }
             this.emit("crash_burst", { x: c.x, y: c.y + 0.6, z: c.z, strength: Math.min(1.5, impactSpd / 11), surface: isRock ? "rock" : "gravel" });
             if (impactSpd > 10.0 && !spec.isTracked) {
               this.emit("toast", isRock ? `BRUTAL BOULDER SLAM (-${Math.round(hitDmg)}% front-end)!` : "THUD! Hit a tree — hit it >48 km/h to smash through!");
