@@ -2383,16 +2383,24 @@ KK.VehicleBuilder = {
         const yoke = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.62, 0.16), matArmorDk);
         yoke.position.set(sx, 1.24, -0.78); shilkaTurretPivot.add(yoke);
       }
+      // v17.5 REWORKED SOLID 1RL33 "GUN DISH" RADAR (DoubleSide + Solid Rear Backing Shell — visible from ALL angles!)
       shilkaRadarDish = new THREE.Group();
       shilkaRadarDish.position.set(0, 1.56, -0.78);
-      const rTrans = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.36, 0.38), matArmorDk);
-      rTrans.position.set(0, 0, -0.22); shilkaRadarDish.add(rTrans);
-      const dishOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.46, 0.18, 20, 1, true), matDish);
-      dishOuter.rotation.x = Math.PI / 2; dishOuter.position.z = 0.06; shilkaRadarDish.add(dishOuter);
-      const dishInner = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.14, 0.12, 16), matDish);
-      dishInner.rotation.x = Math.PI / 2; dishInner.position.z = -0.02; shilkaRadarDish.add(dishInner);
-      const dishRim = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.032, 8, 24), matSteel);
-      dishRim.position.z = 0.15; shilkaRadarDish.add(dishRim);
+      const matDishSolid = matDish.clone();
+      matDishSolid.side = THREE.DoubleSide;
+      const rTrans = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.40, 0.44), matArmorDk);
+      rTrans.position.set(0, 0, -0.24); shilkaRadarDish.add(rTrans);
+      // Solid curved parabolic rear shell (zero invisible angles!)
+      const dishShell = new THREE.Mesh(new THREE.SphereGeometry(0.78, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.42), matDishSolid);
+      dishShell.rotation.x = -Math.PI / 2;
+      dishShell.scale.set(1.0, 0.46, 1.0);
+      dishShell.position.z = 0.24;
+      shilkaRadarDish.add(dishShell);
+      // Heavy rear backing plate & reinforcement hub
+      const dishBack = new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.34, 0.12, 16), matArmorDk);
+      dishBack.rotation.x = Math.PI / 2; dishBack.position.z = -0.06; shilkaRadarDish.add(dishBack);
+      const dishRim = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.042, 8, 24), matSteel);
+      dishRim.position.z = 0.14; shilkaRadarDish.add(dishRim);
       for (let fi = 0; fi < 3; fi++) {
         const fa = (fi / 3) * Math.PI * 2;
         const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.62, 6), matSteel);

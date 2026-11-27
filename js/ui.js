@@ -1303,7 +1303,34 @@ KK.UIManager = class UIManager {
         </div>`;
     }
 
-    if (tab === "controls") {
+    if (tab === "guide") {
+      const steps = [
+        ["1", "START & DRIVE", "Press <b>[I]</b> to crank the engine, <b>[WASD]</b> to drive, <b>[C]</b> to switch cameras, and <b>[F]</b> to interact with warehouses, garages, fuel pumps, and NPCs."],
+        ["2", "HAUL CONTRACTS FOR CASH", "Pull up to any Town Warehouse (<b>[F]</b>) and accept a delivery. Follow the <b style=\"color:#c084fc;\">PURPLE GPS dot</b> on your mini-radar to the drop-off zone to get paid."],
+        ["3", "MAINTAIN & REPAIR YOUR RIG", "Every vehicle simulates real individual parts (radiator, shocks, pistons, brakes, tires). Hold <b>[X]</b> for live X-Ray diagnostics, or exit (<b>[F]</b>) and inspect the front/rear engine bay (<b>[F]</b>) to patch parts."],
+        ["4", "UPGRADE & EXPAND YOUR FLEET", "Visit any Town Garage (<b>[F]</b>) to fit Mud Tires, Snorkels, Suspension Lifts, Engines &amp; 25 Rim Styles — or buy Trailers, Landing Barges, Supercars &amp; Armored Military Vehicles."],
+        ["5", "EXPLORE 100 KM² OF BIOMES", "Cross wooden ravine bridges, deep mud bogs, desert canyons, alpine switchbacks, Zolotoy GP racetrack, and outer ocean islands via drive-on barges."],
+        ["6", "SURVIVE THE CRYPTIDS", "The Oblast isn't empty. Watch out for the Forest Yeti, Siren Head, Desert Sandwyrm, Volcanic T-Rex (and neutral Brachiosaurus), and Godzilla in the frozen north. Don't stop to say hi."]
+      ];
+      bodyHtml = `
+        <div class="admin-card" style="border-color:rgba(168,85,247,0.55); background:linear-gradient(135deg,rgba(20,16,38,0.92),rgba(10,15,24,0.94));">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div class="admin-card-title" style="color:#c084fc;margin:0;">📖 WHAT THE HECK AM I DOING HERE? — OBLAST FIELD MANUAL</div>
+            <button class="btn small primary" onclick="window.__GAME__.restartTutorial(); window.__GAME__.ui.closeModal();">▶ REPLAY HQ TUTORIAL</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;">
+            ${steps.map(([num, title, desc]) => `
+              <div style="background:rgba(15,23,36,0.88);border:1px solid rgba(168,85,247,0.38);border-radius:8px;padding:10px 12px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+                  <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#a855f7;color:#070a0f;font-weight:900;font-size:12px;">${num}</span>
+                  <span style="color:#e9d5ff;font-weight:900;font-size:12px;letter-spacing:0.5px;">${title}</span>
+                </div>
+                <div style="font-size:12px;line-height:1.48;color:#cbd5e1;">${desc}</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>`;
+    } else if (tab === "controls") {
       bodyHtml = `
         <div class="admin-grid2">
           <div class="admin-card">
@@ -1321,16 +1348,6 @@ KK.UIManager = class UIManager {
               <div><b>6</b><span>Deploy / Stow Snorkel Anywhere (T-72B / Safari)</span></div>
               <div><b>U</b><span>Flip / Right Overturned Rig</span></div>
               <div><b>1 / 5</b><span>Hitch Trailer / Car-Carrier Hoist</span></div>
-            </div>
-          </div>
-          <div class="admin-card" style="grid-column:1 / -1; border-color:rgba(168,85,247,0.55); background:linear-gradient(135deg,rgba(20,16,38,0.92),rgba(10,15,24,0.94));">
-            <div class="admin-card-title" style="color:#c084fc;">📖 WHAT THE HECK AM I DOING HERE? (OBLAST FIELD MANUAL)</div>
-            <div style="font-size:12.5px;line-height:1.55;color:#dbe7f3;padding:4px 2px;">
-              <b>Krasno-Kamenka Oblast</b> is an open-world Soviet driving, logistics &amp; survival sim.
-              <b>1)</b> Grab delivery contracts at any Town Warehouse (<b>[F]</b>) and follow the <b style="color:#c084fc;">PURPLE GPS dot</b> on your radar to earn cash.
-              <b>2)</b> Every vehicle simulates real internal parts (radiator, shocks, pistons, brakes) — hold <b>[X]</b> for live X-Ray, or walk to the front/rear bay (<b>[F]</b>) to repair.
-              <b>3)</b> Upgrade tires, snorkels, engines &amp; buy new rigs, trailers, barges, or armored vehicles at Garages &amp; Dealerships.
-              <b>4)</b> Explore 100 km² of mud bogs, mountain passes, desert dunes, islands &amp; racetracks — and watch out for roaming <b>Cryptids</b> (Yeti, Siren Head, Sandwyrm, T-Rex &amp; Godzilla).
             </div>
           </div>
           <div class="admin-card">
@@ -1374,7 +1391,8 @@ KK.UIManager = class UIManager {
       <div class="sub-tabs" style="margin-bottom:12px;">
         ${tabBtn("world",    "🌍 WORLD & WEATHER")}
         ${tabBtn("audio",    "🔊 AUDIO & GRAPHICS")}
-        ${tabBtn("controls", "🎮 CONTROLS")}
+        ${tabBtn("guide", "📖 WHAT AM I DOING?")}
+          ${tabBtn("controls", "🎮 CONTROLS")}
         ${tabBtn("tools",    "⚡ RECOVERY & CHAOS")}
         ${tabBtn("gps",      "🧭 QUICK GPS DIRECTORY")}
       </div>

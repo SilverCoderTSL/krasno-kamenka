@@ -1443,6 +1443,15 @@ KK.World = class World {
     this.matFenceMetal = new THREE.MeshStandardMaterial({ color: 0x9aa4ae, roughness: 0.45, metalness: 0.65 });
     this.matBrokenSlab = new THREE.MeshStandardMaterial({ color: 0x5c5f61, roughness: 0.92 });
     this.geoFencePost  = new THREE.BoxGeometry(0.16, 1.35, 0.16);
+    // v17.5 Zero-FPS-Hit Instanced Ground Wildflowers (Taiga, Valley, Savanna & Tropics!)
+    this.geoFlowerStem  = new THREE.BoxGeometry(0.06, 0.32, 0.06);
+    this.geoFlowerPetal = new THREE.DodecahedronGeometry(0.18, 0);
+    this.matFlowerStem  = new THREE.MeshStandardMaterial({ color: 0x3b6e34, roughness: 0.92 });
+    this.matFlPurple    = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.72 });
+    this.matFlBlue      = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.72 });
+    this.matFlYellow    = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.70 });
+    this.matFlWhite     = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.75 });
+    this.matFlRed       = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.68 });
     this.geoFenceRailW = new THREE.BoxGeometry(5.6, 0.14, 0.10);
     this.geoGuardRail  = new THREE.BoxGeometry(5.8, 0.34, 0.14);
     this.geoBrokenSlab = new THREE.BoxGeometry(3.4, 0.35, 2.2);
@@ -3590,7 +3599,38 @@ KK.World = class World {
       group.add(rInst);
     }
 
-    // BREAKABLE ROADSIDE FENCES & GUARDRAILS (Wooden Post-and-Rail + Corrugated Metal!)
+    // v17.5 WILDFLOWER PATCHES (Taiga Purple Fireweed/Bluebells, Valley Daisies/Dandelions, Tropical Hibiscus!)
+    const flCount = (this.gfxPreset === "potato") ? 8 : 22;
+    for (let fi = 0; fi < flCount; fi++) {
+      const fx = startX + this.hash2(cx * 31 + fi, cz * 17 + 7) * size;
+      const fz = startZ + this.hash2(cx * 19 + 11, cz * 29 + fi) * size;
+      const tFl = this.getTerrainInfo(fx, fz, false);
+      if (!tFl || tFl.waterDepth > 0.05 || tFl.surface === "asphalt" || tFl.surface === "race_tarmac" || tFl.surface === "mud") continue;
+      const bm = this.getBiomeAt(fx, fz);
+      if (bm === "desert" || bm === "arctic" || bm === "volcanic" || bm === "mountains") continue;
+      const flType = Math.floor(this.hash2(cx * 13 + fi * 3, cz * 23 + fi) * 3);
+      let pKey, pMat;
+      if (bm === "taiga") {
+        pKey = flType === 0 ? "fl_p" : (flType === 1 ? "fl_b" : "fl_w");
+        pMat = flType === 0 ? this.matFlPurple : (flType === 1 ? this.matFlBlue : this.matFlWhite);
+      } else if (bm === "tropical") {
+        pKey = flType === 0 ? "fl_r" : (flType === 1 ? "fl_y" : "fl_p");
+        pMat = flType === 0 ? this.matFlRed : (flType === 1 ? this.matFlYellow : this.matFlPurple);
+      } else {
+        pKey = flType === 0 ? "fl_y" : (flType === 1 ? "fl_w" : "fl_p");
+        pMat = flType === 0 ? this.matFlYellow : (flType === 1 ? this.matFlWhite : this.matFlPurple);
+      }
+      const rxF = fx - (startX + size * 0.5), rzF = fz - (startZ + size * 0.5);
+      const scF = 0.75 + this.hash2(fi, cx + cz) * 0.65;
+      _pDummy.position.set(rxF, tFl.height, rzF);
+      _pDummy.rotation.set(0, fi * 1.3, 0);
+      _pDummy.scale.set(scF, scF, scF);
+      _pDummy.updateMatrix();
+      addInstPart("fl_s", this.geoFlowerStem, this.matFlowerStem, null, false, 0, 0.16, 0);
+      addInstPart(pKey, this.geoFlowerPetal, pMat, null, false, 0, 0.36, 0, 0, 0, 0, 1.0, 0.65, 1.0);
+    }
+
+        // BREAKABLE ROADSIDE FENCES & GUARDRAILS (Wooden Post-and-Rail + Corrugated Metal!)
     const fences = [];
     const cMinX = startX, cMaxX = startX + size, cMinZ = startZ, cMaxZ = startZ + size;
     let fenceSeq = 0;
