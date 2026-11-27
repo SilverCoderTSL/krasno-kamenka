@@ -586,7 +586,8 @@ KK.VehiclePhysics = class VehiclePhysics {
 
       const isBlown = !!(vs.blownTires && vs.blownTires[i]);
       const baseWRad = wheelRad * (w.def.radiusScale || 1.0);
-      const effWheelRad = isBlown ? Math.max(0.20, baseWRad - 0.14) : baseWRad;
+      const trackGone = spec.isTracked && ((w.def.x < 0 && (hlth.trackL !== undefined ? hlth.trackL : 100) < 15) || (w.def.x >= 0 && (hlth.trackR !== undefined ? hlth.trackR : 100) < 15));
+      const effWheelRad = isBlown ? Math.max(0.20, baseWRad - 0.14) : (trackGone ? Math.max(0.20, baseWRad - 0.08) : baseWRad);
       const distToGround = worldMount.y - tInfo.height;
       const fullDrop = effectiveRest + effWheelRad;
       if (distToGround < fullDrop) {

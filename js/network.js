@@ -491,6 +491,7 @@ KK.LanNetwork = class LanNetwork {
       gasOutages: {},
       cryptids: {},
       tornado: null,
+      hurricane: null,
       players: {},
       winches: {},
       convoys: {},
@@ -523,6 +524,7 @@ KK.LanNetwork = class LanNetwork {
       gasOutages: gasOut,
       cryptids: ws.cryptids,
       tornado: ws.tornado,
+      hurricane: ws.hurricane,
       players: Object.values(ws.players),
       winches: Object.values(ws.winches),
       convoys: Object.values(ws.convoys)
@@ -623,6 +625,7 @@ KK.LanNetwork = class LanNetwork {
       ws.cryptids = msg.cryptids;
     } else if (mtype === "hazard_sync") {
       ws.tornado = msg.tornado || null;
+      if (msg.hurricane !== undefined) ws.hurricane = msg.hurricane || null;
     }
   }
 
@@ -1041,6 +1044,9 @@ KK.LanNetwork = class LanNetwork {
       case "hazard_event":
         if (this.cb.onHazardEvent) this.cb.onHazardEvent(msg);
         break;
+      case "lwr_ping":
+        if (msg.targetPeerId === this.peerId && this.cb.onLwrPing) this.cb.onLwrPing(msg);
+        break;
       case "fence_break":
         if (this.cb.onFenceBreak) this.cb.onFenceBreak(msg);
         break;
@@ -1124,7 +1130,7 @@ KK.LanNetwork = class LanNetwork {
         onFoot: !!pkt.foot, footX: pkt.fx || 0, footY: pkt.fy || 5, footZ: pkt.fz || 0, footYaw: pkt.fyaw || 0,
         wheelOffsets: pkt.wo || [], wheelSpins: pkt.ws || [], blownTires: pkt.bt || [], steerAngle: pkt.st || 0,
         headlights: !!pkt.hl, lightbar: !!pkt.lb, hasLightbar: !!pkt.ulb, headlightL: pkt.hll !== undefined ? pkt.hll : 100, headlightR: pkt.hlr !== undefined ? pkt.hlr : 100, engOn: pkt.eng !== undefined ? !!pkt.eng : true, rpm: pkt.rpm || 800, engineId: pkt.eid || null, throttle: pkt.thr || 0, hornActive: !!pkt.hrn, rwsYaw: pkt.rwsy !== undefined ? pkt.rwsy : (pkt.tyaw || 0), rwsPitch: pkt.rwsp || 0, gunPitch: pkt.gp || 0, autoBarrelHeat: pkt.abh || 0, wipersOn: !!pkt.wp, repairing: !!pkt.rep, hasBtrTurret: !!pkt.btur, turretYaw: pkt.tyaw || 0, carriedByPeerId: pkt.cbp || null, braking: !!pkt.br, hazards: !!pkt.hz,
-        smokeLevel: pkt.smk || 0, dirtLevel: pkt.dirt || 0, backfireTimer: pkt.bf || 0, coolantTemp: pkt.etmp !== undefined ? pkt.etmp : 82, egtTemp: pkt.egt !== undefined ? pkt.egt : 320, barrelHeat: pkt.bh || 0,
+        smokeLevel: pkt.smk || 0, trackL: pkt.tl !== undefined ? pkt.tl : 100, trackR: pkt.trh !== undefined ? pkt.trh : 100, turretPopY: pkt.tpy || 0, turretPopPitch: pkt.tpp || 0, turretPopRoll: pkt.tpr || 0, cookoff: !!pkt.cof, burnedOut: !!pkt.brn, reloadFrac: pkt.rf || 0, dirtLevel: pkt.dirt || 0, backfireTimer: pkt.bf || 0, coolantTemp: pkt.etmp !== undefined ? pkt.etmp : 82, egtTemp: pkt.egt !== undefined ? pkt.egt : 320, barrelHeat: pkt.bh || 0,
         cargoCount: pkt.cc || 0, cargoType: pkt.ct || "standard",
         rideHeight: pkt.rh || 0, camberDeg: pkt.cb || 0, lastSeen: performance.now(), rig: null, avatar: null
       };
@@ -1147,14 +1153,14 @@ KK.LanNetwork = class LanNetwork {
       entry.onFoot = !!pkt.foot; entry.footX = pkt.fx || pkt.x; entry.footY = pkt.fy || pkt.y; entry.footZ = pkt.fz || pkt.z; entry.footYaw = pkt.fyaw || 0;
       entry.wheelOffsets = pkt.wo || entry.wheelOffsets; entry.wheelSpins = pkt.ws || entry.wheelSpins; entry.blownTires = pkt.bt || entry.blownTires;
       entry.steerAngle = pkt.st || 0; entry.headlights = !!pkt.hl; entry.lightbar = !!pkt.lb; entry.hasLightbar = !!pkt.ulb; entry.headlightL = pkt.hll !== undefined ? pkt.hll : 100; entry.headlightR = pkt.hlr !== undefined ? pkt.hlr : 100; entry.engOn = pkt.eng !== undefined ? !!pkt.eng : true; entry.rpm = pkt.rpm || 800; entry.engineId = pkt.eid || entry.engineId; entry.throttle = pkt.thr || 0; entry.hornActive = !!pkt.hrn; entry.rwsYaw = pkt.rwsy !== undefined ? pkt.rwsy : (pkt.tyaw || 0); entry.rwsPitch = pkt.rwsp || 0; entry.gunPitch = pkt.gp || 0; entry.autoBarrelHeat = pkt.abh || 0; entry.wipersOn = !!pkt.wp; entry.repairing = !!pkt.rep; entry.hasBtrTurret = !!pkt.btur; entry.turretYaw = pkt.tyaw || 0; entry.carriedByPeerId = pkt.cbp || null;
-      entry.braking = !!pkt.br; entry.hazards = !!pkt.hz; entry.smokeLevel = pkt.smk || 0;
+      entry.braking = !!pkt.br; entry.hazards = !!pkt.hz; entry.smokeLevel = pkt.smk || 0; entry.trackL = pkt.tl !== undefined ? pkt.tl : 100; entry.trackR = pkt.trh !== undefined ? pkt.trh : 100; entry.turretPopY = pkt.tpy || 0; entry.turretPopPitch = pkt.tpp || 0; entry.turretPopRoll = pkt.tpr || 0; entry.cookoff = !!pkt.cof; entry.burnedOut = !!pkt.brn; entry.reloadFrac = pkt.rf || 0;
       entry.dirtLevel = pkt.dirt || 0; entry.backfireTimer = pkt.bf || 0; entry.coolantTemp = pkt.etmp !== undefined ? pkt.etmp : 82; entry.egtTemp = pkt.egt !== undefined ? pkt.egt : 320; entry.barrelHeat = pkt.bh || 0;
       entry.cargoCount = pkt.cc || 0; entry.cargoType = pkt.ct || "standard";
       entry.rideHeight = pkt.rh || 0; entry.camberDeg = pkt.cb || 0; entry.lastSeen = performance.now();
     }
   }
 
-  broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0, gunPitch = 0, autoBarrelHeat = 0, activeBoat = null, boatMount = null) {
+  broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0, gunPitch = 0, autoBarrelHeat = 0, activeBoat = null, boatMount = null, combatSync = null) {
     this.sendAccum += dt;
     if (!force && this.sendAccum < 0.10) return; // Broker-friendly 10 Hz over WSS (smoothly lerped!)
     this.sendAccum = 0;
@@ -1162,7 +1168,7 @@ KK.LanNetwork = class LanNetwork {
     // Save bandwidth & prevent public broker throttling while Host is alone waiting for friends!
     if (this.mode === "wss_host" && this.hostPeers.size === 0) return;
     const engHp = KK.getEngineOverallHealth(vehicle.vState);
-    const smoke = Math.max(0, (vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
+    const smoke = vehicle.vState.burnedOut ? 1.0 : Math.max(0, (vehicle.coolantTemp - 112) / 18, (38 - engHp) / 38);
     this.send({
       type: "player_state", callsign: this.callsign, rim: vehicle.vState.rimStyle || "", gl: vehicle.vState.health.glass !== undefined ? Math.round(vehicle.vState.health.glass) : 100,
       x: +vehicle.pos.x.toFixed(2), y: +vehicle.pos.y.toFixed(2), z: +vehicle.pos.z.toFixed(2),
@@ -1181,7 +1187,10 @@ KK.LanNetwork = class LanNetwork {
       dirt: +(vehicle.vState.dirtLevel || 0).toFixed(2),
       bf: vehicle.backfireTimer > 0 ? 1 : 0,
       cc: vehicle.cargoCount, ct: vehicle.cargoType,
-      rh: +vehicle.vState.tuning.rideHeight.toFixed(2), cb: +vehicle.vState.tuning.camberDeg.toFixed(1)
+      rh: +vehicle.vState.tuning.rideHeight.toFixed(2), cb: +vehicle.vState.tuning.camberDeg.toFixed(1),
+      tl: Math.round(vehicle.vState.health.trackL !== undefined ? vehicle.vState.health.trackL : 100), trh: Math.round(vehicle.vState.health.trackR !== undefined ? vehicle.vState.health.trackR : 100),
+      tpy: +(combatSync?.turretPopY || 0).toFixed(2), tpp: +(combatSync?.turretPopPitch || 0).toFixed(2), tpr: +(combatSync?.turretPopRoll || 0).toFixed(2),
+      cof: combatSync?.cookoff ? 1 : 0, brn: vehicle.vState.burnedOut ? 1 : 0, rf: +(combatSync?.reloadFrac || 0).toFixed(2)
     });
   }
 };

@@ -275,8 +275,8 @@ KK.Game = class Game {
         if (snap.cryptids && !this.network.isHost) {
           this.cryptids.applySyncState(snap.cryptids);
         }
-        if (snap.tornado && !this.network.isHost && this.hazards) {
-          this.hazards.applySyncState(snap.tornado);
+        if ((snap.tornado || snap.hurricane !== undefined) && !this.network.isHost && this.hazards) {
+          this.hazards.applySyncState(snap.tornado || null, snap.hurricane);
         }
       },
       onTreeBreak: (msg) => {
@@ -298,7 +298,10 @@ KK.Game = class Game {
         if (this.hazards) this.hazards.spawnFlare(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, true);
       },
       onHazardSync: (msg) => {
-        if (!this.network.isHost && this.hazards) this.hazards.applySyncState(msg.tornado);
+        if (!this.network.isHost && this.hazards) this.hazards.applySyncState(msg.tornado, msg.hurricane);
+      },
+      onLwrPing: (msg) => {
+        this._handleIncomingLwrPing(msg);
       },
       onHazardEvent: (msg) => {
         if (this.hazards) this.hazards.handleHazardEvent(msg, this.vehicle, this.ui, this.audio);
@@ -522,12 +525,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v17.9.2 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v18.0 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v17.9.2 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v18.0 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -1127,7 +1130,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        // v17.9.2 Garage is strictly [F] only — [G] is exclusively military/flare!
+        // v18.0 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -1379,7 +1382,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.9.2 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v18.0 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1403,7 +1406,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.9.2 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v18.0 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1971,6 +1974,7 @@ KK.Game = class Game {
     if (!this.ownedVehicles[vid]) return;
     this.activeVehicleId = vid;
     this._resetEraCharges();
+    this._resetTankCombatState(true);
     if (this._megaBridgeGhost) this._disposeMegaBridgeGhost();
     this.scene.remove(this.vehicleRig.root);
     this.vehicle.swapVehicleState(this.ownedVehicles[vid], true);
@@ -2036,7 +2040,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v17.9.2 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v18.0 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -2250,11 +2254,12 @@ KK.Game = class Game {
       for (const pid of Object.keys(KK.PARTS_CATALOG)) vs.parts[pid].hp = 100;
       vs.burnedOut = false; if ((vs.fuel || 0) < 25) vs.fuel = 100;
       vs.health.mudClog = 0; vs.health.tieRodBias = 0; vs.health.tires = 100; vs.health.body = 100;
-      vs.health.headlightL = 100; vs.health.headlightR = 100; vs.health.trackL = 100; vs.health.trackR = 100; vs.health.glass = 100; vs.health.lightbar = 100; vs.health.taillightL = 100; vs.health.taillightR = 100;
+      vs.health.headlightL = 100; vs.health.headlightR = 100; vs.health.trackL = 100; vs.health.trackR = 100; this._trkAlreadySnapped = {}; vs.health.glass = 100; vs.health.lightbar = 100; vs.health.taillightL = 100; vs.health.taillightR = 100;
       for (let i = 0; i < vs.blownTires.length; i++) { vs.blownTires[i] = false; vs.tiresHP[i] = 100; }
       vs.spareTires = this.vehicle.spec.wheels.length >= 6 ? 3 : 2;
       this.vehicle.hydrolocked = false; this.vehicle.engineRunning = this.vehicle.ignitionOn; this.vehicle.coolantTemp = 82;
       this._resetEraCharges();
+      this._resetTankCombatState(true);
       this.audio.playCash(); this._saveProgress(true);
       this.ui.toast("Garage Overhaul Complete — Every part, light & ERA block restored to 100%!");
     });
@@ -2292,8 +2297,9 @@ KK.Game = class Game {
     const vs = this.vehicle.vState, p = vs.parts;
     this.audio.playCash();
     if (part === "engine") {
-      vs.health.trackL = 100; vs.health.trackR = 100; vs.health.glass = 100;
+      vs.health.trackL = 100; vs.health.trackR = 100; this._trkAlreadySnapped = {}; vs.health.glass = 100;
       this._resetEraCharges();
+      this._resetTankCombatState(false);
       if (vs.burnedOut) { vs.burnedOut = false; vs.fuel = Math.max(vs.fuel || 0, 28); vs.health.body = Math.max(vs.health.body || 4, 45); }
       this.vehicle.hydrolocked = false; this.vehicle.engineRunning = true;
       for (const id of ["airFilter", "fuelRails", "fuelInjectors", "sparkPlugs", "pistons", "crankshaft", "camshaft", "headGasket"]) {
@@ -2710,6 +2716,7 @@ KK.Game = class Game {
     this.audio.playWrench();
     this._saveProgress(true);
     this.vehicle.vState.burnedOut = false;
+    this._resetTankCombatState(true);
         this.ui.toast(`SERVICED AT ${ownerLabel} SUPPORT TRAILER! 100% Fuel, Fresh Tires, Spares, 6 Flares & 90% Field Repair!`);
   }
 
@@ -2985,6 +2992,7 @@ KK.Game = class Game {
     if (this.ownedVehicles.komodo_std) this.ownedVehicles.komodo_std.btrAmmo = 400;
     if (this.ownedVehicles.komodo_turret) this.ownedVehicles.komodo_turret.btrAmmo = 180;
     if (this.ownedVehicles.harimau) { const h = this.ownedVehicles.harimau; h.t72HeAmmo = 16; h.t72ApAmmo = 16; h.t72CoaxAmmo = 400; }
+    this.ammoRackLIntact = true; this.ammoRackRIntact = true;
     if (this.ownedVehicles.pzkpfw_140a4) { const p = this.ownedVehicles.pzkpfw_140a4; p.p140ApAmmo = 14; p.p140HeshAmmo = 10; p.p140ThermAmmo = 8; p.p140RlgAmmo = 8; p.p140AutoAmmo = 240; }
     const curVs = this.vehicle.vState;
     if (curVs.vehicleId === "komodo_turret") {
@@ -3188,7 +3196,7 @@ KK.Game = class Game {
     return { tipWorld, evacWorld, dirWorld };
   }
 
-  // v17.9.2 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
+  // v18.0 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
   _onArmorHitAck(msg) {
     if (!msg) return;
     const victim = msg.victimCallsign || "Target";
@@ -3208,7 +3216,10 @@ KK.Game = class Game {
       if (this.ui) this.ui.toast(`🎯 TRACK SNAPPED on ${victim} (${zone})!`);
     } else {
       if (this.audio) this.audio.playImpact(0.8);
-      const extra = msg.breechShock ? " • BREECH SHOCK (+3.0s RELOAD!)" : (msg.trackSnapped ? " • TRACK SNAPPED!" : "");
+      const extra = msg.cookoff === "cosmonaut" ? " • 🚀 T-72 AMMO DETONATION!"
+        : (msg.cookoff === "blowout" ? " • 🔥 BLOW-OUT RACK COOK-OFF!"
+        : (msg.cookoff === "grad" ? " • 💥 GRAD ROCKET RACK DETONATED!"
+        : (msg.breechShock ? " • BREECH SHOCK (+3.0s RELOAD!)" : (msg.trackSnapped ? " • TRACK SNAPPED!" : ""))));
       if (this.ui) this.ui.toast(`🎯 PENETRATED ${victim}'s ${zone} (${msg.penMm || "?"}mm vs ${msg.effArmorMm || "?"}mm eff)${extra}!`);
     }
   }
@@ -3224,8 +3235,114 @@ KK.Game = class Game {
   }
 
   // ==========================================================================
-  // v17.9.2 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
+  // v18.0 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
   // ==========================================================================
+  // ==========================================================================
+  // v18.0 TANK COMBAT CORE: STATE RESET, EXACT RAY-vs-OBB HITBOXES & LWR/FCS
+  // ==========================================================================
+  _resetTankCombatState(resetAmmoRacks = true) {
+    if (this.armorViewerActive) this.toggleArmorViewer();
+    this.tankModules = { turretRing: 100, gunBreech: 100, gunBarrel: 100, lwsSensor: 100, secBarrel: 100 };
+    this.turretPopActive = false;
+    this.turretPopY = 0;
+    this.turretPopVy = 0;
+    this.turretPopPitch = 0;
+    this.turretPopRoll = 0;
+    this.cookoffJetTimer = 0;
+    this._trkAlreadySnapped = {};
+    this.fcsLaserOn = false;
+    this.lwrAlertTimer = 0;
+    this.fcsLockedTarget = null;
+    if (resetAmmoRacks) {
+      this.ammoRackLIntact = true;
+      this.ammoRackRIntact = true;
+    }
+  }
+
+  _handleIncomingLwrPing(msg) {
+    if (!this.vehicle || this.onFoot || !msg) return;
+    const vid = this.vehicle.vState ? this.vehicle.vState.vehicleId : "";
+    const hasLwr = (vid === "pzkpfw_140a4" || vid === "harimau" || vid === "t72" || vid === "shilka" || vid === "btr80" || vid === "komodo_turret");
+    if (!hasLwr) return;
+    if (this.tankModules && this.tankModules.lwsSensor < 25) return;
+    const dx = (msg.sx || 0) - this.vehicle.pos.x;
+    const dz = (msg.sz || 0) - this.vehicle.pos.z;
+    const invQ = this._tmpInvQuat.copy(this.vehicle.quat).invert();
+    const loc = new THREE.Vector3(dx, 0, dz).applyQuaternion(invQ);
+    let deg = Math.atan2(loc.x, loc.z) * (180 / Math.PI);
+    if (deg < 0) deg += 360;
+    const clock = Math.round(deg / 30) || 12;
+    this.lwrAlertBearing = `${clock} O'CLOCK (${Math.round(Math.hypot(dx, dz))}m)`;
+    this.lwrAlertTimer = 2.6;
+    const nowMs = performance.now();
+    if (!this._lastLwrBeepMs || nowMs - this._lastLwrBeepMs > 420) {
+      this._lastLwrBeepMs = nowMs;
+      if (this.audio && this.audio.playLwrBeep) this.audio.playLwrBeep();
+    }
+  }
+
+  _isBeamBlockedBySmoke(ox, oy, oz, dx, dy, dz, maxDist) {
+    if (!this.smokeClouds || !this.smokeClouds.length) return false;
+    for (let i = 0; i < this.smokeClouds.length; i++) {
+      const sc = this.smokeClouds[i];
+      const rad = Math.max(4.5, (sc.scale || 1.0) * 6.5);
+      const sx = sc.gx - ox, sy = (sc.gy + 2.2) - oy, sz = sc.gz - oz;
+      const t = sx * dx + sy * dy + sz * dz;
+      if (t < 0 || t > maxDist) continue;
+      const px = ox + dx * t - sc.gx, py = oy + dy * t - (sc.gy + 2.2), pz = oz + dz * t - sc.gz;
+      if (px * px + py * py + pz * pz <= rad * rad) return true;
+    }
+    return false;
+  }
+
+  // Exact Ray-vs-OBB (Hull Box + Turret Box in target's quaternion frame) — ZERO point-blank misses!
+  _raycastRemotePlayersOBB(ox, oy, oz, dx, dy, dz, maxDist) {
+    if (!this.network || !this.network.remotePlayers || this.network.remotePlayers.size === 0) return null;
+    let bestHit = null;
+    let bestT = maxDist;
+    const rayBox = (roX, roY, roZ, rdX, rdY, rdZ, minX, minY, minZ, maxX, maxY, maxZ) => {
+      let tmin = 0.4, tmax = bestT;
+      const slab = (ro, rd, bmin, bmax) => {
+        if (Math.abs(rd) < 1e-6) return (ro >= bmin && ro <= bmax);
+        let t1 = (bmin - ro) / rd, t2 = (bmax - ro) / rd;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+        return tmin <= tmax;
+      };
+      if (!slab(roX, rdX, minX, maxX)) return -1;
+      if (!slab(roY, rdY, minY, maxY)) return -1;
+      if (!slab(roZ, rdZ, minZ, maxZ)) return -1;
+      return (tmin >= 0.4 && tmin < bestT) ? tmin : -1;
+    };
+
+    const invQ = new THREE.Quaternion();
+    const roL = new THREE.Vector3();
+    const rdL = new THREE.Vector3();
+    for (const rp of this.network.remotePlayers.values()) {
+      if (rp.onFoot) continue;
+      const sp = (KK.VEHICLES && KK.VEHICLES[rp.vehicleId]) ? KK.VEHICLES[rp.vehicleId] : null;
+      const hw = ((sp && sp.bodyWidth) || 2.8) * 0.56;
+      const hl = ((sp && sp.bodyLen) || 5.8) * 0.54;
+      const hullH = (sp && sp.isTracked) ? 1.55 : 1.75;
+      invQ.set(rp.qx || 0, rp.qy || 0, rp.qz || 0, rp.qw || 1).normalize().invert();
+      roL.set(ox - (rp.gx || 0), oy - (rp.gy || 0), oz - (rp.gz || 0)).applyQuaternion(invQ);
+      rdL.set(dx, dy, dz).applyQuaternion(invQ).normalize();
+
+      let tHit = rayBox(roL.x, roL.y, roL.z, rdL.x, rdL.y, rdL.z, -hw, 0.05, -hl, hw, hullH, hl);
+      const isArm = !!(sp && (sp.isTracked || sp.id === "bm21" || sp.id === "btr80" || sp.id === "komodo_turret"));
+      if (isArm) {
+        const tw = hw * 0.72, tl = hl * 0.58;
+        const tTur = rayBox(roL.x, roL.y, roL.z, rdL.x, rdL.y, rdL.z, -tw, hullH - 0.1, -tl, tw, hullH + 1.15, tl);
+        if (tTur > 0 && (tHit < 0 || tTur < tHit)) tHit = tTur;
+      }
+      if (tHit > 0 && tHit < bestT) {
+        bestT = tHit;
+        bestHit = { rp, t: tHit, x: ox + dx * tHit, y: oy + dy * tHit, z: oz + dz * tHit };
+      }
+    }
+    return bestHit;
+  }
+
   _getArmorProfile(spec, vs) {
     const id = spec ? spec.id : "";
     const hasK5 = (id === "t72" && !!(vs && vs.upgrades && vs.upgrades.t72Kontakt5));
@@ -3262,18 +3379,29 @@ KK.Game = class Game {
     const tip = document.getElementById("armor-viewer-tooltip");
     if (!tip || !this.armorViewerActive || !this.vehicleRig || !this.camera) return;
     this._armorRaycaster.setFromCamera(this._armorMouseNdc, this.camera);
-    const hits = this._armorRaycaster.intersectObject(this.vehicleRig.root, true);
-    if (!hits.length) { tip.classList.add("hidden"); return; }
-    const hit = hits[0];
-    const prof = this._getArmorProfile(this.vehicle.spec, this.vehicle.vState);
+    const rawHits = this._armorRaycaster.intersectObject(this.vehicleRig.root, true);
+    const hit = rawHits.find((h) => {
+      const o = h.object;
+      if (!o || !o.visible || o.renderOrder >= 10) return false;
+      const m0 = Array.isArray(o.material) ? o.material[0] : o.material;
+      return !!(m0 && !m0.transparent && m0.depthWrite !== false);
+    });
+    if (!hit) { tip.classList.add("hidden"); return; }
+    const sp = this.vehicle.spec;
+    const prof = this._getArmorProfile(sp, this.vehicle.vState);
     const localPt = this.vehicleRig.root.worldToLocal(hit.point.clone());
+    const halfW = (sp.bodyWidth || 3.2) * 0.42;
+    const halfL = (sp.bodyLen || 6.2) * 0.34;
+    const turretY = sp.isSchreckensfurst ? 1.52 : (sp.isTracked ? 1.46 : 1.65);
+    const roofY   = sp.isSchreckensfurst ? 2.48 : (sp.isTracked ? 2.28 : 2.30);
     let zoneName = "FRONT GLACIS", nominal = prof.front;
-    if (localPt.y > 1.50) { zoneName = "TURRET ARMOR"; nominal = prof.turret; }
-    else if (localPt.y < 0.35) { zoneName = "BELLY PLATE"; nominal = prof.belly; }
-    else if (Math.abs(localPt.x) > 1.15) {
+    if (localPt.y > roofY) { zoneName = "ROOF ARMOR"; nominal = prof.roof; }
+    else if (localPt.y > turretY) { zoneName = "TURRET ARMOR"; nominal = prof.turret; }
+    else if (localPt.y < 0.34) { zoneName = "BELLY PLATE"; nominal = prof.belly; }
+    else if (Math.abs(localPt.x) > halfW) {
       zoneName = localPt.z >= 0 ? "FRONT-SIDE HULL" : "REAR-SIDE HULL";
       nominal = localPt.z >= 0 ? prof.sideFront : prof.sideRear;
-    } else if (localPt.z < -1.5) { zoneName = "REAR HULL / ENGINE DECK"; nominal = prof.rear; }
+    } else if (localPt.z < -halfL) { zoneName = "REAR HULL / ENGINE DECK"; nominal = prof.rear; }
 
     let angleDeg = 0;
     if (hit.face && hit.object) {
@@ -3414,18 +3542,28 @@ KK.Game = class Game {
       zoneNormalL.set(0, 0.12, -0.99).normalize();
     }
 
-    // 3. v17.9.2 PER-VEHICLE, PER-ZONE RHA ARMOR PROFILE (140A4: 900 Front / 500 Side-Front / 200 Side-Rear / 200 Rear!)
+    // 3. v18.0 EXACT QUATERNION LOCAL HIT COORDINATES + GROUND-SPLASH BELLY FIX + PROPER ROOF/BELLY NORMALS!
     const prof = this._getArmorProfile(spec, vs);
-    const hitLocalZ = (hx - vx) * Math.sin(this.vehicle.yaw || 0) + (hz - vz) * Math.cos(this.vehicle.yaw || 0);
+    const hitLocalPt = new THREE.Vector3(hx - vx, hy - this.vehicle.pos.y, hz - vz).applyQuaternion(invQuat);
+    const hitLocalZ = hitLocalPt.z;
+    const isDirectBelly = (dist < 2.8 && hitH < -0.10);
     let zoneRha = prof.front;
-    if (hitH > 2.35) { zone = "ROOF"; zoneLabel = "ROOF ARMOR"; zoneRha = prof.roof; }
-    else if (hitH < 0.28) { zone = "BELLY"; zoneLabel = "BELLY PLATE"; zoneRha = prof.belly; }
-    else if (zone === "TURRET") zoneRha = prof.turret;
-    else if (zone === "SIDE" || zone === "TRACKS") {
+    if (hitH > 2.35 && dist < 3.6) {
+      zone = "ROOF"; zoneLabel = "ROOF ARMOR"; zoneRha = prof.roof;
+      zoneNormalL.set(0, 1, 0);
+    } else if (isDirectBelly) {
+      zone = "BELLY"; zoneLabel = "BELLY PLATE"; zoneRha = prof.belly;
+      zoneNormalL.set(0, -1, 0);
+    } else if (zone === "TURRET") {
+      zoneRha = prof.turret;
+    } else if (zone === "SIDE" || zone === "TRACKS") {
       zoneRha = (hitLocalZ >= 0) ? prof.sideFront : prof.sideRear;
       if (zone === "SIDE") zoneLabel = (sideSign < 0 ? "LEFT " : "RIGHT ") + (hitLocalZ >= 0 ? "FRONT-SIDE HULL" : "REAR-SIDE HULL");
-    } else if (zone === "REAR") zoneRha = prof.rear;
-    else zoneRha = prof.front;
+    } else if (zone === "REAR") {
+      zoneRha = prof.rear;
+    } else {
+      zoneRha = prof.front;
+    }
 
     const cosTheta = Math.max(0.0, Math.min(1.0, Math.abs(toShooterL.dot(zoneNormalL))));
     const impactAngleDeg = Math.acos(Math.min(1.0, cosTheta)) * (180 / Math.PI);
@@ -3470,7 +3608,7 @@ KK.Game = class Game {
     const hlth = vs.health;
 
     // 5. AUTO-RICOCHET & HEAVY MBT NON-PENETRATION (with exposed track/optic chip for autocannons!)
-    // v17.9.2 STRICT PENETRATION CHECK: AP, HE, HESH & Autocannons MUST beat effective armor to penetrate!
+    // v18.0 STRICT PENETRATION CHECK: AP, HE, HESH & Autocannons MUST beat effective armor to penetrate!
     const apObliqueBounce = isAp && (impactAngleDeg > 72 || effPenMm < effArmorMm);
     const heNonPen = (isHe && !isTherm && isArmored) && (effPenMm < effArmorMm * 0.92);
     const autoBounce = isAuto && (effPenMm < effArmorMm * 0.92);
@@ -3480,8 +3618,9 @@ KK.Game = class Game {
       if (isAuto && isTank && (zone === "TRACKS" || (isSideHit && hitH < 1.15))) {
         const tKey = sideSign < 0 ? "trackL" : "trackR";
         const tDmg = caliberMm >= 35 ? 36 : (caliberMm >= 28 ? 26 : (caliberMm >= 20 ? 18 : 11));
-        hlth[tKey] = Math.max(0, (hlth[tKey] !== undefined ? hlth[tKey] : 100) - tDmg);
-        if (hlth[tKey] < 15) {
+        const prevT1 = (hlth[tKey] !== undefined ? hlth[tKey] : 100);
+        hlth[tKey] = Math.max(0, prevT1 - tDmg);
+        if (prevT1 >= 15 && hlth[tKey] < 15) {
           trackSnapped = true;
           if (this.ui) this.ui.toast(`💥 ${zoneLabel} SNAPPED BY ${Math.round(caliberMm)}mm FIRE! Repair with [X]!`, true);
         }
@@ -3519,7 +3658,7 @@ KK.Game = class Game {
       if (!trackSnapped && this.ui) {
         this.ui.toast(`🛡 ${zoneLabel} RICOCHET! ${Math.round(effArmorMm)}mm eff vs ${Math.round(effPenMm)}mm ${shell.toUpperCase()}`);
       }
-      this._sendArmorHitAck(shooterPeerId, {
+      if (!fromSelf) this._sendArmorHitAck(shooterPeerId, {
         outcome: "ricochet",
         zone: zoneLabel,
         shell,
@@ -3547,50 +3686,64 @@ KK.Game = class Game {
       if (this.audio.playArmorClang) this.audio.playArmorClang(caliberMm, false);
       if (caliberMm >= 90 && this.audio.playConcussionMuffle) this.audio.playConcussionMuffle();
     }
-    // v17.9.2 DAMAGEABLE MODULES & AMMO COOK-OFF (T-72 Cosmonaut vs 140A4 Dual Blow-Out Racks!)
+    // v18.0 LOCATION-ACCURATE DAMAGEABLE MODULES & AMMO STOWAGE COOK-OFFS!
+    let cookoffKind = null;
     if (isArmored && caliberMm >= 20) {
-      if (zone === "TURRET") {
-        this.tankModules.turretRing = Math.max(0, this.tankModules.turretRing - dmg * 0.85);
-        this.tankModules.gunBreech  = Math.max(0, this.tankModules.gunBreech  - dmg * 0.65);
-        if (Math.random() < 0.35) this.tankModules.lwsSensor = Math.max(0, this.tankModules.lwsSensor - 60);
-        if (Math.random() < 0.30) this.tankModules.secBarrel = Math.max(0, this.tankModules.secBarrel - 65);
+      if (zone === "TURRET" || zone === "ROOF") {
+        this.tankModules.turretRing = Math.max(0, this.tankModules.turretRing - dmg * 0.90);
+        this.tankModules.gunBreech  = Math.max(0, this.tankModules.gunBreech  - dmg * 0.72);
+        if (Math.abs(hitLocalPt.x) < 0.75 && hitLocalPt.z > 0.2) {
+          this.tankModules.gunBarrel = Math.max(0, this.tankModules.gunBarrel - dmg * 0.95);
+        }
+        if (Math.random() < 0.35) this.tankModules.lwsSensor = Math.max(0, this.tankModules.lwsSensor - 65);
+        if (Math.random() < 0.32) this.tankModules.secBarrel = Math.max(0, this.tankModules.secBarrel - 70);
       }
-      if (caliberMm >= 90 && dmg > 12 && (zone === "SIDE" || zone === "REAR" || zone === "TURRET" || Math.random() < 0.65)) {
-        if (spec.id === "t72" && !this.turretPopActive) {
+      if (caliberMm >= 90 && dmg > 12) {
+        if (spec.id === "t72" && !this.turretPopActive && Math.abs(hitLocalPt.z) < 1.65 && zone !== "REAR") {
           this.turretPopActive = true;
-          this.turretPopVy = 18.5;
+          this.turretPopVy = 19.5;
           vs.burnedOut = true;
-          this.cookoffJetTimer = 3.5;
+          this.cookoffJetTimer = 3.6;
+          cookoffKind = "cosmonaut";
           if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
           if (this.ui) this.ui.toast("🚀 T-72 CAROUSEL COOK-OFF!! Turret launched — exit [F] or recover to any Garage!", true);
-        } else if (is140) {
-          const hitLeft = (sideSign < 0);
-          if (hitLeft && this.ammoRackLIntact) {
-            this.ammoRackLIntact = false;
+        } else if (is140 && zone === "TURRET" && hitLocalPt.z < -0.10) {
+          const hitLeft = (hitLocalPt.x < 0);
+          const throughBoth = isAp && Math.abs(toShooterL.x) > 0.75;
+          const halve140 = () => {
             vs.p140ApAmmo = Math.floor((vs.p140ApAmmo || 0) * 0.5);
             vs.p140HeshAmmo = Math.floor((vs.p140HeshAmmo || 0) * 0.5);
-            this.cookoffJetTimer = 3.5;
+            vs.p140ThermAmmo = Math.floor((vs.p140ThermAmmo || 0) * 0.5);
+            vs.p140RlgAmmo = Math.floor((vs.p140RlgAmmo || 0) * 0.5);
+          };
+          if (throughBoth && (this.ammoRackLIntact || this.ammoRackRIntact)) {
+            this.ammoRackLIntact = false; this.ammoRackRIntact = false;
+            vs.p140ApAmmo = 0; vs.p140HeshAmmo = 0; vs.p140ThermAmmo = 0; vs.p140RlgAmmo = 0;
+            this.cookoffJetTimer = 3.8; cookoffKind = "blowout";
+            if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
+            if (this.ui) this.ui.toast("🔥 BOTH 140A4 BLOW-OUT RACKS COOKED OFF! Crew safe — 0 shells left!", true);
+          } else if (hitLeft && this.ammoRackLIntact) {
+            this.ammoRackLIntact = false; halve140();
+            this.cookoffJetTimer = 3.5; cookoffKind = "blowout";
             if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
             if (this.ui) this.ui.toast("🔥 LEFT BLOW-OUT RACK COOK-OFF! 50% ammo lost — Right rack still operational!", true);
           } else if (!hitLeft && this.ammoRackRIntact) {
-            this.ammoRackRIntact = false;
-            vs.p140ApAmmo = Math.floor((vs.p140ApAmmo || 0) * 0.5);
-            vs.p140HeshAmmo = Math.floor((vs.p140HeshAmmo || 0) * 0.5);
-            this.cookoffJetTimer = 3.5;
+            this.ammoRackRIntact = false; halve140();
+            this.cookoffJetTimer = 3.5; cookoffKind = "blowout";
             if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
             if (this.ui) this.ui.toast("🔥 RIGHT BLOW-OUT RACK COOK-OFF! 50% ammo lost — Left rack still operational!", true);
           }
-        } else if (spec.id === "bm21" && (vs.bm21Rockets || 0) > 0) {
+        } else if (spec.id === "bm21" && (vs.bm21Rockets || 0) > 0 && hitLocalPt.z < 0.2 && hitLocalPt.y > 1.15) {
           vs.bm21Rockets = 0;
           vs.burnedOut = true;
-          this.cookoffJetTimer = 4.5;
+          this.cookoffJetTimer = 4.5; cookoffKind = "grad";
           if (this.particles) this.particles.emitCrashBurst(vx, vy + 1.8, vz, 3.2, "rock", this.weather.weather);
           if (this.audio && this.audio.playTank125mmBlast) this.audio.playTank125mmBlast(155);
           if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
           if (this.ui) this.ui.toast("💥 BM-21 GRAD ROCKET RACK DETONATED!! MASSIVE SECONDARY EXPLOSION!", true);
-        } else if (spec.id === "harimau" || spec.id === "shilka" || spec.id === "komodo_turret") {
+        } else if ((spec.id === "harimau" && zone === "TURRET" && hitLocalPt.z < -0.1) || ((spec.id === "shilka" || spec.id === "komodo_turret") && zone === "TURRET")) {
           vs.t72HeAmmo = 0; vs.t72ApAmmo = 0; vs.shilkaAmmo = 0; vs.btrAmmo = 0;
-          this.cookoffJetTimer = 3.5;
+          this.cookoffJetTimer = 3.5; cookoffKind = "blowout";
           if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
           if (this.ui) this.ui.toast("🔥 AMMO RACK BLOW-OUT! Crew survived — all ammo cooked off!", true);
         }
@@ -3626,7 +3779,7 @@ KK.Game = class Game {
       if (isTank && zone === "TRACKS") {
         const tKey = sideSign < 0 ? "trackL" : "trackR";
         hlth[tKey] = Math.max(0, (hlth[tKey] !== undefined ? hlth[tKey] : 100) - Math.max(48, dmg * 1.8));
-        if (hlth[tKey] < 15) trackSnapped = true;
+        if ((hlth[tKey] !== undefined ? hlth[tKey] : 100) < 15 && !this._trkAlreadySnapped?.[tKey]) { trackSnapped = true; if (!this._trkAlreadySnapped) this._trkAlreadySnapped = {}; this._trkAlreadySnapped[tKey] = true; }
       }
     } else if (isHe || isTherm) {
       // HE / HESH / 122mm Rockets / Thermobaric: Overpressure shockwave, heavy track snapping & optic shatter!
@@ -3643,15 +3796,13 @@ KK.Game = class Game {
       if (isTherm) this.vehicle.coolantTemp = Math.min(132, (this.vehicle.coolantTemp || 85) + 24 * falloff);
       if (isTank) {
         const trackDmg = (zone === "TRACKS" ? 72 : (zone === "SIDE" ? 56 : 38)) * falloff * (isHesh ? 1.15 : 1.0) * eraDmgMult;
-        if (sideSign < 0 || zone === "FRONT" || zone === "REAR") {
-          hlth.trackL = Math.max(0, (hlth.trackL !== undefined ? hlth.trackL : 100) - trackDmg);
-        }
-        if (sideSign >= 0 || zone === "FRONT" || zone === "REAR") {
-          hlth.trackR = Math.max(0, (hlth.trackR !== undefined ? hlth.trackR : 100) - trackDmg);
-        }
-        if ((hlth.trackL !== undefined && hlth.trackL < 15) || (hlth.trackR !== undefined && hlth.trackR < 15)) {
-          trackSnapped = true;
-        }
+        const prevHL = hlth.trackL !== undefined ? hlth.trackL : 100;
+        const prevHR = hlth.trackR !== undefined ? hlth.trackR : 100;
+        if (sideSign < 0 || zone === "FRONT" || zone === "REAR") hlth.trackL = Math.max(0, prevHL - trackDmg);
+        if (sideSign >= 0 || zone === "FRONT" || zone === "REAR") hlth.trackR = Math.max(0, prevHR - trackDmg);
+        if (!this._trkAlreadySnapped) this._trkAlreadySnapped = {};
+        if (prevHL >= 15 && hlth.trackL < 15 && !this._trkAlreadySnapped.trackL) { trackSnapped = true; this._trkAlreadySnapped.trackL = true; }
+        if (prevHR >= 15 && hlth.trackR < 15 && !this._trkAlreadySnapped.trackR) { trackSnapped = true; this._trkAlreadySnapped.trackR = true; }
       } else if (this.vehicle._damageTire) {
         this.vehicle._damageTire(Math.floor(Math.random() * this.vehicle.wheels.length), 68 * falloff, "shrapnel");
       }
@@ -3670,7 +3821,7 @@ KK.Game = class Game {
       if (isTank) {
         const tKey = sideSign < 0 ? "trackL" : "trackR";
         hlth[tKey] = Math.max(0, (hlth[tKey] !== undefined ? hlth[tKey] : 100) - dmg * 1.6);
-        if (hlth[tKey] < 15) trackSnapped = true;
+        if ((hlth[tKey] !== undefined ? hlth[tKey] : 100) < 15 && !this._trkAlreadySnapped?.[tKey]) { trackSnapped = true; if (!this._trkAlreadySnapped) this._trkAlreadySnapped = {}; this._trkAlreadySnapped[tKey] = true; }
       } else if (vs.blownTires && vs.blownTires.length > 0 && Math.random() < 0.55) {
         const wi = Math.floor(Math.random() * vs.blownTires.length);
         vs.blownTires[wi] = true;
@@ -3697,16 +3848,19 @@ KK.Game = class Game {
       }
     }
 
-    this._sendArmorHitAck(shooterPeerId, {
-      outcome: eraTriggered ? "era" : (trackSnapped ? "track_snap" : "pen"),
-      zone: zoneLabel,
-      shell,
-      cal: Math.round(caliberMm),
-      effArmorMm: Math.round(effArmorMm),
-      penMm: Math.round(effPenMm),
-      breechShock,
-      trackSnapped
-    });
+    if (!fromSelf) {
+      this._sendArmorHitAck(shooterPeerId, {
+        outcome: eraTriggered ? "era" : (trackSnapped ? "track_snap" : "pen"),
+        zone: zoneLabel,
+        shell,
+        cal: Math.round(caliberMm),
+        effArmorMm: Math.round(effArmorMm),
+        penMm: Math.round(effPenMm),
+        breechShock,
+        trackSnapped,
+        cookoff: cookoffKind
+      });
+    }
   }
 
   _applyTreeBallistics(gx, gy, gz, dmg, blastRad = 0, dirX = 1, dirZ = 0) {
@@ -3752,6 +3906,12 @@ KK.Game = class Game {
     if (this.onFoot || this.ridingWithPeerId || this.ui.activeModal) return;
     const vs = this.vehicle.vState;
     if (vs.vehicleId !== "pzkpfw_140a4" || this.t72ReloadTimer > 0) return;
+    if (this.tankModules && this.tankModules.gunBarrel < 15) { this.ui.toast("🚫 140mm BARREL DESTROYED! Repair at front hood [F] or Garage!", true); return; }
+    if (this.tankModules && this.tankModules.gunBreech < 18 && Math.random() < 0.35) {
+      if (this.audio && this.audio.playThermalClick) this.audio.playThermalClick();
+      this.ui.toast("⚠ BREECH MISFIRE! Damaged breech failed to ignite — pull trigger again!", true);
+      return;
+    }
     const sh = vs.p140ShellType || "ap140";
     const keyMap = { ap140: "p140ApAmmo", hesh140: "p140HeshAmmo", therm140: "p140ThermAmmo", rlg140: "p140RlgAmmo" };
     const ammoKey = keyMap[sh] || "p140ApAmmo";
@@ -3760,7 +3920,8 @@ KK.Game = class Game {
       return;
     }
     vs[ammoKey]--;
-    this.t72ReloadTotal = 4.8;
+    const brPen140 = this.tankModules ? (1.0 + Math.max(0, (100 - this.tankModules.gunBreech) / 100) * 0.85) : 1.0;
+    this.t72ReloadTotal = +(4.8 * brPen140).toFixed(2);
     this.t72ReloadTimer = this.t72ReloadTotal;
     this.t72BarrelRecoil = 1.0;
     this.t72MainFlash = 0.18;
@@ -3792,9 +3953,16 @@ KK.Game = class Game {
     }
 
     const maxRange = sh === "ap140" ? 560 : 450;
-    let endPt = mz.tipWorld.clone().addScaledVector(aimDir, maxRange);
+    if (this.tankModules && this.tankModules.gunBarrel < 50) {
+      const spr = (50 - this.tankModules.gunBarrel) * 0.0009;
+      aimDir.x += (Math.random() - 0.5) * spr; aimDir.y += (Math.random() - 0.5) * spr; aimDir.z += (Math.random() - 0.5) * spr;
+      aimDir.normalize();
+    }
+    const obbHit140 = this._raycastRemotePlayersOBB(mz.tipWorld.x, mz.tipWorld.y, mz.tipWorld.z, aimDir.x, aimDir.y, aimDir.z, maxRange);
+    const effMax140 = obbHit140 ? obbHit140.t : maxRange;
+    let endPt = obbHit140 ? new THREE.Vector3(obbHit140.x, obbHit140.y, obbHit140.z) : mz.tipWorld.clone().addScaledVector(aimDir, maxRange);
     const isAp140 = (sh === "ap140");
-    for (let s = 6; s <= maxRange; s += (isAp140 ? 4 : 6)) {
+    for (let s = 6; s < effMax140; s += (isAp140 ? 4 : 6)) {
       const rx = mz.tipWorld.x + aimDir.x * s, ry = mz.tipWorld.y + aimDir.y * s, rz = mz.tipWorld.z + aimDir.z * s;
       // Direct hit check on LAN friend vehicles/tanks (crucial for pinpoint APFSDS!)
       let hitPeer = false;
@@ -3843,6 +4011,7 @@ KK.Game = class Game {
     if (this.onFoot || this.ridingWithPeerId || this.ui.activeModal) return;
     const vs = this.vehicle.vState;
     if (vs.vehicleId !== "pzkpfw_140a4" || this.t72CoaxCd > 0) return;
+    if (this.tankModules && this.tankModules.secBarrel < 20) { this.ui.toast("🚫 40mm AUTOKANONE BARREL SILENCED! Repair [F]!", true); return; }
     if ((vs.p140AutoAmmo || 0) <= 0) return;
     this.t72CoaxCd = 0.22;
     this.t72CoaxFlash = 0.09;
@@ -3867,8 +4036,10 @@ KK.Game = class Game {
       muzzleG = new THREE.Vector3(pedX + Math.sin(rYaw) * 2.85, 3.06, pedZ + Math.cos(rYaw) * 2.85).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
       aimDir = new THREE.Vector3(Math.sin(rYaw) * Math.cos(rPitch), Math.sin(rPitch), Math.cos(rYaw) * Math.cos(rPitch)).applyQuaternion(this.vehicle.quat).normalize();
     }
-    let endPt = muzzleG.clone().addScaledVector(aimDir, 360);
-    for (let s = 8; s <= 360; s += 5) {
+    const obb40 = this._raycastRemotePlayersOBB(muzzleG.x, muzzleG.y, muzzleG.z, aimDir.x, aimDir.y, aimDir.z, 360);
+    const lim40 = obb40 ? obb40.t : 360;
+    let endPt = obb40 ? new THREE.Vector3(obb40.x, obb40.y, obb40.z) : muzzleG.clone().addScaledVector(aimDir, 360);
+    for (let s = 6; s < lim40; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
       let hitP = false;
       if (this.network && this.network.remotePlayers) {
@@ -3904,6 +4075,12 @@ KK.Game = class Game {
     const vs = this.vehicle.vState;
     if (vs.vehicleId === "pzkpfw_140a4") { this.fireP140MainCannon(); return; }
     if (vs.vehicleId !== "t72" && vs.vehicleId !== "harimau") return;
+    if (this.tankModules && this.tankModules.gunBarrel < 15) { this.ui.toast("🚫 MAIN GUN BARREL DESTROYED! Field Repair [F] or Garage!", true); return; }
+    if (this.tankModules && this.tankModules.gunBreech < 18 && Math.random() < 0.35) {
+      if (this.audio && this.audio.playThermalClick) this.audio.playThermalClick();
+      this.ui.toast("⚠ BREECH MISFIRE! Damaged breech failed to ignite!", true);
+      return;
+    }
     if (this.t72ReloadTimer > 0) {
       this.ui.toast(`Carousel Autoloader cycling... (${this.t72ReloadTimer.toFixed(1)}s)`);
       return;
@@ -3915,7 +4092,8 @@ KK.Game = class Game {
       return;
     }
     vs[ammoKey]--;
-    this.t72ReloadTotal = (vs.vehicleId === "harimau") ? 5.0 : (vs.upgrades.t72SeismicFcs ? 4.8 : 6.5);
+    const brPenT = this.tankModules ? (1.0 + Math.max(0, (100 - this.tankModules.gunBreech) / 100) * 0.85) : 1.0;
+    this.t72ReloadTotal = +(((vs.vehicleId === "harimau") ? 5.0 : (vs.upgrades.t72SeismicFcs ? 4.8 : 6.5)) * brPenT).toFixed(2);
     this.t72ReloadTimer = this.t72ReloadTotal;
     this.t72BarrelRecoil = 1.0;
     this.t72MainFlash = 0.16;
@@ -3933,15 +4111,23 @@ KK.Game = class Game {
     }
 
     const maxRange = shell === "ap" ? 460 : 380;
-    let endPt = muzzleG.clone().addScaledVector(aimDir, maxRange);
+    if (this.tankModules && this.tankModules.gunBarrel < 50) {
+      const spr = (50 - this.tankModules.gunBarrel) * 0.0009;
+      aimDir.x += (Math.random() - 0.5) * spr; aimDir.y += (Math.random() - 0.5) * spr; aimDir.z += (Math.random() - 0.5) * spr;
+      aimDir.normalize();
+    }
+    const tankCalNow = (vs.vehicleId === "harimau") ? 105 : 125;
+    const obbHitT = this._raycastRemotePlayersOBB(muzzleG.x, muzzleG.y, muzzleG.z, aimDir.x, aimDir.y, aimDir.z, maxRange);
+    const effMaxT = obbHitT ? obbHitT.t : maxRange;
+    let endPt = obbHitT ? new THREE.Vector3(obbHitT.x, obbHitT.y, obbHitT.z) : muzzleG.clone().addScaledVector(aimDir, maxRange);
     let hitRes = { hit: false };
 
-    for (let s = 8; s <= maxRange; s += 6) {
+    for (let s = 6; s < effMaxT; s += 6) {
       const rx = muzzleG.x + aimDir.x * s;
       const ry = muzzleG.y + aimDir.y * s;
       const rz = muzzleG.z + aimDir.z * s;
       let hitP = false; if (this.network && this.network.remotePlayers) { for (const rp of this.network.remotePlayers.values()) { if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.4 && Math.abs((rp.gy || 0) + 1.2 - ry) < 2.8) { endPt.set(rx, ry, rz); hitP = true; break; } } } if (hitP) break;
-      let cHit = this.cryptids.applyCannonHit(rx, ry, rz, shell, this.audio, 125); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 52);
+      let cHit = this.cryptids.applyCannonHit(rx, ry, rz, shell, this.audio, tankCalNow); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 52);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
       if (this._applyTreeBallistics(rx, ry, rz, 20, 0, aimDir.x, aimDir.z).hit) { endPt.set(rx, ry, rz); break; }
@@ -3949,7 +4135,7 @@ KK.Game = class Game {
       const gh = this.world.getTerrainInfo(rx, rz, false).height;
       if (ry <= gh) {
         endPt.set(rx, gh, rz);
-        hitRes = this.cryptids.applyCannonHit(rx, gh, rz, shell, this.audio, 125);
+        hitRes = this.cryptids.applyCannonHit(rx, gh, rz, shell, this.audio, tankCalNow);
         if (shell === "he" || shell === "therm") {
           const cr = shell === "therm" ? 6.8 : 4.6, cd = shell === "therm" ? 2.0 : 1.25;
           if (this.world.addCrater(rx, rz, cr, cd)) {
@@ -3997,6 +4183,7 @@ KK.Game = class Game {
     const vs = this.vehicle.vState;
     if (vs.vehicleId === "pzkpfw_140a4") { this.fireP140AutoKanone40mm(); return; }
     if ((vs.vehicleId !== "t72" && vs.vehicleId !== "harimau") || this.t72CoaxCd > 0) return;
+    if (this.tankModules && this.tankModules.secBarrel < 20) { this.ui.toast("🚫 SECONDARY 14.5mm BARREL SILENCED! Repair [F]!", true); return; }
     if ((vs.t72CoaxAmmo || 0) <= 0) {
       this.ui.toast("OUT OF 14.5mm SECONDARY AMMO! Resupply at a Town Garage!", true); return;
     }
@@ -4018,9 +4205,11 @@ KK.Game = class Game {
       muzzleG = new THREE.Vector3(0.58, 2.96, 0.18).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
       aimDir = this._getBarrelAimWorldDir(this.p140RwsYaw);
     }
-    let endPt = muzzleG.clone().addScaledVector(aimDir, 240);
+    const obbCx = this._raycastRemotePlayersOBB(muzzleG.x, muzzleG.y, muzzleG.z, aimDir.x, aimDir.y, aimDir.z, 240);
+    const limCx = obbCx ? obbCx.t : 240;
+    let endPt = obbCx ? new THREE.Vector3(obbCx.x, obbCx.y, obbCx.z) : muzzleG.clone().addScaledVector(aimDir, 240);
     let hitRes = { hit: false };
-    for (let s = 8; s <= 240; s += 5) {
+    for (let s = 6; s < limCx; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
       let hitP = false;
       if (this.network && this.network.remotePlayers) {
@@ -4082,10 +4271,12 @@ KK.Game = class Game {
     }
 
     const maxRange = 240;
-    let endPt = muzzleLocal.clone().addScaledVector(aimDir, maxRange);
+    const obbBtr = this._raycastRemotePlayersOBB(muzzleLocal.x, muzzleLocal.y, muzzleLocal.z, aimDir.x, aimDir.y, aimDir.z, maxRange);
+    const limBtr = obbBtr ? obbBtr.t : maxRange;
+    let endPt = obbBtr ? new THREE.Vector3(obbBtr.x, obbBtr.y, obbBtr.z) : muzzleLocal.clone().addScaledVector(aimDir, maxRange);
     let hitRes = { hit: false };
 
-    for (let s = 8; s <= maxRange; s += 5) {
+    for (let s = 6; s < limBtr; s += 5) {
       const rx = muzzleLocal.x + aimDir.x * s;
       const ry = muzzleLocal.y + aimDir.y * s;
       const rz = muzzleLocal.z + aimDir.z * s;
@@ -4263,7 +4454,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.9.2.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v18.0.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -4439,9 +4630,11 @@ KK.Game = class Game {
     aimDir.z += (Math.random() - 0.5) * 0.016;
     aimDir.normalize();
 
-    let endPt = muzzleG.clone().addScaledVector(aimDir, 300);
+    const obbSh = this._raycastRemotePlayersOBB(muzzleG.x, muzzleG.y, muzzleG.z, aimDir.x, aimDir.y, aimDir.z, 300);
+    const limSh = obbSh ? obbSh.t : 300;
+    let endPt = obbSh ? new THREE.Vector3(obbSh.x, obbSh.y, obbSh.z) : muzzleG.clone().addScaledVector(aimDir, 300);
     let hitRes = { hit: false };
-    for (let s = 8; s <= 300; s += 5) {
+    for (let s = 6; s < limSh; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
       let hitP = false;
       if (this.network && this.network.remotePlayers) {
@@ -5393,7 +5586,7 @@ KK.Game = class Game {
           const camRight = this._tmpCamRight.set(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v17.9.2 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v18.0 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -5532,8 +5725,8 @@ KK.Game = class Game {
     this.world.toLocal(this.vehicle.pos.x, this.vehicle.pos.y, this.vehicle.pos.z, this.vehicleRig.root.position);
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
-    const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v17.9.2 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
+    const smokeLvl = this.vehicle.vState.burnedOut ? 1.0 : Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (38 - engHp) / 38);
+    // v18.0 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const gpZone = (KK.SMOOTH_TARMAC_ZONES || []).find((z) => z.isGpCircuit);
@@ -5574,7 +5767,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v17.9.2 Auto-save persistent vehicle odometer every 10s when driving!
+    // v18.0 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -5582,8 +5775,16 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
-    // v17.9.2 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
+    // v18.0 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
     if (this.armorViewerActive) this._updateArmorViewerTooltip();
+    if (this.lwrAlertTimer > 0) {
+      this.lwrAlertTimer = Math.max(0, this.lwrAlertTimer - dt);
+      const lwrEl = document.getElementById("lwr-fcs-banner");
+      if (lwrEl) {
+        lwrEl.textContent = `🚨 LASER WARNING RECEIVER — LOCK DETECTED AT ${this.lwrAlertBearing}! POP SMOKE [G]!`;
+        lwrEl.classList.toggle("hidden", this.lwrAlertTimer <= 0);
+      }
+    }
     if (this.turretPopActive) {
       this.turretPopY += this.turretPopVy * dt;
       this.turretPopVy -= 14.5 * dt;
@@ -5612,7 +5813,7 @@ KK.Game = class Game {
         this._turretWhineCd = 0.095;
       }
     }
-    // v17.9.2 Animate On-Foot Player Actions [1-5] on localAvatar!
+    // v18.0 Animate On-Foot Player Actions [1-5] on localAvatar!
     if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
       this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
       const tE = performance.now() * 0.012;
@@ -5638,7 +5839,7 @@ KK.Game = class Game {
         if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
       }
     }
-    // v17.9.2 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    // v18.0 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
     if (this.network && this.network.remotePlayers) {
       const nowMs = performance.now();
       for (const [pid, rp] of this.network.remotePlayers.entries()) {
@@ -5670,7 +5871,7 @@ KK.Game = class Game {
       }
     }
     this.vehicleRig.updateVisuals(dt, {
-      ammoRackLIntact: this.ammoRackLIntact, ammoRackRIntact: this.ammoRackRIntact, turretPopY: this.turretPopY, turretPopPitch: this.turretPopPitch, turretPopRoll: this.turretPopRoll, brakeHeat: this.vehicle.brakeHeat || 0, windshieldMud: this.windshieldMud || 0, timeOfDay: this.weather ? this.weather.timeOfDay : 12, engineRunning: this.vehicle.engineRunning, rpm: this.vehicle.rpm, gear: this.vehicle.gear, hasPassenger: hasLocalPassenger, glassHp: this.vehicle.vState.health.glass !== undefined ? this.vehicle.vState.health.glass : 100, trackL: this.vehicle.vState.health.trackL !== undefined ? this.vehicle.vState.health.trackL : 100, trackR: this.vehicle.vState.health.trackR !== undefined ? this.vehicle.vState.health.trackR : 100,
+      ammoRackLIntact: this.ammoRackLIntact, ammoRackRIntact: this.ammoRackRIntact, tankModules: this.tankModules, bm21Rockets: this.vehicle.vState.bm21Rockets, turretPopY: this.turretPopY, turretPopPitch: this.turretPopPitch, turretPopRoll: this.turretPopRoll, brakeHeat: this.vehicle.brakeHeat || 0, windshieldMud: this.windshieldMud || 0, timeOfDay: this.weather ? this.weather.timeOfDay : 12, engineRunning: this.vehicle.engineRunning, rpm: this.vehicle.rpm, gear: this.vehicle.gear, hasPassenger: hasLocalPassenger, glassHp: this.vehicle.vState.health.glass !== undefined ? this.vehicle.vState.health.glass : 100, trackL: this.vehicle.vState.health.trackL !== undefined ? this.vehicle.vState.health.trackL : 100, trackR: this.vehicle.vState.health.trackR !== undefined ? this.vehicle.vState.health.trackR : 100,
       wheelOffsets: this.vehicle.wheels.map((w) => w.visualOffsetY),
       wheelSpins: this.vehicle.wheels.map((w) => w.spinAngle),
       blownTires: this.vehicle.vState.blownTires,
@@ -5917,7 +6118,9 @@ KK.Game = class Game {
         // v14.1S REALISTIC TURRET ROTATION SPEEDS (rad/s — heavy turrets traverse physically instead of snapping!)
         const is140T = (curVid === "pzkpfw_140a4");
         const fcsMult = (curVid === "t72" && this.vehicle.vState.upgrades.t72SeismicFcs) ? 1.42 : 1.0;
-        const maxYawRate = is140T ? 0.70 : (curVid === "t72" ? (0.42 * fcsMult) : (isShilka ? 1.15 : (isBm21 ? 0.36 : 0.88)));
+        const ringHp = (this.tankModules && this.tankModules.turretRing !== undefined) ? this.tankModules.turretRing : 100;
+        const ringMult = ringHp <= 5 ? 0.14 : (0.28 + 0.72 * (ringHp / 100));
+        const maxYawRate = (is140T ? 0.70 : (curVid === "t72" ? (0.42 * fcsMult) : (isShilka ? 1.15 : (isBm21 ? 0.36 : 0.88)))) * ringMult;
         const maxStep = maxYawRate * dt;
         if (Math.abs(dy) <= maxStep) this.btrTurretYaw = targetYaw;
         else this.btrTurretYaw += Math.sign(dy) * maxStep;
@@ -6045,6 +6248,65 @@ KK.Game = class Game {
           this.lastLaserDist = lrfRes;
         }
         const rngTxt = this._lrfText || ">450m";
+        const isDigFcs = (curVid === "pzkpfw_140a4" || curVid === "harimau");
+        const elAn = document.getElementById("reticle-analog-soviet");
+        const elDg = document.getElementById("reticle-digital-fcs");
+        if (elAn) elAn.classList.toggle("hidden", isDigFcs);
+        if (elDg) elDg.classList.toggle("hidden", !isDigFcs);
+
+        const pipEl = document.getElementById("fcs-lead-pip");
+        const fcsModeTxt = document.getElementById("fcs-hud-mode");
+        const fcsTgtTxt = document.getElementById("fcs-hud-target");
+        const fcsLwrTxt = document.getElementById("fcs-hud-lwr");
+        if (fcsModeTxt) fcsModeTxt.textContent = this.fcsLaserOn ? `FCS: LASER ACTIVE [${rngTxt}]` : "FCS: STANDBY [`]";
+        if (fcsLwrTxt) fcsLwrTxt.textContent = (this.lwrAlertTimer > 0) ? `⚠ LWR: ${this.lwrAlertBearing}` : "";
+
+        let leadShown = false;
+        if (isDigFcs && this.fcsLaserOn && this.camera) {
+          const cDirF = this._tmpCamDir; this.camera.getWorldDirection(cDirF);
+          const cOrigF = this._tmpCamOrig.set(this.camera.position.x + this.world.originX, this.camera.position.y, this.camera.position.z + this.world.originZ);
+          const obbL = this._raycastRemotePlayersOBB(cOrigF.x, cOrigF.y, cOrigF.z, cDirF.x, cDirF.y, cDirF.z, 900);
+          if (obbL && !this._isBeamBlockedBySmoke(cOrigF.x, cOrigF.y, cOrigF.z, cDirF.x, cDirF.y, cDirF.z, obbL.t)) {
+            const rpL = obbL.rp;
+            const spdKmh = Math.hypot(rpL.vx || 0, rpL.vz || 0) * 3.6;
+            const shellSpd = curVid === "pzkpfw_140a4" ? 1850 : 1450;
+            const tof = obbL.t / shellSpd;
+            const leadW = new THREE.Vector3(
+              (rpL.gx + (rpL.vx || 0) * tof) - this.world.originX,
+              (rpL.gy + 1.4),
+              (rpL.gz + (rpL.vz || 0) * tof) - this.world.originZ
+            );
+            leadW.project(this.camera);
+            if (leadW.z < 1 && pipEl) {
+              pipEl.style.left = ((leadW.x * 0.5 + 0.5) * window.innerWidth) + "px";
+              pipEl.style.top = ((-leadW.y * 0.5 + 0.5) * window.innerHeight) + "px";
+              pipEl.classList.remove("hidden");
+              leadShown = true;
+            }
+            if (fcsTgtTxt) fcsTgtTxt.textContent = `LOCK: ${rpL.callsign || "TARGET"} • ${Math.round(obbL.t)}m • ${Math.round(spdKmh)} km/h`;
+            const nowMsL = performance.now();
+            if (this.network && this.network.mode !== "offline" && (!this._lastLwrSendMs || nowMsL - this._lastLwrSendMs > 500)) {
+              this._lastLwrSendMs = nowMsL;
+              this.network.send({ type: "lwr_ping", targetPeerId: rpL.peerId, sx: +this.vehicle.pos.x.toFixed(1), sz: +this.vehicle.pos.z.toFixed(1) });
+            }
+          } else if (fcsTgtTxt) {
+            fcsTgtTxt.textContent = obbL ? "LOCK BROKEN (SMOKE)" : `RANGE: ${rngTxt}`;
+          }
+        } else if (fcsTgtTxt) {
+          fcsTgtTxt.textContent = "TGT: MANUAL AIM";
+        }
+        if (pipEl && !leadShown) pipEl.classList.add("hidden");
+
+        const mStrip = document.getElementById("gunner-mod-strip");
+        if (mStrip && this.tankModules) {
+          const mCol = (v) => v >= 70 ? "#34d399" : (v >= 35 ? "#facc15" : "#f87171");
+          const tm = this.tankModules;
+          mStrip.innerHTML = `<span style="color:${mCol(tm.turretRing)}">RING ${Math.round(tm.turretRing)}%</span>`
+            + `<span style="color:${mCol(tm.gunBreech)}">BRCH ${Math.round(tm.gunBreech)}%</span>`
+            + `<span style="color:${mCol(tm.gunBarrel)}">BARL ${Math.round(tm.gunBarrel)}%</span>`
+            + `<span style="color:${mCol(tm.lwsSensor)}">LWS ${Math.round(tm.lwsSensor)}%</span>`
+            + `<span style="color:${mCol(tm.secBarrel)}">SEC ${Math.round(tm.secBarrel)}%</span>`;
+        }
         const ammoEl = this._elAmmo || (this._elAmmo = document.getElementById("gunner-ammo-readout"));
         if (ammoEl) {
           if (curVid === "pzkpfw_140a4") {
@@ -6127,7 +6389,11 @@ KK.Game = class Game {
     const myBoatMount = this.remoteBoatMount
       ? { ownerPeerId: this.remoteBoatMount.ownerPeerId, boatId: this.remoteBoatMount.boatId, bayIdx: this.remoteBoatMount.bayIdx, bx: this.remoteBoatMount.bx, bz: this.remoteBoatMount.bz, deckY: this.remoteBoatMount.deckY }
       : (localOwnBoatMount ? { ownerPeerId: this.network.peerId, boatId: localOwnBoatMount.boat.id, bayIdx: localOwnBoatMount.entry.bayIdx, bx: localOwnBoatMount.entry.x, bz: localOwnBoatMount.entry.z, deckY: localOwnBoatMount.boat.spec.deckY } : null);
-    this.network.broadcastPlayerState(dt, this.vehicle, this.playerFoot, this.onFoot, this.trailer, this.wipersOn, !!this.timedWork, this.btrTurretYaw, this.carriedByPeerId, false, this.barrelHeat, this.p140RwsYaw, this.p140RwsPitch, this.btrAimPitch, this.autoBarrelHeat, this.boats ? this.boats.activeBoat : null, myBoatMount);
+    const rFracNet = (this.t72ReloadTimer > 0 && this.t72ReloadTotal > 0) ? Math.max(0, Math.min(1, 1.0 - this.t72ReloadTimer / this.t72ReloadTotal)) : 0;
+    this.network.broadcastPlayerState(dt, this.vehicle, this.playerFoot, this.onFoot, this.trailer, this.wipersOn, !!this.timedWork, this.btrTurretYaw, this.carriedByPeerId, false, this.barrelHeat, this.p140RwsYaw, this.p140RwsPitch, this.btrAimPitch, this.autoBarrelHeat, this.boats ? this.boats.activeBoat : null, myBoatMount, {
+      turretPopY: this.turretPopY, turretPopPitch: this.turretPopPitch, turretPopRoll: this.turretPopRoll,
+      cookoff: this.cookoffJetTimer > 0, reloadFrac: rFracNet
+    });
     const lerpF = Math.min(1, dt * 12);
     for (const rp of this.network.remotePlayers.values()) {
       // 1. Velocity dead-reckoning + smooth lerp for normal remote driving
@@ -6171,9 +6437,16 @@ KK.Game = class Game {
           wheelOffsets: rp.wheelOffsets, wheelSpins: rp.wheelSpins, blownTires: rp.blownTires, steerAngle: rp.steerAngle,
           camberDeg: rp.camberDeg, toeDeg: 0, headlights: rp.headlights, glassHp: rp.glassHp !== undefined ? rp.glassHp : 100, lightbar: rp.lightbar, hasLightbar: rp.hasLightbar, headlightL: rp.headlightL, headlightR: rp.headlightR, wipersOn: rp.wipersOn, inCockpitCam: false, isEmpty: !!rp.onFoot, hasBtrTurret: !!rp.hasBtrTurret, turretYaw: rp.turretYaw || 0, gunPitch: rp.gunPitch || 0, rwsYaw: rp.rwsYaw !== undefined ? rp.rwsYaw : (rp.turretYaw || 0), rwsPitch: rp.rwsPitch || 0, autoBarrelHeat: rp.autoBarrelHeat || 0, t72Upgrades: { sturmKit: false }, isSchreckensfurst: rp.vehicleId === "pzkpfw_140a4",
           braking: rp.braking, reversing: false, hazards: rp.hazards, hoodOpen: false,
-          smokeLevel: rp.smokeLevel, dirtLevel: rp.dirtLevel, backfireTimer: rp.backfireTimer,
+          trackL: rp.trackL !== undefined ? rp.trackL : 100, trackR: rp.trackR !== undefined ? rp.trackR : 100, turretPopY: rp.turretPopY || 0, turretPopPitch: rp.turretPopPitch || 0, turretPopRoll: rp.turretPopRoll || 0, reloadFrac: rp.reloadFrac || 0, smokeLevel: (rp.smokeLevel && rp.smokeLevel > 0.15) ? rp.smokeLevel : 0, dirtLevel: rp.dirtLevel, backfireTimer: rp.backfireTimer,
           cargoTilt: 0, rideHeight: rp.rideHeight, thermalMode: this.thermalMode || 0, coolantTemp: rp.coolantTemp !== undefined ? rp.coolantTemp : 82, egtTemp: rp.egtTemp !== undefined ? rp.egtTemp : 320, barrelHeat: rp.barrelHeat || 0, speedKmh: Math.hypot(rp.vx || 0, rp.vz || 0) * 3.6
         });
+      }
+      if (rp.cookoff && this.particles && Math.hypot(rp.gx - this.vehicle.pos.x, rp.gz - this.vehicle.pos.z) < 420) {
+        this.particles.emitRGB(
+          rp.gx + (Math.random() - 0.5) * 0.8, (rp.gy || 0) + 2.3, rp.gz + (Math.random() - 0.5) * 0.8,
+          (Math.random() - 0.5) * 2.4, 11.0 + Math.random() * 6.0, (Math.random() - 0.5) * 2.4,
+          1.0, 0.72, 0.18, 0.55, 1.5, 1.4
+        );
       }
       if (this.remoteDustEnabled && !rp.onFoot && Math.hypot(rp.gx - this.vehicle.pos.x, rp.gz - this.vehicle.pos.z) < 260) {
         this.particles.emitRemoteWheelSpray(rp, this.world, this.weather.weather, dt);
@@ -6265,7 +6538,7 @@ KK.Game = class Game {
         ctx2.drawImage(this.canvas, 0, 0);
 
         // Stamp clean version watermark in bottom-right corner of every screenshot!
-        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v17.9.2"}`;
+        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v18.0"}`;
         const fontSize = Math.max(14, Math.round(outCv.height * 0.020));
         ctx2.font = `bold ${fontSize}px monospace`;
         const padX = Math.round(fontSize * 0.72);
@@ -6291,11 +6564,11 @@ KK.Game = class Game {
         const a = document.createElement("a");
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         a.href = dataUrl;
-        a.download = `krasno_kamenka_${KK.VERSION || "v17.9.2"}_${ts}.png`;
+        a.download = `krasno_kamenka_${KK.VERSION || "v18.0"}_${ts}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v17.9.2"})!`);
+        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v18.0"})!`);
       } catch (err) {
         this.ui.toast("Screenshot failed: " + err.message, true);
       }

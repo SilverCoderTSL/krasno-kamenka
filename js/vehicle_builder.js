@@ -4639,17 +4639,64 @@ KK.VehicleBuilder = {
     if (spec.isTracked) {
       const trkLen = (spec.bodyLen || 6.4) * 0.88;
       const trkX = (spec.wheels && spec.wheels.length > 0) ? Math.abs(spec.wheels[0].x) : ((spec.bodyWidth || 3.2) * 0.44);
-      if (spec.id === "bm21") {
-      // v17.9.2 HUGE 40-TUBE BM-21 GRAD ROCKET AMMO RACK IN X-RAY!
-      const matGradAmmo = new THREE.MeshBasicMaterial({ color: 0xff9f1c, transparent: true, opacity: 0.92, depthTest: false });
-      const gradPodX = new THREE.Mesh(new THREE.BoxGeometry(2.18, 0.96, 3.05), matGradAmmo);
-      gradPodX.position.set(0, 2.38, -1.65);
-      gradPodX.rotation.x = -0.32;
-      gradPodX.renderOrder = 12;
-      xrayGroup.add(gradPodX);
-    }
-    addXPart("trackL", new THREE.BoxGeometry(0.54, 0.72, trkLen), -trkX, 0.48, 0);
+      addXPart("trackL", new THREE.BoxGeometry(0.54, 0.72, trkLen), -trkX, 0.48, 0);
       addXPart("trackR", new THREE.BoxGeometry(0.54, 0.72, trkLen),  trkX, 0.48, 0);
+    }
+
+    // v18.0 DYNAMIC BM-21 GRAD 40-ROCKET PITCHING X-RAY RACK + ARMORED COMBAT MODULES IN X-RAY!
+    let gradXrayAnim = null;
+    if (spec.id === "bm21") {
+      const gradTurX = new THREE.Group();
+      gradTurX.position.set(0, 1.44, -2.05);
+      xrayGroup.add(gradTurX);
+      const gradPodX = new THREE.Group();
+      gradPodX.position.set(0, 0.92, 0);
+      gradTurX.add(gradPodX);
+      const matGradFrame = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.48, wireframe: true, depthTest: false });
+      const frameM = new THREE.Mesh(new THREE.BoxGeometry(2.26, 1.04, 3.12), matGradFrame);
+      frameM.position.set(0, 0.22, 0.25); frameM.renderOrder = 11; gradPodX.add(frameM);
+      const matGradRocket = new THREE.MeshBasicMaterial({ color: 0xff9f1c, transparent: true, opacity: 0.95, depthTest: false });
+      const gradRocketsX = [];
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 10; col++) {
+          const rk = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 2.85, 6), matGradRocket);
+          rk.rotation.x = Math.PI / 2;
+          rk.position.set(-0.92 + col * 0.204, -0.08 + row * 0.21, 0.25);
+          rk.renderOrder = 12;
+          gradPodX.add(rk);
+          gradRocketsX.push(rk);
+        }
+      }
+      gradXrayAnim = { gradTurX, gradPodX, gradRocketsX };
+    }
+
+    // Combat X-Ray Modules: Turret Ring, LWS Sensor Mast, Secondary Barrel & Komodo/BTR Ammo Box!
+    let combatXrayMods = null;
+    const isArmoredX = (spec.isTracked || spec.id === "btr80" || spec.id === "komodo_turret" || spec.id === "komodo_std" || spec.id === "komodo_recon");
+    if (isArmoredX) {
+      const mkModMat = () => new THREE.MeshBasicMaterial({ color: 0x2de08b, transparent: true, opacity: 0.90, depthTest: false });
+      const ringMat = mkModMat(), lwsMat = mkModMat(), secMat = mkModMat(), ammoMat = new THREE.MeshBasicMaterial({ color: 0xffbe0b, transparent: true, opacity: 0.88, depthTest: false });
+      const ringY = spec.isSchreckensfurst ? 1.66 : (spec.id === "harimau" ? 1.54 : (spec.id === "t72" ? 1.58 : 1.72));
+      const ringZ = spec.isSchreckensfurst ? -0.38 : (spec.id === "harimau" ? 0.14 : (spec.id === "t72" ? 0.16 : 0.0));
+      const ringRad = spec.isSchreckensfurst ? 1.15 : (spec.isTracked ? 0.95 : 0.52);
+      const ringX = new THREE.Mesh(new THREE.TorusGeometry(ringRad, 0.085, 8, 22), ringMat);
+      ringX.rotation.x = Math.PI / 2; ringX.position.set(0, ringY, ringZ); ringX.renderOrder = 12; xrayGroup.add(ringX);
+
+      const lwsX = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.30), lwsMat);
+      lwsX.position.set(-0.56, ringY + 0.95, ringZ + 0.22); lwsX.renderOrder = 12; xrayGroup.add(lwsX);
+
+      const secPivotX = new THREE.Group();
+      secPivotX.position.set(spec.isSchreckensfurst ? 0.62 : 0.45, ringY + 0.98, ringZ + 0.18);
+      const secBarX = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.055, spec.isSchreckensfurst ? 2.25 : 1.35, 8), secMat);
+      secBarX.rotation.x = Math.PI / 2; secBarX.position.set(0, 0, spec.isSchreckensfurst ? 1.12 : 0.68);
+      secBarX.renderOrder = 12; secPivotX.add(secBarX); xrayGroup.add(secPivotX);
+
+      let lightAmmoBoxX = null;
+      if (!spec.isTracked) {
+        lightAmmoBoxX = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.56), ammoMat);
+        lightAmmoBoxX.position.set(0, ringY - 0.18, ringZ - 0.12); lightAmmoBoxX.renderOrder = 12; xrayGroup.add(lightAmmoBoxX);
+      }
+      combatXrayMods = { ringMat, lwsMat, secMat, secPivotX, lightAmmoBoxX };
     }
 
     const shellMaterials = [matPaint, matTrim, matGalv, matMetal, matCarbon, ...(chassis.userData.extraShellMats || [])];
@@ -4964,41 +5011,68 @@ KK.VehicleBuilder = {
         }
       },
 
+      // v18.0 PER-VERTEX TRUE-SILHOUETTE ARMOR VIEWER (Exact Front / Front-Side / Rear-Side / Rear / Turret / Roof / Belly heat-map!)
       setArmorViewerMode(active, profile) {
+        const tmpCol = new THREE.Color();
         const colorForMm = (mm) => {
-          if (mm >= 800) return 0xa855f7;      // Purple: 800mm+ Super-Heavy
-          if (mm >= 450) return 0xef4444;      // Red: 450–799mm Heavy MBT
-          if (mm >= 180) return 0xf97316;      // Orange: 180–449mm Medium
-          if (mm >= 60)  return 0xfacc15;      // Yellow: 60–179mm Light/Roof
-          return 0x22c55e;                     // Green: <60mm Thin/Unarmored
+          if (mm >= 800) tmpCol.setHex(0xa855f7);
+          else if (mm >= 450) tmpCol.setHex(0xef4444);
+          else if (mm >= 180) tmpCol.setHex(0xf97316);
+          else if (mm >= 60)  tmpCol.setHex(0xfacc15);
+          else tmpCol.setHex(0x22c55e);
+          return tmpCol;
         };
         const p = profile || { front: 24, turret: 24, sideFront: 16, sideRear: 12, rear: 12, roof: 10, belly: 10 };
         root.updateMatrixWorld(true);
-        const tmpBox = new THREE.Box3();
-        const tmpCtr = new THREE.Vector3();
+        const invRoot = new THREE.Matrix4().copy(root.matrixWorld).invert();
+        const toRoot = new THREE.Matrix4();
+        const vPos = new THREE.Vector3();
+        const halfW = (spec.bodyWidth || 3.2) * 0.42;
+        const halfL = (spec.bodyLen || 6.2) * 0.34;
+        const turretY = spec.isSchreckensfurst ? 1.52 : (spec.isTracked ? 1.46 : 1.65);
+        const roofY   = spec.isSchreckensfurst ? 2.48 : (spec.isTracked ? 2.28 : 2.30);
+
         root.traverse((obj) => {
-          if (!obj.isMesh || !obj.material) return;
+          if (!obj.isMesh || !obj.material || !obj.geometry) return;
           if (active) {
-            // Skip lights, ground glow planes, muzzle flashes, additive beams, glass & X-ray meshes!
             const m0 = Array.isArray(obj.material) ? obj.material[0] : obj.material;
             if (!obj.visible || !m0 || m0.transparent || m0.blending === THREE.AdditiveBlending || m0.depthWrite === false) return;
             if (obj.renderOrder >= 10) return;
-            if (!obj.userData._origArmorMat) obj.userData._origArmorMat = obj.material;
-            tmpBox.setFromObject(obj);
-            tmpBox.getCenter(tmpCtr);
-            root.worldToLocal(tmpCtr);
-            let mm = p.front;
-            if (tmpCtr.y > 1.48) mm = p.turret;
-            else if (tmpCtr.y < 0.32) mm = p.belly;
-            else if (Math.abs(tmpCtr.x) > 1.25) mm = (tmpCtr.z >= 0) ? p.sideFront : p.sideRear;
-            else if (tmpCtr.z < -1.35) mm = p.rear;
-            else mm = p.front;
+            if (obj.geometry.boundingSphere === null) obj.geometry.computeBoundingSphere();
+            if (obj.geometry.boundingSphere && obj.geometry.boundingSphere.radius < 0.08) return;
+
+            if (!obj.userData._origArmorMat) {
+              obj.userData._origArmorMat = obj.material;
+              obj.userData._origArmorGeo = obj.geometry;
+            }
+            const gClone = obj.userData._origArmorGeo.index ? obj.userData._origArmorGeo.toNonIndexed() : obj.userData._origArmorGeo.clone();
+            const posAttr = gClone.getAttribute("position");
+            if (!posAttr) return;
+            const cols = new Float32Array(posAttr.count * 3);
+            toRoot.multiplyMatrices(invRoot, obj.matrixWorld);
+            for (let vi = 0; vi < posAttr.count; vi++) {
+              vPos.fromBufferAttribute(posAttr, vi).applyMatrix4(toRoot);
+              let mm = p.front;
+              if (vPos.y > roofY) mm = p.roof;
+              else if (vPos.y > turretY) mm = p.turret;
+              else if (vPos.y < 0.34) mm = p.belly;
+              else if (Math.abs(vPos.x) > halfW) mm = (vPos.z >= 0) ? p.sideFront : p.sideRear;
+              else if (vPos.z < -halfL) mm = p.rear;
+              else mm = p.front;
+              const c = colorForMm(mm);
+              cols[vi * 3] = c.r; cols[vi * 3 + 1] = c.g; cols[vi * 3 + 2] = c.b;
+            }
+            gClone.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+            obj.geometry = gClone;
             obj.material = new THREE.MeshStandardMaterial({
-              color: colorForMm(mm), roughness: 0.45, metalness: 0.25
+              vertexColors: true, roughness: 0.42, metalness: 0.22
             });
           } else if (obj.userData._origArmorMat) {
+            if (obj.geometry && obj.geometry !== obj.userData._origArmorGeo) obj.geometry.dispose();
+            obj.geometry = obj.userData._origArmorGeo;
             obj.material = obj.userData._origArmorMat;
             delete obj.userData._origArmorMat;
+            delete obj.userData._origArmorGeo;
           }
         });
       },
@@ -5148,9 +5222,11 @@ KK.VehicleBuilder = {
           let effGunRotX = (typeof state.gunPitch === "number") ? -Math.max(-0.12, Math.min(0.32, state.gunPitch)) : 0;
           // v17.8.4 Smoothly level T-72 / 140A4 main gun during autoloader cycle (0->0.22 level, 0.22->0.86 hold level for rammer, 0.86->1.0 rise back!)
           const isAutoTank = !!(tankXrayAnim || p140XrayAnim);
-          if (isAutoTank && (state.t72ReloadTimer || 0) > 0) {
-            const rT = state.t72ReloadTotal || 6.5;
-            const rF = Math.max(0, Math.min(1, 1.0 - (state.t72ReloadTimer / rT)));
+          const rFExt = (state.t72ReloadTimer || 0) > 0
+            ? Math.max(0, Math.min(1, 1.0 - (state.t72ReloadTimer / (state.t72ReloadTotal || 6.5))))
+            : (state.reloadFrac > 0.01 && state.reloadFrac < 0.99 ? state.reloadFrac : 0);
+          if (isAutoTank && rFExt > 0) {
+            const rF = rFExt;
             let levelBlend = 1.0;
             if (rF < 0.22) levelBlend = rF / 0.22;
             else if (rF > 0.86) levelBlend = Math.max(0, (1.0 - rF) / 0.14);
@@ -5224,7 +5300,32 @@ KK.VehicleBuilder = {
           }
         }
 
-        if (shilkaXrayAnim && state.xrayActive) {
+        if (gradXrayAnim && state.xrayActive) {
+          if (gradTurretPivot) gradXrayAnim.gradTurX.rotation.y = gradTurretPivot.rotation.y;
+          if (gradPodPitch) gradXrayAnim.gradPodX.rotation.x = gradPodPitch.rotation.x;
+          const rkCnt = state.bm21Rockets !== undefined ? state.bm21Rockets : 40;
+          for (let ri = 0; ri < gradXrayAnim.gradRocketsX.length; ri++) {
+            gradXrayAnim.gradRocketsX[ri].visible = (ri < rkCnt);
+          }
+        }
+        if (combatXrayMods && state.xrayActive) {
+          const mods = state.tankModules || { turretRing: 100, gunBreech: 100, gunBarrel: 100, lwsSensor: 100, secBarrel: 100 };
+          combatXrayMods.ringMat.color.setHex(hColor(mods.turretRing !== undefined ? mods.turretRing : 100));
+          combatXrayMods.lwsMat.color.setHex(hColor(mods.lwsSensor !== undefined ? mods.lwsSensor : 100));
+          combatXrayMods.secMat.color.setHex(hColor(mods.secBarrel !== undefined ? mods.secBarrel : 100));
+          if (combatXrayMods.secPivotX) {
+            combatXrayMods.secPivotX.rotation.y = typeof state.rwsYaw === "number" ? state.rwsYaw : (state.turretYaw || 0);
+            combatXrayMods.secPivotX.rotation.x = -(state.rwsPitch || state.gunPitch || 0);
+          }
+          if (tankXrayAnim && tankXrayAnim.breechX && tankXrayAnim.breechX.material) {
+            tankXrayAnim.breechX.material.color.setHex(hColor(Math.min(mods.gunBreech ?? 100, mods.gunBarrel ?? 100)));
+          }
+          if (p140XrayAnim && p140XrayAnim.breechX && p140XrayAnim.breechX.material) {
+            p140XrayAnim.breechX.material.color.setHex(hColor(Math.min(mods.gunBreech ?? 100, mods.gunBarrel ?? 100)));
+          }
+        }
+
+                if (shilkaXrayAnim && state.xrayActive) {
           shilkaXrayAnim.turX.rotation.y = typeof state.turretYaw === "number" ? state.turretYaw : 0;
           shilkaXrayAnim.gunX.rotation.x = -Math.max(-0.14, Math.min(0.85, state.gunPitch || 0));
           if (shilkaRadarDish) shilkaXrayAnim.radarX.rotation.y = shilkaRadarDish.rotation.y;

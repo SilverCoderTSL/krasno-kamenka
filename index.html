@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Krasno-Kamenka Oblast v17.9.2 ONLINE — Off-Road &amp; Abyssal Sandbox</title>
+  <title>Krasno-Kamenka Oblast v18.0 ONLINE — Off-Road &amp; Abyssal Sandbox</title>
   <link rel="stylesheet" href="css/style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
           onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/build/three.min.js';"></script>
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
-  <!-- v17.9.2 ONLINE ATMOSPHERIC STARTING MENU & PRE-GAME COMMAND HUB -->
+  <!-- v18.0 ONLINE ATMOSPHERIC STARTING MENU & PRE-GAME COMMAND HUB -->
   <div id="start-menu-overlay" class="start-menu-overlay">
     <canvas id="start-menu-canvas" class="start-menu-canvas"></canvas>
     <div class="start-menu-shell">
       <div class="sm-header">
         <div>
-          <div class="sm-kicker">SIBERIAN FRONTIER VEHICULAR HORROR SANDBOX • v17.9.2 ONLINE</div>
-          <h1 class="sm-title">KRASNO-KAMENKA OBLAST <span class="sm-ver-badge">v17.9.2 ONLINE</span></h1>
+          <div class="sm-kicker">SIBERIAN FRONTIER VEHICULAR HORROR SANDBOX • v18.0 ONLINE</div>
+          <h1 class="sm-title">KRASNO-KAMENKA OBLAST <span class="sm-ver-badge">v18.0 ONLINE</span></h1>
         </div>
         <div class="sm-header-pills">
           <span id="sm-header-balance" class="cash-badge">$18,000</span>
@@ -40,33 +40,49 @@
   <div id="thermal-overlay" class="thermal-overlay"></div>
   <div id="skinwalker-overlay" class="skinwalker-overlay"></div>
   <div id="sea-dread-vignette" class="sea-dread-vignette"></div>
-  <div id="shilka-radar-wrap" class="shilka-radar-wrap hidden">
+  <div id="shilka-radar-wrap" class="shilka-radar-wrap hidden" style="position:fixed; right:18px; bottom:375px; z-index:20;">
     <canvas id="shilka-radar-canvas" width="186" height="186"></canvas>
   </div>
   <div id="aim-reticle" class="aim-reticle hidden" title="Aim Winch [T]"></div>
   <div id="gunner-sight-overlay" class="gunner-sight hidden">
-    <svg viewBox="0 0 400 400" class="gunner-reticle-svg">
-      <circle cx="200" cy="200" r="168" fill="none" stroke="rgba(255, 190, 50, 0.45)" stroke-width="1.5"/>
+    <!-- ANALOG SOVIET STADIAMETRIC RETICLE (T-72B / Shilka / BTR / Komodo) -->
+    <svg id="reticle-analog-soviet" viewBox="0 0 400 400" class="gunner-reticle-svg">
+      <circle cx="200" cy="200" r="176" fill="none" stroke="rgba(255, 190, 50, 0.42)" stroke-width="1.6"/>
       <line x1="20" y1="200" x2="180" y2="200" stroke="rgba(255, 200, 60, 0.85)" stroke-width="1.6"/>
       <line x1="220" y1="200" x2="380" y2="200" stroke="rgba(255, 200, 60, 0.85)" stroke-width="1.6"/>
       <line x1="200" y1="20" x2="200" y2="182" stroke="rgba(255, 200, 60, 0.55)" stroke-width="1.4"/>
       <line x1="200" y1="216" x2="200" y2="380" stroke="rgba(255, 200, 60, 0.85)" stroke-width="1.6"/>
       <polygon points="200,200 192,211 208,211" fill="none" stroke="#ffbe0b" stroke-width="1.8"/>
-      <line x1="184" y1="232" x2="216" y2="232" stroke="rgba(255, 200, 60, 0.7)" stroke-width="1.4"/>
-      <line x1="190" y1="258" x2="210" y2="258" stroke="rgba(255, 200, 60, 0.6)" stroke-width="1.4"/>
-      <line x1="194" y1="284" x2="206" y2="284" stroke="rgba(255, 200, 60, 0.5)" stroke-width="1.3"/>
-      <line x1="120" y1="194" x2="120" y2="206" stroke="rgba(255, 200, 60, 0.7)" stroke-width="1.3"/>
-      <line x1="155" y1="195" x2="155" y2="205" stroke="rgba(255, 200, 60, 0.7)" stroke-width="1.3"/>
-      <line x1="245" y1="195" x2="245" y2="205" stroke="rgba(255, 200, 60, 0.7)" stroke-width="1.3"/>
-      <line x1="280" y1="194" x2="280" y2="206" stroke="rgba(255, 200, 60, 0.7)" stroke-width="1.3"/>
+      <line x1="184" y1="232" x2="216" y2="232" stroke="rgba(255, 200, 60, 0.72)" stroke-width="1.4"/>
+      <line x1="190" y1="258" x2="210" y2="258" stroke="rgba(255, 200, 60, 0.62)" stroke-width="1.4"/>
+      <line x1="194" y1="284" x2="206" y2="284" stroke="rgba(255, 200, 60, 0.52)" stroke-width="1.3"/>
+      <text x="220" y="236" fill="rgba(255,200,60,0.72)" font-size="9" font-family="monospace">4</text>
+      <text x="215" y="262" fill="rgba(255,200,60,0.62)" font-size="9" font-family="monospace">8</text>
+      <text x="211" y="288" fill="rgba(255,200,60,0.52)" font-size="9" font-family="monospace">12</text>
     </svg>
-    <div id="gunner-ammo-readout" class="gunner-ammo-tag">KPVT 14.5mm • 120/120 RDS</div>
+    <!-- DIGITAL HUNTER-KILLER FCS HUD (PzKpfw 140A4 & Harimau) -->
+    <svg id="reticle-digital-fcs" viewBox="0 0 400 400" class="gunner-reticle-svg hidden">
+      <rect x="44" y="44" width="312" height="312" fill="none" stroke="rgba(56,189,248,0.28)" stroke-width="1.2" stroke-dasharray="14 8"/>
+      <path d="M 44 82 L 44 44 L 82 44 M 318 44 L 356 44 L 356 82 M 44 318 L 44 356 L 82 356 M 318 356 L 356 356 L 356 318" fill="none" stroke="#38bdf8" stroke-width="2.4"/>
+      <line x1="115" y1="200" x2="184" y2="200" stroke="#22d3ee" stroke-width="1.6"/>
+      <line x1="216" y1="200" x2="285" y2="200" stroke="#22d3ee" stroke-width="1.6"/>
+      <line x1="200" y1="125" x2="200" y2="184" stroke="#22d3ee" stroke-width="1.5"/>
+      <line x1="200" y1="216" x2="200" y2="275" stroke="#22d3ee" stroke-width="1.5"/>
+      <rect x="192" y="192" width="16" height="16" fill="none" stroke="#34d399" stroke-width="1.8"/>
+      <circle cx="200" cy="200" r="2.2" fill="#34d399"/>
+      <text id="fcs-hud-mode" x="56" y="64" fill="#38bdf8" font-size="10" font-family="monospace" font-weight="bold">FCS: STANDBY [`]</text>
+      <text id="fcs-hud-target" x="56" y="346" fill="#34d399" font-size="10" font-family="monospace">TGT: NO LOCK</text>
+      <text id="fcs-hud-lwr" x="235" y="64" fill="#f87171" font-size="10" font-family="monospace" font-weight="bold"></text>
+    </svg>
+    <div id="fcs-lead-pip" class="hidden" title="FCS Dynamic Lead Point"></div>
+    <div id="gunner-mod-strip"></div>
+    <div id="gunner-ammo-readout" class="gunner-ammo-readout"></div>
   </div>
 
   <div id="hud-top">
     <div class="hud-panel hud-top-left">
       <div class="title-line">
-        <span>KRASNO-KAMENKA v17.9.2 ONLINE</span>
+        <span>KRASNO-KAMENKA v18.0 ONLINE</span>
         <span id="hud-cash" class="cash-badge">$18,000</span>
         <button id="btn-open-account" class="acc-pill" title="Login / Register Server Account & Leaderboard [O]"><span id="hud-account-pill">👤 GUEST (LOGIN)</span></button>
       </div>
@@ -194,7 +210,7 @@
     <div id="hud-military-panel" class="hud-military-panel hidden"></div>
   </div>
 
-  <!-- v17.9.2 DEDICATED NAUTICAL HELM HUD (Replaces Car Dash Completely When Piloting Any Boat!) -->
+  <!-- v18.0 DEDICATED NAUTICAL HELM HUD (Replaces Car Dash Completely When Piloting Any Boat!) -->
   <div id="hud-helm" class="hidden">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
       <span id="helm-vessel-name" style="color:#00f5ff;font-weight:900;font-size:12px;letter-spacing:0.6px;">⚓ VESSEL HELM</span>
@@ -223,7 +239,7 @@
     </div>
   </div>
 
-  <!-- v17.9.2 COMPACT ON-SCREEN CONTROLS PILL & QUICK VEHICLE SYSTEMS BAR -->
+  <!-- v18.0 COMPACT ON-SCREEN CONTROLS PILL & QUICK VEHICLE SYSTEMS BAR -->
   <div id="quick-controls-popover" class="quick-controls-popover hidden">
     <div class="qpop-head">
       <span>⌨ QUICK FIELD CONTROLS</span>
@@ -313,7 +329,7 @@
     </div>
   </div>
 
-    <!-- v17.9.2 UNDERTALE-STYLE DEV TUTORIAL DIALOGUE BOX -->
+    <!-- v18.0 UNDERTALE-STYLE DEV TUTORIAL DIALOGUE BOX -->
   <div id="tutorial-box" class="hidden">
     <div class="tut-header">
       <span class="tut-speaker">📡 [DEV // DISPATCH]</span>
@@ -328,7 +344,7 @@
   </div>
 
   
-  <!-- v17.9.2 ARMOR VIEWER [;] BANNER, TOOLTIP & LWR/FCS HUD -->
+  <!-- v18.0 ARMOR VIEWER [;] BANNER, TOOLTIP & LWR/FCS HUD -->
   <div id="armor-viewer-banner" class="hidden">
     🛡️ ARMOR VIEWER [;] — HOVER MOUSE OVER ARMOR PLATES TO INSPECT THICKNESS &amp; EFFECTIVE ANGLE &nbsp;|&nbsp; <span style="color:#fde047;">PRESS [;] TO EXIT</span>
   </div>
