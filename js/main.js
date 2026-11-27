@@ -20,12 +20,31 @@ KK.Game = class Game {
     this.activeContract = null;
     this.activeConvoyId = null;
     this.waypoint = { x: KK.TOWNS[1].x, z: KK.TOWNS[1].z, label: KK.TOWNS[1].name + " (Bridge Test!)" };
+    this.armorViewerActive = false;
+    this._armorRaycaster = new THREE.Raycaster();
+    this._armorMouseNdc = new THREE.Vector2();
+    this._armorMousePx = { x: 0, y: 0 };
+    this.fcsLaserOn = false;
+    this.lwrAlertTimer = 0;
+    this.lwrAlertBearing = "";
+    this.tankModules = { turretRing: 100, gunBreech: 100, gunBarrel: 100, lwsSensor: 100, secBarrel: 100 };
+    this.ammoRackLIntact = true;
+    this.ammoRackRIntact = true;
+    this.cookoffJetTimer = 0;
+    this.turretPopActive = false;
+    this.turretPopY = 0;
+    this.turretPopVy = 0;
+    this.turretPopPitch = 0;
+    this.turretPopRoll = 0;
+    this._lastTurretYawForWhine = 0;
+    this._turretWhineCd = 0;
+    this.tutorialComplete = false;
     this._loadProgress();
 
     this.canvas = document.getElementById("game-canvas");
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -75,6 +94,16 @@ KK.Game = class Game {
     this.gasStations = new KK.GasStationManager(this.scene, this.world);
     this.guidedMissiles = [];
     this.apsFlashTimer = 0;
+    this._eraCharges = { front: 2, left: 2, right: 2 };
+    this._megaBridgeGhost = null;
+    this._megaBridgeGhostCooldown = 0;
+    this._megaBridgeGhostMsgIdx = 0;
+    this._ghostEchoMessages = [
+      "Hey… you really made it all the way out here. Don't forget to enjoy the drive, comrade. See you past the horizon. ✨",
+      "200 km/h over the open sea — whatever you're chasing, you're already closer than you think. Keep going. ✨",
+      "Same car, same road, different moment. Take a breath — you're doing great out here, comrade. ✨",
+      "No cryptids, no storms — just open asphalt and salt air. Proud of how far you've come. Catch you at the city! ✨"
+    ];
     if (this.ownedVehicles && this.ownedVehicles.shilka) this.shilkaCamp.setRelicVisible(false);
 
     this.photoMode = false;
@@ -129,8 +158,8 @@ KK.Game = class Game {
     this.timedWork = null;
     this.wipersOn = false;
     this.gpLapStartMs = 0;
-    this.tutorialComplete = false;
-    this.tutorialStep = 0;
+    this.gpLastLapSec = 0;
+    this.tutorialStep = this.tutorialComplete ? 99 : 0;
     this.radarFlashTimer = 0;
     this._tutQueue = [];
     this._tutFullText = "";
@@ -168,6 +197,31 @@ KK.Game = class Game {
     this.isDraggingMouse = false; this.camPosSmooth = new THREE.Vector3(-8, 6, 0);
     this._camOffsetSmooth = new THREE.Vector3(0, 3.2, -8.2);
     this._boatCamOffsetSmooth = new THREE.Vector3(0, 10, -24);
+
+    // Pre-allocated scratch math objects & caches (avoid per-frame GC & DOM queries in _loop!)
+    this._tmpCamFwd = new THREE.Vector3();
+    this._tmpCamRight = new THREE.Vector3();
+    this._tmpLRight = new THREE.Vector3();
+    this._tmpCamDir = new THREE.Vector3();
+    this._tmpCamOrig = new THREE.Vector3();
+    this._tmpFocusLocal = new THREE.Vector3();
+    this._tmpLocalAim = new THREE.Vector3();
+    this._tmpVehFwd = new THREE.Vector3();
+    this._tmpInvQuat = new THREE.Quaternion();
+    this._cachedWpKey = "";
+    this._cachedWpY = 0;
+    this._cachedTutKey = "";
+    this._cachedTutY = 0;
+    this._lrfTimer = 0;
+    this._lrfText = ">450m";
+    this._autoShiftHintUntil = 0;
+    this._elUnderwater = document.getElementById("underwater-overlay");
+    this._elEmp = document.getElementById("emp-overlay");
+    this._elSight = document.getElementById("gunner-sight-overlay");
+    this._elAmmo = document.getElementById("gunner-ammo-readout");
+    this._elContextPrompt = document.getElementById("context-prompt");
+    this._elDeckBar = document.getElementById("boat-deck-bar");
+
     this.keys = {};
     this._bindInputs();
     this.ui = new KK.UIManager(this);
@@ -326,6 +380,7 @@ KK.Game = class Game {
         }
       },
       onWeaponFire: (msg) => {
+        if (msg.peerId && this.network && msg.peerId === this.network.peerId) return;
         const cal = msg.cal || 14.5;
         this._spawnTracerBeam(msg.x0, msg.y0, msg.z0, msg.x1, msg.y1, msg.z1, cal >= 35 ? 0xff9f1c : 0xffd166, cal >= 35 ? 0.11 : 0.05);
         const d = Math.hypot((msg.x0 || 0) - this.vehicle.pos.x, (msg.z0 || 0) - this.vehicle.pos.z);
@@ -334,13 +389,17 @@ KK.Game = class Game {
           else if (cal >= 20 && this.audio.playShilka23mm) this.audio.playShilka23mm();
           else this.audio.playKPVTShot();
         }
-        this._applyIncomingOrdnanceDamage(msg.x1, msg.y1, msg.z1, cal >= 35 ? "auto40" : "mg", cal, false);
+        const shellKind = cal >= 35 ? "auto40" : (cal >= 28 ? "auto30" : (cal >= 20 ? "auto23" : "mg"));
+        const ox = msg.ox !== undefined ? msg.ox : msg.x0;
+        const oy = msg.oy !== undefined ? msg.oy : msg.y0;
+        const oz = msg.oz !== undefined ? msg.oz : msg.z0;
+        this._applyIncomingOrdnanceDamage(msg.x1, msg.y1, msg.z1, shellKind, cal, false, ox, oy, oz, msg.peerId || null);
         if (this.network.isHost || this.network.mode === "offline") {
           this.cryptids.applyBulletHit(msg.x1, msg.y1, msg.z1, this.audio, cal >= 35, cal);
-        this.applyGunfireHitToLocalVehicle(msg.x1, msg.y1, msg.z1, cal);
         }
       },
       onCannonFire: (msg) => {
+        if (msg.peerId && this.network && msg.peerId === this.network.peerId) return;
         const sh = msg.shell || "he";
         const cal = msg.cal || ((sh === "ap140" || sh === "hesh140" || sh === "therm140" || sh === "rlg140") ? 140 : 125);
         const isAp = (sh === "ap" || sh === "ap140");
@@ -349,7 +408,9 @@ KK.Game = class Game {
         const d = Math.hypot((msg.x0 || 0) - this.vehicle.pos.x, (msg.z0 || 0) - this.vehicle.pos.z);
         if (d < 720) {
           if (cal >= 140 && this.audio.play140mmEtcBlast) this.audio.play140mmEtcBlast();
-          else this.audio.playTank125mmBlast();
+          else this.audio.playTank125mmBlast(cal);
+          const dImp = Math.hypot((msg.x1 || 0) - this.vehicle.pos.x, (msg.z1 || 0) - this.vehicle.pos.z);
+          if (dImp < 120 && this.audio.playShellWhistle) this.audio.playShellWhistle(cal);
           this.cameraShake = Math.max(this.cameraShake, Math.max(0, 1 - d / 360) * 0.65);
         }
         this.particles.emitCrashBurst(msg.x1, msg.y1 + 0.8, msg.z1, isAp ? 0.75 : 2.2, "rock", this.weather.weather);
@@ -357,7 +418,10 @@ KK.Game = class Game {
           const rDir = new THREE.Vector3((msg.x1 || 0) - (msg.x0 || 0), (msg.y1 || 0) - (msg.y0 || 0), (msg.z1 || 0) - (msg.z0 || 0)).normalize();
           this.particles.emitMuzzleShockwave(new THREE.Vector3(msg.x0 || 0, msg.y0 || 0, msg.z0 || 0), rDir, this.world, this.weather.weather, cal >= 140 ? 1.85 : 1.35, false);
         }
-        this._applyIncomingOrdnanceDamage(msg.x1, msg.y1, msg.z1, sh, cal, false);
+        const ox = msg.ox !== undefined ? msg.ox : msg.x0;
+        const oy = msg.oy !== undefined ? msg.oy : msg.y0;
+        const oz = msg.oz !== undefined ? msg.oz : msg.z0;
+        this._applyIncomingOrdnanceDamage(msg.x1, msg.y1, msg.z1, sh, cal, false, ox, oy, oz, msg.peerId || null);
         if (this.network.isHost || this.network.mode === "offline") {
           this.cryptids.applyCannonHit(msg.x1, msg.y1, msg.z1, sh, this.audio, cal);
         }
@@ -373,7 +437,8 @@ KK.Game = class Game {
         if (this.gasStations) this.gasStations.detonateStation(msg.townId, this, true);
       },
       onRocketFire: (msg) => {
-        this._spawnBallisticRocket(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, false);
+        if (msg.peerId && this.network && msg.peerId === this.network.peerId) return;
+        this._spawnBallisticRocket(msg.x, msg.y, msg.z, msg.vx, msg.vy, msg.vz, false, msg.peerId || null);
         if (Math.hypot((msg.x || 0) - this.vehicle.pos.x, (msg.z || 0) - this.vehicle.pos.z) < 420) this.audio.playKatyushaRocket();
         if (Math.hypot((msg.x || 0) - this.vehicle.pos.x, (msg.z || 0) - this.vehicle.pos.z) < 280) {
           const rkDir = new THREE.Vector3(msg.vx || 0, msg.vy || 0, msg.vz || 1).normalize();
@@ -414,6 +479,18 @@ KK.Game = class Game {
       }
     });
 
+    // Hook armor_hit_ack LAN feedback without modifying network.js
+    if (this.network && typeof this.network._handleMessage === "function") {
+      const _origHandleNetMsg = this.network._handleMessage.bind(this.network);
+      this.network._handleMessage = (msg) => {
+        if (msg && msg.type === "armor_hit_ack" && msg.targetPeerId === this.network.peerId) {
+          this._onArmorHitAck(msg);
+          return;
+        }
+        return _origHandleNetMsg(msg);
+      };
+    }
+
     if (this.account && this.account.username) this.network.callsign = this.account.username;
     const hostInput = document.getElementById("lan-host-input"), csInput = document.getElementById("lan-callsign-input");
     if (csInput) csInput.value = this.network.callsign;
@@ -445,12 +522,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v17.6.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v17.9 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v17.6.1 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v17.9 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -542,6 +619,7 @@ KK.Game = class Game {
     const box = document.getElementById("tutorial-box");
     if (box) { box.classList.add("hidden"); box.style.display = "none"; }
     if (this._tutArrow) this._tutArrow.visible = false;
+    try { localStorage.setItem("kk_tutorial_skipped_v1", "1"); } catch (_) {}
     this._saveProgress(true);
     this.ui.toast("Tutorial skipped — all towns, contracts & dealerships unlocked!");
   }
@@ -553,6 +631,7 @@ KK.Game = class Game {
     this._tutDmgTriggered = false;
     this._tutTipShown = false;
     this._tutQueue = [];
+    try { localStorage.removeItem("kk_tutorial_skipped_v1"); } catch (_) {}
     this._saveProgress(false);
     this.ui.toast("HQ Tutorial restarted!");
   }
@@ -579,7 +658,7 @@ KK.Game = class Game {
       if (this.vehicle) this.vehicle.tutorialSensitiveDmg = true;
       this.showTutorialDialog([
         "* Welcome to Krasno-Kamenka Oblast, rookie! I'm the guy who coded this place, so if a bridge eats your axle, legally it's a 'feature.'",
-        "* First things first: press [I] to crank the ignition, [WASD] to drive, and [C] to swap cameras.",
+        "* First things first: your engine's already idling — use [WASD] to drive, [SPACE] for handbrake, [C] to swap cameras, and [I] anytime to kill/crank the ignition.",
         "* See that HQ Warehouse with the obnoxiously large bouncing arrow? Pull up and hit [F] — your main interact key — to grab your first job."
       ]);
     }
@@ -612,7 +691,12 @@ KK.Game = class Game {
         if (objEl) objEl.textContent = "STEP 4/4: Open Garage [F] & Buy Mud Tires!";
       }
       if (ax !== null) {
-        const gy = this.world.getTerrainInfo(ax, az, false).height;
+        const tutKey = `${ax},${az}`;
+        if (tutKey !== this._cachedTutKey) {
+          this._cachedTutKey = tutKey;
+          this._cachedTutY = this.world.getTerrainInfo(ax, az, false).height;
+        }
+        const gy = this._cachedTutY;
         const bob = Math.sin(performance.now() * 0.006) * 1.4;
         this.world.toLocal(ax, gy + 8.5 + bob, az, this._tutArrow.position);
         this._tutArrow.rotation.y += dt * 2.2;
@@ -652,7 +736,9 @@ KK.Game = class Game {
     if (!d || typeof d !== "object") return;
     if (typeof d.money === "number") this.money = d.money;
     if (typeof d.tutorialV17Done === "boolean") this.tutorialComplete = d.tutorialV17Done;
-    // v17.6.1 All players attend tutorial until completed or skipped!
+    try {
+      if (localStorage.getItem("kk_tutorial_skipped_v1") === "1") this.tutorialComplete = true;
+    } catch (_) {}
     if (d.stats && typeof d.stats === "object") {
       this.stats.deliveries = Number(d.stats.deliveries) || 0;
       this.stats.distanceKm = Number(d.stats.distanceKm) || 0;
@@ -716,6 +802,7 @@ KK.Game = class Game {
       }
       const raw = localStorage.getItem("kk_oblast_save_v5");
       if (raw) this._applySavePayload(JSON.parse(raw));
+      if (localStorage.getItem("kk_tutorial_skipped_v1") === "1") this.tutorialComplete = true;
     } catch (e) {}
   }
 
@@ -873,7 +960,7 @@ KK.Game = class Game {
 
       if (e.button === 0) {
         if (!this.pointerLocked && this.canvas.requestPointerLock) {
-          try { this.canvas.requestPointerLock(); } catch (err) {}
+          try { const pl = this.canvas.requestPointerLock(); if (pl && typeof pl.catch === "function") pl.catch(() => {}); } catch (err) {}
           if (!isArmed) this.isDraggingMouse = true;
           return;
         }
@@ -899,7 +986,7 @@ KK.Game = class Game {
           // v15.1 TOGGLE SCOPE: Click Right-Mouse once to aim, click again to exit!
           this.mouseAimHeld = !this.mouseAimHeld;
           if (this.mouseAimHeld && !this.pointerLocked && this.canvas.requestPointerLock) {
-            try { this.canvas.requestPointerLock(); } catch (err) {}
+            try { const pl = this.canvas.requestPointerLock(); if (pl && typeof pl.catch === "function") pl.catch(() => {}); } catch (err) {}
           }
         } else {
           this.isDraggingMouse = true;
@@ -939,7 +1026,19 @@ KK.Game = class Game {
       }
     });
 
+    window.addEventListener("mousemove", (e) => {
+      this._armorMousePx.x = e.clientX;
+      this._armorMousePx.y = e.clientY;
+      this._armorMouseNdc.x = (e.clientX / window.innerWidth) * 2 - 1;
+      this._armorMouseNdc.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
     window.addEventListener("keydown", (e) => {
+      if (e.code === "Semicolon" && !this.ui.activeModal && !(this.startMenu && this.startMenu.isOpen)) {
+        e.preventDefault(); this.toggleArmorViewer(); return;
+      }
+      if (e.code === "Backquote" && !this.ui.activeModal && !(this.startMenu && this.startMenu.isOpen)) {
+        e.preventDefault(); this.toggleFcsLaser(); return;
+      }
       if (e.code === "Enter") {
         const ae = document.activeElement;
         const isTyping = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA");
@@ -971,11 +1070,18 @@ KK.Game = class Game {
         const acted = this.handleContextInteract();
         if (!acted) this.toggleOnFoot();
       }
-      // 2. ON-FOOT INVENTORY [E] | IN-CAR MANUAL GEAR UP [E]
+      // 2. ON-FOOT INVENTORY [E] | IN-CAR MANUAL GEAR UP [E] (ONLY when in Manual mode!)
       else if (code === "KeyE") {
         if (this.boats && this.boats.activeBoat) { this.stepOntoBoatDeckOrDisembark(); return; }
         if (this.onFoot) { this.ui.openModal("inventory"); return; }
-        if (this.vehicle.autoShift) { this.vehicle.autoShift = false; this.ui.toast("Switched to MANUAL Transmission (Q=Down, E=Up, [4]=Auto)"); }
+        if (this.vehicle.autoShift) {
+          const nowMs = performance.now();
+          if (nowMs > (this._autoShiftHintUntil || 0)) {
+            this._autoShiftHintUntil = nowMs + 8000;
+            this.ui.toast("In AUTOMATIC mode — press [4] to toggle Manual shifting, or [F] to interact.");
+          }
+          return;
+        }
         this.vehicle.gear = Math.min(this.vehicle.vState.tuning.gears.length, this.vehicle.gear + 1);
       }
       // 3. ALWAYS-AVAILABLE MENUS, PHOTO MODE & WINCH ([T]/[Y] WORK ON FOOT TOO!)
@@ -1021,7 +1127,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        // v17.6.1 Garage is strictly [F] only — [G] is exclusively military/flare!
+        // v17.9 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -1069,7 +1175,14 @@ KK.Game = class Game {
         return;
       }
       else if (code === "KeyQ") {
-        if (this.vehicle.autoShift) { this.vehicle.autoShift = false; this.ui.toast("Switched to MANUAL Transmission (Q=Down, E=Up, [4]=Auto)"); }
+        if (this.vehicle.autoShift) {
+          const nowMs = performance.now();
+          if (nowMs > (this._autoShiftHintUntil || 0)) {
+            this._autoShiftHintUntil = nowMs + 8000;
+            this.ui.toast("In AUTOMATIC mode — press [4] to toggle Manual shifting, or [F] to interact.");
+          }
+          return;
+        }
         this.vehicle.gear = Math.max(-1, this.vehicle.gear - 1);
       }
       else if (code === "Digit4") {
@@ -1266,7 +1379,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.6.1 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v17.9 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1290,7 +1403,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.6.1 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v17.9 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1850,9 +1963,15 @@ KK.Game = class Game {
   // ==========================================================================
   // CPM2 GARAGE, BRANDED PARTS, CAR WASH & FLEET ACTIONS
   // ==========================================================================
+  _resetEraCharges() {
+    this._eraCharges = { front: 2, left: 2, right: 2 };
+  }
+
   switchVehicle(vid, silent = false) {
     if (!this.ownedVehicles[vid]) return;
     this.activeVehicleId = vid;
+    this._resetEraCharges();
+    if (this._megaBridgeGhost) this._disposeMegaBridgeGhost();
     this.scene.remove(this.vehicleRig.root);
     this.vehicle.swapVehicleState(this.ownedVehicles[vid], true);
     this.vehicleRig = KK.VehicleBuilder.buildVehicle(vid, this.vehicle.vState, true);
@@ -1917,7 +2036,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v17.6.1 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v17.9 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -2135,8 +2254,9 @@ KK.Game = class Game {
       for (let i = 0; i < vs.blownTires.length; i++) { vs.blownTires[i] = false; vs.tiresHP[i] = 100; }
       vs.spareTires = this.vehicle.spec.wheels.length >= 6 ? 3 : 2;
       this.vehicle.hydrolocked = false; this.vehicle.engineRunning = this.vehicle.ignitionOn; this.vehicle.coolantTemp = 82;
+      this._resetEraCharges();
       this.audio.playCash(); this._saveProgress(true);
-      this.ui.toast("Garage Overhaul Complete — Every part & light restored to 100%!");
+      this.ui.toast("Garage Overhaul Complete — Every part, light & ERA block restored to 100%!");
     });
   }
 
@@ -2173,6 +2293,7 @@ KK.Game = class Game {
     this.audio.playCash();
     if (part === "engine") {
       vs.health.trackL = 100; vs.health.trackR = 100; vs.health.glass = 100;
+      this._resetEraCharges();
       if (vs.burnedOut) { vs.burnedOut = false; vs.fuel = Math.max(vs.fuel || 0, 28); vs.health.body = Math.max(vs.health.body || 4, 45); }
       this.vehicle.hydrolocked = false; this.vehicle.engineRunning = true;
       for (const id of ["airFilter", "fuelRails", "fuelInjectors", "sparkPlugs", "pistons", "crankshaft", "camshaft", "headGasket"]) {
@@ -2417,7 +2538,16 @@ KK.Game = class Game {
   }
 
   setWaypoint(gx, gz, label) { this.waypoint = { x: gx, z: gz, label }; this.ui.toast("GPS Waypoint set: " + label); }
-  setServerEnv(patch) { this.weather.setEnvironment(patch.timeOfDay, patch.weather, patch.timeScale); this.network.send(Object.assign({ type: "env_control" }, patch)); if (this.ui.activeModal === "env") this.ui.renderEnvControls(); }
+  setServerEnv(patch) {
+    if (patch && patch.weather === "hurricane") {
+      const ab = this.boats ? this.boats.activeBoat : null;
+      const px = ab ? ab.gx : (this.onFoot ? this.playerFoot.x : this.vehicle.pos.x);
+      const pz = ab ? ab.gz : (this.onFoot ? this.playerFoot.z : this.vehicle.pos.z);
+      if (!this._isPosInOpenSea || !this._isPosInOpenSea(px, pz)) {
+        if (this.ui) this.ui.toast("❌ Hurricanes only form over open ocean!", true);
+        return;
+      }
+    } this.weather.setEnvironment(patch.timeOfDay, patch.weather, patch.timeScale); this.network.send(Object.assign({ type: "env_control" }, patch)); if (this.ui.activeModal === "env") this.ui.renderEnvControls(); }
   repairAllBridgesLAN() { this.world.repairAllBridges(); this.network.send({ type: "bridge_repair", bridgeId: "__ALL__" }); this.ui.toast("Rebuilt all broken bridges across Krasno-Kamenka!"); }
 
   claimLandmarkCash(lm) {
@@ -2444,7 +2574,7 @@ KK.Game = class Game {
 
     const dpr = window.devicePixelRatio || 1;
     if (p === "potato") {
-      this.renderer.setPixelRatio(Math.min(dpr, 0.85));
+      this.renderer.setPixelRatio(1.0);
       this.renderer.shadowMap.enabled = false;
       KK.CHUNK_RADIUS = 2;
       this.setParticleQuality("low");
@@ -2454,7 +2584,7 @@ KK.Game = class Game {
       KK.CHUNK_RADIUS = 2;
       this.setParticleQuality("low");
     } else if (p === "med") {
-      this.renderer.setPixelRatio(Math.min(dpr, 1.0));
+      this.renderer.setPixelRatio(Math.min(dpr, 1.25));
       this.renderer.shadowMap.enabled = true;
       if (this.weather && this.weather.sunLight && this.weather.sunLight.shadow) {
         this.weather.sunLight.shadow.mapSize.set(1024, 1024);
@@ -2463,7 +2593,7 @@ KK.Game = class Game {
       KK.CHUNK_RADIUS = 3;
       this.setParticleQuality("med");
     } else {
-      this.renderer.setPixelRatio(Math.min(dpr, 2.0));
+      this.renderer.setPixelRatio(Math.min(dpr, 1.5));
       this.renderer.shadowMap.enabled = true;
       if (this.weather && this.weather.sunLight && this.weather.sunLight.shadow) {
         this.weather.sunLight.shadow.mapSize.set(2048, 2048);
@@ -2869,6 +2999,7 @@ KK.Game = class Game {
     } else if (curVs.vehicleId === "bm21") { curVs.bm21Rockets = 40; }
     else if (curVs.vehicleId === "shilka") { curVs.shilkaAmmo = 800; }
     else if (curVs.vehicleId === "pzkpfw_140a4") { curVs.p140ApAmmo = 14; curVs.p140HeshAmmo = 10; curVs.p140ThermAmmo = 8; curVs.p140RlgAmmo = 8; curVs.p140AutoAmmo = 240; }
+    this._resetEraCharges();
     this.audio.playCash(); this.audio.playWrench();
     this._saveProgress(true);
     if (this.ui.activeModal === "garage") this.ui.renderGarage();
@@ -3057,84 +3188,515 @@ KK.Game = class Game {
     return { tipWorld, evacWorld, dirWorld };
   }
 
-  // v14.2 TANK-VS-TANK & VEHICLE ORDNANCE DAMAGE (HE & Thermobaric heavy splash; APFSDS = single pinpoint hit only!)
-  _applyIncomingOrdnanceDamage(hx, hy, hz, shell = "he", caliberMm = 125, fromSelf = false) {
+  // v17.9 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
+  _onArmorHitAck(msg) {
+    if (!msg) return;
+    const victim = msg.victimCallsign || "Target";
+    const zone = msg.zone || "ARMOR";
+    if (msg.outcome === "ricochet") {
+      if (this.audio && this.audio.playArmorRicochet) this.audio.playArmorRicochet(0.55);
+      const trackNote = msg.trackSnapped ? " (TRACK SNAPPED!)" : "";
+      if (this.ui) this.ui.toast(`🛡 RICOCHET on ${victim}'s ${zone} (${msg.effArmorMm || "?"}mm eff vs ${msg.penMm || "?"}mm)${trackNote}`);
+    } else if (msg.outcome === "aps") {
+      if (this.audio && this.audio.playApsIntercept) this.audio.playApsIntercept();
+      if (this.ui) this.ui.toast(`⚡ ${victim}'s DONNERSCHILD APS intercepted your ${msg.cal || ""}mm round!`);
+    } else if (msg.outcome === "era") {
+      if (this.audio && this.audio.playEraDetonation) this.audio.playEraDetonation();
+      if (this.ui) this.ui.toast(`⚡ KONTAKT-5 ERA detonated on ${victim}'s ${zone} (-55% pen)!`);
+    } else if (msg.outcome === "track_snap") {
+      if (this.audio) this.audio.playImpact(0.75);
+      if (this.ui) this.ui.toast(`🎯 TRACK SNAPPED on ${victim} (${zone})!`);
+    } else {
+      if (this.audio) this.audio.playImpact(0.8);
+      const extra = msg.breechShock ? " • BREECH SHOCK (+3.0s RELOAD!)" : (msg.trackSnapped ? " • TRACK SNAPPED!" : "");
+      if (this.ui) this.ui.toast(`🎯 PENETRATED ${victim}'s ${zone} (${msg.penMm || "?"}mm vs ${msg.effArmorMm || "?"}mm eff)${extra}!`);
+    }
+  }
+
+  _sendArmorHitAck(shooterPeerId, payload) {
+    if (!shooterPeerId || !this.network || this.network.mode === "offline") return;
+    if (shooterPeerId === this.network.peerId) return;
+    this.network.send(Object.assign({
+      type: "armor_hit_ack",
+      targetPeerId: shooterPeerId,
+      victimCallsign: this.network.callsign || "Target"
+    }, payload));
+  }
+
+  // ==========================================================================
+  // v17.9 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
+  // ==========================================================================
+  _getArmorProfile(spec, vs) {
+    const id = spec ? spec.id : "";
+    const hasK5 = (id === "t72" && !!(vs && vs.upgrades && vs.upgrades.t72Kontakt5));
+    if (spec && spec.isSchreckensfurst) {
+      return { front: 900, turret: 950, sideFront: 500, sideRear: 200, rear: 200, roof: 85, belly: 65 };
+    }
+    if (id === "t72") {
+      return { front: hasK5 ? 560 : 460, turret: hasK5 ? 640 : 540, sideFront: 140, sideRear: 80, rear: 50, roof: 45, belly: 35 };
+    }
+    if (id === "harimau") {
+      return { front: 220, turret: 240, sideFront: 110, sideRear: 70, rear: 45, roof: 35, belly: 30 };
+    }
+    if (id === "shilka") {
+      return { front: 28, turret: 24, sideFront: 18, sideRear: 16, rear: 15, roof: 12, belly: 10 };
+    }
+    if (id === "btr80" || id === "komodo_turret" || id === "komodo_std" || id === "komodo_recon") {
+      return { front: 26, turret: 22, sideFront: 16, sideRear: 14, rear: 12, roof: 10, belly: 10 };
+    }
+    return { front: 6, turret: 6, sideFront: 6, sideRear: 6, rear: 6, roof: 5, belly: 5 };
+  }
+
+  toggleArmorViewer() {
+    if (!this.vehicle || !this.vehicleRig || !this.vehicleRig.setArmorViewerMode) return;
+    this.armorViewerActive = !this.armorViewerActive;
+    const prof = this._getArmorProfile(this.vehicle.spec, this.vehicle.vState);
+    this.vehicleRig.setArmorViewerMode(this.armorViewerActive, prof);
+    const ban = document.getElementById("armor-viewer-banner");
+    const tip = document.getElementById("armor-viewer-tooltip");
+    if (ban) ban.classList.toggle("hidden", !this.armorViewerActive);
+    if (tip && !this.armorViewerActive) tip.classList.add("hidden");
+  }
+
+  _updateArmorViewerTooltip() {
+    const tip = document.getElementById("armor-viewer-tooltip");
+    if (!tip || !this.armorViewerActive || !this.vehicleRig || !this.camera) return;
+    this._armorRaycaster.setFromCamera(this._armorMouseNdc, this.camera);
+    const hits = this._armorRaycaster.intersectObject(this.vehicleRig.root, true);
+    if (!hits.length) { tip.classList.add("hidden"); return; }
+    const hit = hits[0];
+    const prof = this._getArmorProfile(this.vehicle.spec, this.vehicle.vState);
+    const localPt = this.vehicleRig.root.worldToLocal(hit.point.clone());
+    let zoneName = "FRONT GLACIS", nominal = prof.front;
+    if (localPt.y > 1.50) { zoneName = "TURRET ARMOR"; nominal = prof.turret; }
+    else if (localPt.y < 0.35) { zoneName = "BELLY PLATE"; nominal = prof.belly; }
+    else if (Math.abs(localPt.x) > 1.15) {
+      zoneName = localPt.z >= 0 ? "FRONT-SIDE HULL" : "REAR-SIDE HULL";
+      nominal = localPt.z >= 0 ? prof.sideFront : prof.sideRear;
+    } else if (localPt.z < -1.5) { zoneName = "REAR HULL / ENGINE DECK"; nominal = prof.rear; }
+
+    let angleDeg = 0;
+    if (hit.face && hit.object) {
+      const worldN = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+      const viewDir = this.camera.position.clone().sub(hit.point).normalize();
+      const cosT = Math.max(0.15, Math.min(1.0, Math.abs(worldN.dot(viewDir))));
+      angleDeg = Math.acos(cosT) * (180 / Math.PI);
+    }
+    const effMm = Math.round(nominal / Math.max(0.28, Math.cos(angleDeg * Math.PI / 180)));
+    tip.innerHTML = `<div style="color:#38bdf8;font-weight:900;">${zoneName}</div>`
+      + `<div>Nominal: <b>${nominal} mm</b> RHA</div>`
+      + `<div>Impact Angle: <b>${angleDeg.toFixed(1)}°</b></div>`
+      + `<div style="color:#fde047;">Effective LOS: <b>${effMm} mm</b></div>`;
+    tip.style.left = Math.min(window.innerWidth - 230, this._armorMousePx.x + 16) + "px";
+    tip.style.top = Math.min(window.innerHeight - 110, this._armorMousePx.y + 16) + "px";
+    tip.classList.remove("hidden");
+  }
+
+  toggleFcsLaser() {
+    if (!this.vehicle || this.onFoot) return;
+    const vid = this.vehicle.vState.vehicleId;
+    if (vid !== "pzkpfw_140a4" && vid !== "harimau") {
+      this.ui.toast("FCS Laser Rangefinder is equipped on PzKpfw 140A4 & Harimau only!", true);
+      return;
+    }
+    this.fcsLaserOn = !this.fcsLaserOn;
+    if (this.audio && this.audio.playThermalClick) this.audio.playThermalClick();
+    this.ui.toast(this.fcsLaserOn ? "🎯 FCS LASER RANGEFINDER ACTIVE (Targets will receive LWR warning!)" : "🔇 FCS Laser OFF (Silent Ambush Mode)");
+  }
+
+  _applyIncomingOrdnanceDamage(hx, hy, hz, shell = "he", caliberMm = 125, fromSelf = false, ox = undefined, oy = undefined, oz = undefined, shooterPeerId = null) {
     if (!this.vehicle || this.onFoot) return;
     const vx = this.vehicle.pos.x, vy = this.vehicle.pos.y + 1.0, vz = this.vehicle.pos.z;
     const dist = Math.hypot(hx - vx, hz - vz);
     const dy = Math.abs(hy - vy);
 
-    const isAp    = (shell === "ap" || shell === "ap140");
-    const isTherm = (shell === "therm" || shell === "therm140");
-    const isHe    = (shell === "he" || shell === "hesh140" || shell === "rlg140" || shell === "rocket122");
-    const isAuto  = (shell === "auto40" || shell === "mg");
+    const isAp     = (shell === "ap" || shell === "ap140");
+    const isHesh   = (shell === "hesh140" || shell === "hesh");
+    const isTherm  = (shell === "therm" || shell === "therm140");
+    const isRocket = (shell === "rocket122" || shell === "rlg140");
+    const isHe     = (shell === "he" || isHesh || isRocket);
+    const isAuto   = (shell === "auto40" || shell === "auto30" || shell === "auto23" || shell === "mg" || (!isAp && !isHe && !isTherm && caliberMm <= 45));
 
     // APFSDS has ZERO blast radius — strictly single-point direct hit only!
     if (isAp && fromSelf) return;
-    const maxRad = isAp ? 2.8 : (isTherm ? 32.0 : (shell === "rocket122" ? 30.0 : (isHe ? 19.0 : (shell === "auto40" ? 5.5 : 3.4))));
-    if (dist > maxRad || dy > (isAp ? 3.2 : 12.0)) return;
+    const maxRad = isAp ? 3.2 : (isTherm ? 32.0 : (shell === "rocket122" ? 30.0 : (isHe ? 19.0 : (caliberMm >= 35 ? 5.5 : 3.6))));
+    if (dist > maxRad || dy > (isAp ? 3.4 : 12.0)) return;
 
-    const falloff = isAp ? 1.0 : Math.max(0.18, 1.0 - (dist / maxRad));
     const vs = this.vehicle.vState, spec = this.vehicle.spec;
     const is140 = !!spec.isSchreckensfurst;
     const isTank = !!spec.isTracked;
-    const hasK5 = (spec.id === "t72" && !!vs.upgrades.t72Kontakt5);
-    const calMult = Math.pow(Math.max(14, caliberMm) / 125.0, 1.4);
+    const hasK5 = (spec.id === "t72" && !!(vs.upgrades && vs.upgrades.t72Kontakt5));
+    const hasEra = is140 || hasK5;
+    const isArmored = is140 || isTank || spec.id === "btr80" || spec.id === "komodo_turret" || spec.id === "komodo_std" || spec.id === "komodo_recon" || spec.id === "shilka" || spec.id === "harimau";
 
-    // v17.6.1 REAL ARMOR (mm RHA) vs WEAPON PENETRATION MATRIX!
-    const vehicleArmorMm = is140 ? 680
-      : (spec.id === "t72" ? (hasK5 ? 520 : 420)
-      : (spec.id === "harimau" ? 180
-      : (spec.id === "shilka" ? 28
-      : (spec.id === "btr80" || spec.id === "komodo_turret" || spec.id === "komodo_std" ? 24 : 6))));
-    const weaponPenMm = (caliberMm >= 140) ? (isAp ? 880 : 520)
-      : (caliberMm >= 120 ? (isAp ? 620 : 380)
-      : (caliberMm >= 100 ? 460
-      : (caliberMm >= 35 ? 110
-      : (caliberMm >= 28 ? 65
-      : (caliberMm >= 20 ? 38
-      : (caliberMm >= 14 ? 30 : 20))))));
+    // Fallback origin to impact point if sender didn't supply shooter coordinates
+    const origX = (ox !== undefined && ox !== null && isFinite(ox)) ? ox : hx;
+    const origY = (oy !== undefined && oy !== null && isFinite(oy)) ? oy : hy;
+    const origZ = (oz !== undefined && oz !== null && isFinite(oz)) ? oz : hz;
 
-    // Non-penetration ricochet! (e.g. 12.7mm Komodo HMG CANNOT disable a 140A4 or T-72!)
-    if (!isTherm && !isHe && weaponPenMm < vehicleArmorMm * 0.45) {
-      if (this.audio) this.audio.playImpact(0.28);
-      if (this.ui) this.ui.toast(`🛡 RICOCHET! ${Math.round(caliberMm)}mm (${weaponPenMm}mm pen) bounced off ${vehicleArmorMm}mm armor!`);
+    // 1. DONNERSCHILD APS ACTIVE INTERCEPT (PzKpfw 140A4 mid-air airburst intercept of HE/HESH/Thermobaric/122mm/RLG!)
+    if (is140 && !fromSelf && this.apsFlashTimer > 0 && (isHe || isTherm || isRocket)) {
+      const toSrc = new THREE.Vector3(origX - vx, origY - vy, origZ - vz);
+      if (toSrc.lengthSq() < 0.25) toSrc.set(hx - vx, Math.max(1.5, hy - vy), hz - vz);
+      if (toSrc.lengthSq() < 0.01) toSrc.set(0, 1, 1);
+      toSrc.normalize();
+      const ix = vx + toSrc.x * 6.5, iy = vy + 1.4 + Math.max(0.2, toSrc.y * 4.5), iz = vz + toSrc.z * 6.5;
+      if (this.particles) {
+        this.particles.emitCrashBurst(ix, iy, iz, 1.5, "rock", this.weather.weather);
+        for (let k = 0; k < 14; k++) {
+          this.particles.emitRGB(
+            ix + (Math.random() - 0.5) * 1.4, iy + (Math.random() - 0.5) * 1.2, iz + (Math.random() - 0.5) * 1.4,
+            (Math.random() - 0.5) * 14, 1.5 + Math.random() * 6, (Math.random() - 0.5) * 14,
+            0.38, 0.96, 1.0, 0.42 + Math.random() * 0.22, -4.0, 1.8
+          );
+        }
+      }
+      if (this.audio && this.audio.playApsIntercept) this.audio.playApsIntercept();
+      this.cameraShake = Math.max(this.cameraShake, 0.28);
+      if (this.ui) this.ui.toast(`🛡️ DONNERSCHILD APS INTERCEPTED ${Math.round(caliberMm)}mm ${shell.toUpperCase()} IN MID-AIR!`);
+      this._sendArmorHitAck(shooterPeerId, { outcome: "aps", zone: "APS", shell, cal: Math.round(caliberMm) });
       return;
     }
 
-    let armorMult = Math.max(0.08, Math.min(1.0, weaponPenMm / Math.max(10, vehicleArmorMm)));
-    if (is140) armorMult = Math.min(armorMult, isTherm ? 0.52 : (isHe ? 0.36 : 0.42));
-    else if (isTank) armorMult = Math.min(armorMult, isTherm ? 0.68 : (isHe ? 0.52 : 0.60));
+    // 2. TRANSFORM INCOMING SHOT VECTOR INTO LOCAL VEHICLE FRAME (Directional Zones & Slope Angling!)
+    const invQuat = this._tmpInvQuat.copy(this.vehicle.quat).invert();
+    const toShooterW = new THREE.Vector3(origX - hx, origY - hy, origZ - hz);
+    if (toShooterW.lengthSq() < 0.25) {
+      // Backwards-compatible fallback when origin omitted: use vector from vehicle center to impact point
+      toShooterW.set(hx - vx, hy - vy, hz - vz);
+      if (toShooterW.lengthSq() < 0.04) toShooterW.set(0, 0.2, 1).applyQuaternion(this.vehicle.quat);
+    }
+    toShooterW.normalize();
+    const shotDirW = toShooterW.clone().negate();
+    const toShooterL = toShooterW.clone().applyQuaternion(invQuat).normalize();
+    const hitH = hy - this.vehicle.pos.y;
 
-    const baseDmg = isTherm ? 78 : (isHe ? 54 : (isAp ? 48 : (shell === "auto40" ? 16 : 6)));
+    const ax = toShooterL.x, az = toShooterL.z;
+    const isSideHit = Math.abs(ax) > Math.abs(az) * 0.92;
+    const sideSign = ax < 0 ? -1 : 1;
+
+    let zone = "FRONT";
+    let zoneLabel = "FRONT GLACIS";
+    let zoneMult = 1.0;
+    let eraFace = "front";
+    let zoneNormalL = new THREE.Vector3(0, 0.34, 0.94).normalize();
+
+    if (isTank && isSideHit && hitH < 1.05) {
+      zone = "TRACKS";
+      zoneLabel = sideSign < 0 ? "LEFT TRACK" : "RIGHT TRACK";
+      zoneMult = 0.35;
+      eraFace = sideSign < 0 ? "left" : "right";
+      zoneNormalL.set(sideSign, 0.04, 0).normalize();
+    } else if (isArmored && hitH > 1.45) {
+      zone = "TURRET";
+      zoneLabel = "TURRET / UPPER MANTLET";
+      zoneMult = 1.15;
+      eraFace = isSideHit ? (sideSign < 0 ? "left" : "right") : (az >= 0 ? "front" : null);
+      if (isSideHit) zoneNormalL.set(sideSign, 0.16, 0).normalize();
+      else zoneNormalL.set(0, 0.22, az >= 0 ? 1 : -1).normalize();
+    } else if (isSideHit) {
+      zone = "SIDE";
+      zoneLabel = sideSign < 0 ? "LEFT SIDE HULL" : "RIGHT SIDE HULL";
+      zoneMult = 0.38;
+      eraFace = sideSign < 0 ? "left" : "right";
+      zoneNormalL.set(sideSign, 0.08, 0).normalize();
+    } else if (az >= 0) {
+      zone = "FRONT";
+      zoneLabel = "FRONT GLACIS";
+      zoneMult = 1.0;
+      eraFace = "front";
+      zoneNormalL.set(0, 0.34, 0.94).normalize();
+    } else {
+      zone = "REAR";
+      zoneLabel = "REAR ENGINE DECK";
+      zoneMult = 0.20;
+      eraFace = null;
+      zoneNormalL.set(0, 0.12, -0.99).normalize();
+    }
+
+    // 3. v17.9 PER-VEHICLE, PER-ZONE RHA ARMOR PROFILE (140A4: 900 Front / 500 Side-Front / 200 Side-Rear / 200 Rear!)
+    const prof = this._getArmorProfile(spec, vs);
+    const hitLocalZ = (hx - vx) * Math.sin(this.vehicle.yaw || 0) + (hz - vz) * Math.cos(this.vehicle.yaw || 0);
+    let zoneRha = prof.front;
+    if (hitH > 2.35) { zone = "ROOF"; zoneLabel = "ROOF ARMOR"; zoneRha = prof.roof; }
+    else if (hitH < 0.28) { zone = "BELLY"; zoneLabel = "BELLY PLATE"; zoneRha = prof.belly; }
+    else if (zone === "TURRET") zoneRha = prof.turret;
+    else if (zone === "SIDE" || zone === "TRACKS") {
+      zoneRha = (hitLocalZ >= 0) ? prof.sideFront : prof.sideRear;
+      if (zone === "SIDE") zoneLabel = (sideSign < 0 ? "LEFT " : "RIGHT ") + (hitLocalZ >= 0 ? "FRONT-SIDE HULL" : "REAR-SIDE HULL");
+    } else if (zone === "REAR") zoneRha = prof.rear;
+    else zoneRha = prof.front;
+
+    const cosTheta = Math.max(0.0, Math.min(1.0, Math.abs(toShooterL.dot(zoneNormalL))));
+    const impactAngleDeg = Math.acos(Math.min(1.0, cosTheta)) * (180 / Math.PI);
+    const fullSlopeFactor = 1.0 / Math.max(0.35, cosTheta);
+    // HESH plastic explosive squashes onto angled steel — ignores HALF of the slope angling bonus!
+    const effSlopeFactor = isHesh ? (1.0 + (fullSlopeFactor - 1.0) * 0.5) : fullSlopeFactor;
+    const effArmorMm = zoneRha * effSlopeFactor;
+
+    const weaponPenMm = (caliberMm >= 140) ? (isAp ? 880 : (isHesh ? 490 : 520))
+      : (caliberMm >= 120 ? (isAp ? 620 : 380)
+      : (caliberMm >= 100 ? (isAp ? 480 : 340)
+      : (caliberMm >= 35 ? 110
+      : (caliberMm >= 28 ? 68
+      : (caliberMm >= 20 ? 42
+      : (caliberMm >= 14 ? 30 : 20))))));
+
+    // 4. KONTAKT-5 ERA PER-SIDE REACTIVE DETONATION (T-72B w/ Kontakt-5 or PzKpfw 140A4)
+    let eraTriggered = false;
+    let eraDmgMult = 1.0;
+    if (!this._eraCharges) this._resetEraCharges();
+    if (hasEra && !fromSelf && eraFace && this._eraCharges[eraFace] > 0 && (isHe || isHesh || isTherm || isRocket)) {
+      this._eraCharges[eraFace]--;
+      eraTriggered = true;
+      eraDmgMult = 0.45; // Cuts penetration & damage by 55%!
+      if (this.particles) {
+        this.particles.emitCrashBurst(hx, hy + 0.4, hz, 1.35, "rock", this.weather.weather);
+        for (let k = 0; k < 14; k++) {
+          this.particles.emitRGB(
+            hx + (Math.random() - 0.5) * 1.1, hy + 0.3 + Math.random() * 0.7, hz + (Math.random() - 0.5) * 1.1,
+            toShooterW.x * (5 + Math.random() * 7) + (Math.random() - 0.5) * 7,
+            2.2 + Math.random() * 5.2,
+            toShooterW.z * (5 + Math.random() * 7) + (Math.random() - 0.5) * 7,
+            1.0, 0.68 + Math.random() * 0.25, 0.16, 0.38 + Math.random() * 0.25, -7.5, 1.4
+          );
+        }
+      }
+      if (this.audio && this.audio.playEraDetonation) this.audio.playEraDetonation();
+      if (this.ui) this.ui.toast(`⚡ KONTAKT-5 ERA DETONATED (${eraFace.toUpperCase()})! (${this._eraCharges[eraFace]} left)`);
+    }
+
+    const effPenMm = weaponPenMm * eraDmgMult;
+    const hlth = vs.health;
+
+    // 5. AUTO-RICOCHET & HEAVY MBT NON-PENETRATION (with exposed track/optic chip for autocannons!)
+    const apObliqueBounce = isAp && (impactAngleDeg > 72 || effPenMm < effArmorMm * 0.72);
+    const autoBounce = isAuto && (effPenMm < effArmorMm * 0.72);
+    if (apObliqueBounce || autoBounce) {
+      let trackSnapped = false;
+      // Autocannons & 14.5mm against heavy MBTs can still chew exposed tracks or chip optics/headlights!
+      if (isAuto && isTank && (zone === "TRACKS" || (isSideHit && hitH < 1.15))) {
+        const tKey = sideSign < 0 ? "trackL" : "trackR";
+        const tDmg = caliberMm >= 35 ? 36 : (caliberMm >= 28 ? 26 : (caliberMm >= 20 ? 18 : 11));
+        hlth[tKey] = Math.max(0, (hlth[tKey] !== undefined ? hlth[tKey] : 100) - tDmg);
+        if (hlth[tKey] < 15) {
+          trackSnapped = true;
+          if (this.ui) this.ui.toast(`💥 ${zoneLabel} SNAPPED BY ${Math.round(caliberMm)}mm FIRE! Repair with [X]!`, true);
+        }
+      } else if (isAuto && isArmored && (zone === "TURRET" || zone === "FRONT") && Math.random() < 0.35) {
+        hlth.glass = Math.max(15, (hlth.glass !== undefined ? hlth.glass : 100) - (caliberMm >= 23 ? 12 : 6));
+        if (this.vehicle.damageHeadlights) this.vehicle.damageHeadlights(16, 0);
+      }
+
+      // Compute physical reflected bounce trajectory & spawn visible bouncing ricochet tracer + sparks!
+      const zoneNormalW = zoneNormalL.clone().applyQuaternion(this.vehicle.quat).normalize();
+      const refl = shotDirW.clone().reflect(zoneNormalW).normalize();
+      refl.y = Math.max(0.22, refl.y + 0.16);
+      refl.normalize();
+      const bounceDist = isAp ? 68 : 38;
+      this._spawnTracerBeam(
+        hx, hy, hz,
+        hx + refl.x * bounceDist, hy + refl.y * bounceDist, hz + refl.z * bounceDist,
+        isAp ? 0x7df9ff : 0xffe066,
+        isAp ? 0.11 : 0.055
+      );
+      if (this.particles) {
+        for (let k = 0; k < (isAp ? 14 : 8); k++) {
+          this.particles.emitRGB(
+            hx, hy + 0.15, hz,
+            refl.x * (6 + Math.random() * 10) + (Math.random() - 0.5) * 6,
+            2.2 + Math.random() * 5.0,
+            refl.z * (6 + Math.random() * 10) + (Math.random() - 0.5) * 6,
+            1.0, 0.85, 0.32, 0.32 + Math.random() * 0.2, -9.0, 1.2
+          );
+        }
+      }
+      if (this.audio && this.audio.playArmorRicochet) this.audio.playArmorRicochet(isAp ? 0.95 : 0.65);
+      else if (this.audio) this.audio.playImpact(0.32);
+      if (this.audio && this.audio.playArmorClang) this.audio.playArmorClang(caliberMm, true);
+      if (!trackSnapped && this.ui) {
+        this.ui.toast(`🛡 ${zoneLabel} RICOCHET! ${Math.round(effArmorMm)}mm eff vs ${Math.round(effPenMm)}mm ${shell.toUpperCase()}`);
+      }
+      this._sendArmorHitAck(shooterPeerId, {
+        outcome: "ricochet",
+        zone: zoneLabel,
+        shell,
+        cal: Math.round(caliberMm),
+        effArmorMm: Math.round(effArmorMm),
+        penMm: Math.round(effPenMm),
+        angleDeg: Math.round(impactAngleDeg),
+        trackSnapped
+      });
+      return;
+    }
+
+    // 6. PENETRATION & DISTINCT SHELL / MODULE DAMAGE!
+    const falloff = isAp ? 1.0 : Math.max(0.18, 1.0 - (dist / maxRad));
+    const calMult = Math.pow(Math.max(14, caliberMm) / 125.0, 1.35);
+    let armorMult = Math.max(0.10, Math.min(1.15, effPenMm / Math.max(10, effArmorMm)));
+    if (is140) armorMult = Math.min(armorMult, isTherm ? 0.56 : (isHe ? 0.42 : 0.72));
+    else if (isTank) armorMult = Math.min(armorMult, isTherm ? 0.72 : (isHe ? 0.58 : 0.88));
+    armorMult *= eraDmgMult;
+
+    const baseDmg = isTherm ? 78 : (isHesh ? 62 : (isHe ? 54 : (isAp ? 52 : (caliberMm >= 35 ? 20 : (caliberMm >= 28 ? 14 : (caliberMm >= 20 ? 11 : 7))))));
     const dmg = baseDmg * calMult * falloff * armorMult;
 
-    vs.health.body = Math.max(4, vs.health.body - dmg * 0.85);
-    const p = vs.parts;
-    if (p) {
-      const targets = isAp
-        ? ["pistons", "crankshaft", "headGasket", "gearboxGears", "radiator"] // Pinpoint internal penetration!
-        : (isTherm
-          ? ["pistons", "radiator", "intercooler", "sparkPlugs", "fuelInjectors", "shockFL", "shockFR", "shockRL", "shockRR", "tieRods", "brakeSystem"]
-          : ["radiator", "intercooler", "shockFL", "shockFR", "shockRL", "shockRR", "tieRods"]);
-      for (const id of targets) {
-        if (p[id]) p[id].hp = Math.max(4, p[id].hp - dmg * (isAp ? 0.95 : 0.65));
+    if ((is140 || isTank || isArmored) && this.audio) {
+      if (this.audio.playArmorClang) this.audio.playArmorClang(caliberMm, false);
+      if (caliberMm >= 90 && this.audio.playConcussionMuffle) this.audio.playConcussionMuffle();
+    }
+    // v17.9 DAMAGEABLE MODULES & AMMO COOK-OFF (T-72 Cosmonaut vs 140A4 Dual Blow-Out Racks!)
+    if (isArmored && caliberMm >= 20) {
+      if (zone === "TURRET") {
+        this.tankModules.turretRing = Math.max(0, this.tankModules.turretRing - dmg * 0.85);
+        this.tankModules.gunBreech  = Math.max(0, this.tankModules.gunBreech  - dmg * 0.65);
+        if (Math.random() < 0.35) this.tankModules.lwsSensor = Math.max(0, this.tankModules.lwsSensor - 60);
+        if (Math.random() < 0.30) this.tankModules.secBarrel = Math.max(0, this.tankModules.secBarrel - 65);
+      }
+      if (caliberMm >= 90 && dmg > 24 && Math.random() < 0.42) {
+        if (spec.id === "t72" && !this.turretPopActive) {
+          this.turretPopActive = true;
+          this.turretPopVy = 18.5;
+          vs.burnedOut = true;
+          this.cookoffJetTimer = 3.5;
+          if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
+          if (this.ui) this.ui.toast("🚀 T-72 CAROUSEL COOK-OFF!! Turret launched — exit [F] or recover to any Garage!", true);
+        } else if (is140) {
+          const hitLeft = (sideSign < 0);
+          if (hitLeft && this.ammoRackLIntact) {
+            this.ammoRackLIntact = false;
+            vs.p140ApAmmo = Math.floor((vs.p140ApAmmo || 0) * 0.5);
+            vs.p140HeshAmmo = Math.floor((vs.p140HeshAmmo || 0) * 0.5);
+            this.cookoffJetTimer = 3.5;
+            if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
+            if (this.ui) this.ui.toast("🔥 LEFT BLOW-OUT RACK COOK-OFF! 50% ammo lost — Right rack still operational!", true);
+          } else if (!hitLeft && this.ammoRackRIntact) {
+            this.ammoRackRIntact = false;
+            vs.p140ApAmmo = Math.floor((vs.p140ApAmmo || 0) * 0.5);
+            vs.p140HeshAmmo = Math.floor((vs.p140HeshAmmo || 0) * 0.5);
+            this.cookoffJetTimer = 3.5;
+            if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
+            if (this.ui) this.ui.toast("🔥 RIGHT BLOW-OUT RACK COOK-OFF! 50% ammo lost — Left rack still operational!", true);
+          }
+        } else if (spec.id === "harimau" || spec.id === "shilka" || spec.id === "komodo_turret") {
+          vs.t72HeAmmo = 0; vs.t72ApAmmo = 0; vs.shilkaAmmo = 0; vs.btrAmmo = 0;
+          this.cookoffJetTimer = 3.5;
+          if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
+          if (this.ui) this.ui.toast("🔥 AMMO RACK BLOW-OUT! Crew survived — all ammo cooked off!", true);
+        }
       }
     }
-    if (isTherm) this.vehicle.coolantTemp = Math.min(130, this.vehicle.coolantTemp + 22 * falloff);
-    if (!isTank && this.vehicle._damageTire && (isHe || isTherm)) {
-      this.vehicle._damageTire(Math.floor(Math.random() * this.vehicle.wheels.length), 65 * falloff, "shrapnel");
+    hlth.body = Math.max(4, (hlth.body !== undefined ? hlth.body : 100) - dmg * 0.85);
+    const p = vs.parts;
+    let trackSnapped = false;
+    let breechShock = false;
+
+    if (isAp) {
+      // APFSDS: Pinpoint directional internal spall based on exact hit zone!
+      let apTargets = ["radiator", "gearboxGears", "pistons", "tieRods"];
+      if (zone === "REAR") {
+        apTargets = ["radiator", "pistons", "headGasket", "crankshaft"];
+        this.vehicle.coolantTemp = Math.min(132, (this.vehicle.coolantTemp || 85) + 24);
+      } else if (zone === "SIDE") {
+        apTargets = ["gearboxGears", "transferCase", "driveshaft"];
+        vs.fuel = Math.max(0, (vs.fuel || 0) - Math.min(18, 8 + dmg * 0.22));
+      } else if (zone === "TURRET") {
+        apTargets = ["sparkPlugs", "radiator"];
+        breechShock = true;
+        this.t72ReloadTimer = Math.max(this.t72ReloadTimer || 0, 0) + 3.0;
+        hlth.glass = Math.max(0, (hlth.glass !== undefined ? hlth.glass : 100) - 38);
+      } else if (zone === "TRACKS") {
+        apTargets = ["shockFL", "shockFR", "shockRL", "shockRR", "wheelHubs"];
+      }
+      if (p) {
+        for (const id of apTargets) {
+          if (p[id]) p[id].hp = Math.max(4, p[id].hp - dmg * 1.05);
+        }
+      }
+      if (isTank && zone === "TRACKS") {
+        const tKey = sideSign < 0 ? "trackL" : "trackR";
+        hlth[tKey] = Math.max(0, (hlth[tKey] !== undefined ? hlth[tKey] : 100) - Math.max(48, dmg * 1.8));
+        if (hlth[tKey] < 15) trackSnapped = true;
+      }
+    } else if (isHe || isTherm) {
+      // HE / HESH / 122mm Rockets / Thermobaric: Overpressure shockwave, heavy track snapping & optic shatter!
+      const blastTargets = isTherm
+        ? ["pistons", "radiator", "intercooler", "sparkPlugs", "fuelInjectors", "shockFL", "shockFR", "shockRL", "shockRR", "tieRods", "brakeSystem"]
+        : ["radiator", "intercooler", "shockFL", "shockFR", "shockRL", "shockRR", "tieRods"];
+      if (p) {
+        for (const id of blastTargets) {
+          if (p[id]) p[id].hp = Math.max(4, p[id].hp - dmg * (isHesh ? 0.80 : 0.68));
+        }
+      }
+      hlth.glass = Math.max(0, (hlth.glass !== undefined ? hlth.glass : 100) - Math.min(80, 28 + dmg * 1.1));
+      if (this.vehicle.damageHeadlights) this.vehicle.damageHeadlights(55 * falloff, 0);
+      if (isTherm) this.vehicle.coolantTemp = Math.min(132, (this.vehicle.coolantTemp || 85) + 24 * falloff);
+      if (isTank) {
+        const trackDmg = (zone === "TRACKS" ? 72 : (zone === "SIDE" ? 56 : 38)) * falloff * (isHesh ? 1.15 : 1.0) * eraDmgMult;
+        if (sideSign < 0 || zone === "FRONT" || zone === "REAR") {
+          hlth.trackL = Math.max(0, (hlth.trackL !== undefined ? hlth.trackL : 100) - trackDmg);
+        }
+        if (sideSign >= 0 || zone === "FRONT" || zone === "REAR") {
+          hlth.trackR = Math.max(0, (hlth.trackR !== undefined ? hlth.trackR : 100) - trackDmg);
+        }
+        if ((hlth.trackL !== undefined && hlth.trackL < 15) || (hlth.trackR !== undefined && hlth.trackR < 15)) {
+          trackSnapped = true;
+        }
+      } else if (this.vehicle._damageTire) {
+        this.vehicle._damageTire(Math.floor(Math.random() * this.vehicle.wheels.length), 68 * falloff, "shrapnel");
+      }
+    } else {
+      // Autocannons (23/30/40mm) & 14.5mm penetrating light armor (BTR/Komodo/Shilka/civilian)
+      if (p) {
+        const autoTargets = zone === "REAR"
+          ? ["radiator", "pistons", "headGasket"]
+          : (zone === "SIDE" ? ["gearboxGears", "transferCase", "fuelInjectors"] : ["radiator", "intercooler", "tieRods"]);
+        for (const id of autoTargets) {
+          if (p[id]) p[id].hp = Math.max(4, p[id].hp - dmg * 0.85);
+        }
+      }
+      hlth.glass = Math.max(0, (hlth.glass !== undefined ? hlth.glass : 100) - Math.min(45, dmg * 1.4));
+      if (Math.random() < 0.45 && this.vehicle.damageHeadlights) this.vehicle.damageHeadlights(35, 0);
+      if (isTank) {
+        const tKey = sideSign < 0 ? "trackL" : "trackR";
+        hlth[tKey] = Math.max(0, (hlth[tKey] !== undefined ? hlth[tKey] : 100) - dmg * 1.6);
+        if (hlth[tKey] < 15) trackSnapped = true;
+      } else if (vs.blownTires && vs.blownTires.length > 0 && Math.random() < 0.55) {
+        const wi = Math.floor(Math.random() * vs.blownTires.length);
+        vs.blownTires[wi] = true;
+        if (this.ui) this.ui.toast("💥 TIRE SHOT OUT! Swap spare or Field Repair [X]!", true);
+      }
     }
-    if (this.vehicle.damageHeadlights && (isHe || isTherm)) this.vehicle.damageHeadlights(45 * falloff, 0);
 
     // Physical blast impulse (none on pinpoint APFSDS!)
     if (!isAp) {
       const ang = Math.atan2(vx - hx, vz - hz);
-      const imp = (isTherm ? 28 : (isHe ? 18 : 5)) * falloff * (isTank ? 0.42 : 1.0);
+      const imp = (isTherm ? 28 : (isHe ? 18 : 5)) * falloff * eraDmgMult * (isTank ? 0.42 : 1.0);
       this.vehicle.applyExternalImpulse(Math.sin(ang) * imp, imp * 0.45, Math.cos(ang) * imp, (Math.random() - 0.5) * 3.2 * falloff);
     }
     this.cameraShake = Math.max(this.cameraShake, Math.min(1.1, 0.35 + falloff * 0.7));
-    if (this.audio && this.audio.playImpact) this.audio.playImpact(Math.min(1.0, 0.4 + falloff * 0.6));
+    if (this.audio && this.audio.playImpact) this.audio.playImpact(Math.min(1.0, 0.45 + falloff * 0.55));
+
+    if (this.ui && !fromSelf) {
+      if (breechShock) {
+        this.ui.toast(`💥 ${zoneLabel} PENETRATED! Breech shock (+3.0s reload delay)!`, true);
+      } else if (trackSnapped) {
+        this.ui.toast(`💥 ${zoneLabel} HIT — TANK TRACK SNAPPED! Repair with [X]!`, true);
+      } else if (!eraTriggered) {
+        this.ui.toast(`💥 ${zoneLabel} PENETRATED! ${Math.round(caliberMm)}mm ${shell.toUpperCase()} (${Math.round(effPenMm)}mm vs ${Math.round(effArmorMm)}mm eff)`, true);
+      }
+    }
+
+    this._sendArmorHitAck(shooterPeerId, {
+      outcome: eraTriggered ? "era" : (trackSnapped ? "track_snap" : "pen"),
+      zone: zoneLabel,
+      shell,
+      cal: Math.round(caliberMm),
+      effArmorMm: Math.round(effArmorMm),
+      penMm: Math.round(effPenMm),
+      breechShock,
+      trackSnapped
+    });
   }
 
   _applyTreeBallistics(gx, gy, gz, dmg, blastRad = 0, dirX = 1, dirZ = 0) {
@@ -3257,11 +3819,12 @@ KK.Game = class Game {
     this._spawnTracerBeam(mz.tipWorld.x, mz.tipWorld.y, mz.tipWorld.z, endPt.x, endPt.y, endPt.z, beamCol, 0.22);
     this.particles.emitCrashBurst(endPt.x, endPt.y + 1.0, endPt.z, isAp140 ? 0.75 : 2.8, "rock", this.weather.weather);
     if (!isAp140) this._applyTreeBallistics(endPt.x, endPt.y, endPt.z, sh === "therm140" ? 220 : 160, sh === "therm140" ? 18.0 : 12.0, aimDir.x, aimDir.z);
-    this._applyIncomingOrdnanceDamage(endPt.x, endPt.y, endPt.z, sh, 140, true);
+    this._applyIncomingOrdnanceDamage(endPt.x, endPt.y, endPt.z, sh, 140, true, mz.tipWorld.x, mz.tipWorld.y, mz.tipWorld.z, this.network ? this.network.peerId : null);
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 32)) this.clarksonFarm.triggerRage(this.ui, this.audio);
     this.network.send({
       type: "cannon_fire", shell: sh, cal: 140,
       x0: +mz.tipWorld.x.toFixed(1), y0: +mz.tipWorld.y.toFixed(1), z0: +mz.tipWorld.z.toFixed(1),
+      ox: +mz.tipWorld.x.toFixed(1), oy: +mz.tipWorld.y.toFixed(1), oz: +mz.tipWorld.z.toFixed(1),
       x1: +endPt.x.toFixed(1), y1: +endPt.y.toFixed(1), z1: +endPt.z.toFixed(1)
     });
   }
@@ -3295,8 +3858,17 @@ KK.Game = class Game {
       aimDir = new THREE.Vector3(Math.sin(rYaw) * Math.cos(rPitch), Math.sin(rPitch), Math.cos(rYaw) * Math.cos(rPitch)).applyQuaternion(this.vehicle.quat).normalize();
     }
     let endPt = muzzleG.clone().addScaledVector(aimDir, 360);
-    for (let s = 8; s <= 360; s += 6) {
+    for (let s = 8; s <= 360; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
+      let hitP = false;
+      if (this.network && this.network.remotePlayers) {
+        for (const rp of this.network.remotePlayers.values()) {
+          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.2 && Math.abs((rp.gy || 0) + 1.2 - ry) < 2.6) {
+            endPt.set(rx, ry, rz); hitP = true; break;
+          }
+        }
+      }
+      if (hitP) break;
       let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 40); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 28);
       if (cHit.hit) { endPt.set(rx, ry, rz); this.particles.emitCrashBurst(rx, ry, rz, 1.1, "rock", this.weather.weather); break; }
       if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network).hit) { endPt.set(rx, ry, rz); break; }
@@ -3312,6 +3884,7 @@ KK.Game = class Game {
     this.network.send({
       type: "weapon_fire", cal: 40,
       x0: +muzzleG.x.toFixed(1), y0: +muzzleG.y.toFixed(1), z0: +muzzleG.z.toFixed(1),
+      ox: +muzzleG.x.toFixed(1), oy: +muzzleG.y.toFixed(1), oz: +muzzleG.z.toFixed(1),
       x1: +endPt.x.toFixed(1), y1: +endPt.y.toFixed(1), z1: +endPt.z.toFixed(1)
     });
   }
@@ -3382,7 +3955,7 @@ KK.Game = class Game {
     this.particles.emitCrashBurst(endPt.x, endPt.y + 1.0, endPt.z, shell === "he" ? 2.4 : 1.5, "rock", this.weather.weather);
 
     // COLOSSAL 125mm BLAST + 6.5s MULTI-STAGE MECHANICAL CAROUSEL AUTOLOADER SOUND!
-    this.audio.playTank125mmBlast();
+    this.audio.playTank125mmBlast(vs && vs.vehicleId === "harimau" ? 105 : 125);
     this.audio.playTankAutoloader();
     this.cameraShake = Math.max(this.cameraShake, 0.72);
 
@@ -3397,11 +3970,13 @@ KK.Game = class Game {
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 35)) {
       this.clarksonFarm.triggerRage(this.ui, this.audio);
     }
-    
+    const tankCal = (vs.vehicleId === "harimau") ? 105 : 125;
+    this._applyIncomingOrdnanceDamage(endPt.x, endPt.y, endPt.z, shell, tankCal, true, muzzleG.x, muzzleG.y, muzzleG.z, this.network ? this.network.peerId : null);
 
     this.network.send({
-      type: "cannon_fire", shell,
+      type: "cannon_fire", shell, cal: tankCal,
       x0: +muzzleG.x.toFixed(1), y0: +muzzleG.y.toFixed(1), z0: +muzzleG.z.toFixed(1),
+      ox: +muzzleG.x.toFixed(1), oy: +muzzleG.y.toFixed(1), oz: +muzzleG.z.toFixed(1),
       x1: +endPt.x.toFixed(1), y1: +endPt.y.toFixed(1), z1: +endPt.z.toFixed(1)
     });
   }
@@ -3435,8 +4010,17 @@ KK.Game = class Game {
     }
     let endPt = muzzleG.clone().addScaledVector(aimDir, 240);
     let hitRes = { hit: false };
-    for (let s = 8; s <= 240; s += 6) {
+    for (let s = 8; s <= 240; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
+      let hitP = false;
+      if (this.network && this.network.remotePlayers) {
+        for (const rp of this.network.remotePlayers.values()) {
+          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.0 && Math.abs((rp.gy || 0) + 1.1 - ry) < 2.5) {
+            endPt.set(rx, ry, rz); hitP = true; break;
+          }
+        }
+      }
+      if (hitP) break;
       let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer)); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 14);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
@@ -3448,10 +4032,12 @@ KK.Game = class Game {
     this._spawnTracerBeam(muzzleG.x, muzzleG.y, muzzleG.z, endPt.x, endPt.y, endPt.z, 0xffd166, 0.055);
     this.audio.playKPVTShot();
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 25)) this.clarksonFarm.triggerRage(this.ui, this.audio);
-    
+
+    const coaxCal = (vs.vehicleId === "harimau") ? 7.62 : 14.5;
     this.network.send({
-      type: "weapon_fire",
+      type: "weapon_fire", cal: coaxCal,
       x0: +muzzleG.x.toFixed(1), y0: +muzzleG.y.toFixed(1), z0: +muzzleG.z.toFixed(1),
+      ox: +muzzleG.x.toFixed(1), oy: +muzzleG.y.toFixed(1), oz: +muzzleG.z.toFixed(1),
       x1: +endPt.x.toFixed(1), y1: +endPt.y.toFixed(1), z1: +endPt.z.toFixed(1)
     });
   }
@@ -3489,10 +4075,19 @@ KK.Game = class Game {
     let endPt = muzzleLocal.clone().addScaledVector(aimDir, maxRange);
     let hitRes = { hit: false };
 
-    for (let s = 8; s <= maxRange; s += 6) {
+    for (let s = 8; s <= maxRange; s += 5) {
       const rx = muzzleLocal.x + aimDir.x * s;
       const ry = muzzleLocal.y + aimDir.y * s;
       const rz = muzzleLocal.z + aimDir.z * s;
+      let hitP = false;
+      if (this.network && this.network.remotePlayers) {
+        for (const rp of this.network.remotePlayers.values()) {
+          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.0 && Math.abs((rp.gy || 0) + 1.1 - ry) < 2.5) {
+            endPt.set(rx, ry, rz); hitP = true; break;
+          }
+        }
+      }
+      if (hitP) break;
       if (this.aiEntities && this.aiEntities.hitAnimalAt) {
         const aHit = this.aiEntities.hitAnimalAt(rx, ry, rz, 3.6, 85, "gunfire");
         if (aHit) {
@@ -3532,11 +4127,12 @@ KK.Game = class Game {
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 25)) {
       this.clarksonFarm.triggerRage(this.ui, this.audio);
     }
-    
 
+    const btrCal = isKomodo30 ? 30 : (isKomodoMg ? 12.7 : 14.5);
     this.network.send({
-      type: "weapon_fire",
+      type: "weapon_fire", cal: btrCal,
       x0: +muzzleLocal.x.toFixed(1), y0: +muzzleLocal.y.toFixed(1), z0: +muzzleLocal.z.toFixed(1),
+      ox: +muzzleLocal.x.toFixed(1), oy: +muzzleLocal.y.toFixed(1), oz: +muzzleLocal.z.toFixed(1),
       x1: +endPt.x.toFixed(1), y1: +endPt.y.toFixed(1), z1: +endPt.z.toFixed(1)
     });
   }
@@ -3657,7 +4253,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.6.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v17.9.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -3743,7 +4339,7 @@ KK.Game = class Game {
     }
   }
 
-  _spawnBallisticRocket(x, y, z, vx, vy, vz, isOwner = true) {
+  _spawnBallisticRocket(x, y, z, vx, vy, vz, isOwner = true, shooterPeerId = null) {
     const grp = new THREE.Group();
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08, 0.08, 1.85, 6),
@@ -3756,7 +4352,7 @@ KK.Game = class Game {
     );
     plume.rotation.x = -Math.PI / 2; plume.position.z = -1.45; grp.add(plume);
     this.scene.add(grp);
-    this.rockets.push({ gx: x, gy: y, gz: z, vx, vy, vz, life: 8.5, isOwner, mesh: grp });
+    this.rockets.push({ gx: x, gy: y, gz: z, ox: x, oy: y, oz: z, vx, vy, vz, life: 8.5, isOwner, shooterPeerId, mesh: grp });
   }
 
   launchSingleBm21Rocket() {
@@ -3835,8 +4431,17 @@ KK.Game = class Game {
 
     let endPt = muzzleG.clone().addScaledVector(aimDir, 300);
     let hitRes = { hit: false };
-    for (let s = 8; s <= 300; s += 6) {
+    for (let s = 8; s <= 300; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
+      let hitP = false;
+      if (this.network && this.network.remotePlayers) {
+        for (const rp of this.network.remotePlayers.values()) {
+          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.0 && Math.abs((rp.gy || 0) + 1.1 - ry) < 2.5) {
+            endPt.set(rx, ry, rz); hitP = true; break;
+          }
+        }
+      }
+      if (hitP) break;
       let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 23); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 18);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
@@ -3858,11 +4463,11 @@ KK.Game = class Game {
     this.barrelHeat = Math.min(1.0, this.barrelHeat + 0.055);
     this.autoBarrelHeat = Math.min(1.0, this.autoBarrelHeat + 0.048);
     if (this.clarksonFarm && this.clarksonFarm.isInsideSanctuary(endPt.x, endPt.z, 25)) this.clarksonFarm.triggerRage(this.ui, this.audio);
-    
 
     this.network.send({
-      type: "weapon_fire",
+      type: "weapon_fire", cal: 23,
       x0: +muzzleG.x.toFixed(1), y0: +muzzleG.y.toFixed(1), z0: +muzzleG.z.toFixed(1),
+      ox: +muzzleG.x.toFixed(1), oy: +muzzleG.y.toFixed(1), oz: +muzzleG.z.toFixed(1),
       x1: +endPt.x.toFixed(1), y1: +endPt.y.toFixed(1), z1: +endPt.z.toFixed(1)
     });
   }
@@ -3878,6 +4483,8 @@ KK.Game = class Game {
     for (const tw of KK.TOWNS) { const d = Math.hypot(tw.x - this.vehicle.pos.x, tw.z - this.vehicle.pos.z); if (d < bestD) { bestD = d; best = tw; } }
     this.money = Math.max(0, this.money - 350);
     const ty = this.world.getTerrainInfo(best.garageX, best.garageZ, true).height;
+    if (this.boats) this.boats.activeBoat = null;
+    this.walkingOnBoat = null;
     this.vehicle.pos.set(best.garageX, ty + 1.5, best.garageZ); this.vehicle.vel.set(0, 0, 0); this.vehicle.angVel.set(0, 0, 0); this.vehicle.quat.identity();
     this.onFoot = false; this.localAvatar.visible = false; this.ui.closeModal(); this.ui.toast("Towed to " + best.name + " Garage (-$350)!");
   }
@@ -3888,6 +4495,637 @@ KK.Game = class Game {
     const ty = this.world.getTerrainInfo(first.gx + 6, first.gz + 6, true).height;
     this.vehicle.pos.set(first.gx + 6, ty + 1.8, first.gz + 6); this.vehicle.vel.set(0, 0, 0); this.vehicle.angVel.set(0, 0, 0);
     this.onFoot = false; this.localAvatar.visible = false; this.ui.closeModal(); this.ui.toast("Teleported next to " + first.callsign + "!");
+  }
+
+  _isPosInOpenSea(gx, gz) {
+    if (this.oceanCryptids && this.oceanCryptids._isOpenOcean) {
+      return this.oceanCryptids._isOpenOcean(gx, gz, 220);
+    }
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    return this.world.getTerrainInfo(gx, gz, false).height < seaL - 3.5;
+  }
+
+  triggerTestHurricane(cat = 5) {
+    if (this.audio) this.audio.init();
+    const catNum = Math.max(1, Math.min(5, Math.round(Number(cat) || 5)));
+    const ab = this.boats ? this.boats.activeBoat : null;
+    const px = ab ? ab.gx : (this.onFoot ? this.playerFoot.x : this.vehicle.pos.x);
+    const pz = ab ? ab.gz : (this.onFoot ? this.playerFoot.z : this.vehicle.pos.z);
+
+    // Strictly prohibit hurricanes on land!
+    if (!this._isPosInOpenSea(px, pz)) {
+      if (this.ui) this.ui.toast("❌ Failed to summon hurricane — hurricanes only form over open ocean!", true);
+      return;
+    }
+
+    if (this.hazards && this.hazards.spawnHurricaneNear) {
+      const h = this.hazards.spawnHurricaneNear(px, pz, catNum, this.ui, this.audio, this.network);
+      if (!h) return;
+    } else if (this.ui) {
+      this.ui.toast(`🌀 Category ${catNum} Hurricane weather activated!`, true);
+    }
+    if (this.weather && this.weather.setEnvironment) {
+      this.weather.setEnvironment(this.weather.timeOfDay, "hurricane", this.weather.timeScale);
+      if (this.network && this.network.isHost) {
+        this.network.broadcastEnv(this.weather.timeOfDay, "hurricane", this.weather.timeScale, true);
+      }
+    }
+    if (this.audio && this.audio.playSeaDreadPulse) {
+      this.audio.playSeaDreadPulse(0.9, "hurricane");
+    }
+    if (this.ui && this.ui.activeModal === "env") this.ui.closeModal();
+  }
+
+  triggerTestOceanCryptid(kind = "kraken") {
+    if (this.audio) this.audio.init();
+    const k = String(kind || "kraken").toLowerCase();
+    const labels = { kraken: "THE BLOOP (Abyssal Kraken)", megalodon: "EL GRAN MAJA (34m Megalodon)", yamato: "POSSESSED YAMATO (Ghost Battleship)" };
+    const label = labels[k] || k.toUpperCase();
+
+    const ab = this.boats ? this.boats.activeBoat : null;
+    const px = ab ? ab.gx : (this.onFoot ? this.playerFoot.x : this.vehicle.pos.x);
+    const pz = ab ? ab.gz : (this.onFoot ? this.playerFoot.z : this.vehicle.pos.z);
+    const atSea = this._isPosInOpenSea(px, pz);
+
+    // Never teleport player to a ship — strictly require being out at open sea!
+    if (!atSea) {
+      if (this.ui) this.ui.toast(`❌ Failed to summon ${label} — you must be out in the open sea!`, true);
+      return;
+    }
+
+    if (this.oceanCryptids && this.oceanCryptids.forceSpawnNear) {
+      this.oceanCryptids.forceSpawnNear(k, px, pz, this.audio, this.ui);
+    } else if (this.ui) {
+      this.ui.toast(`Ocean cryptid manager unavailable for ${label}.`, true);
+    }
+    if (this.audio && this.audio.playSeaDreadPulse) {
+      this.audio.playSeaDreadPulse(0.85, k === "kraken" ? "bloop" : k);
+    }
+    if (this.ui && this.ui.activeModal === "env") this.ui.closeModal();
+  }
+
+  // ==========================================================================
+  // QUICK-WARP HELPERS & SURREAL WHOLESOME 200+ KM/H "GHOST SELF" MEGA-BRIDGE EASTER EGG!
+  // ==========================================================================
+  _prepareVehicleForWarp(gx, gy, gz, yaw, initSpeedMs = 0) {
+    if (this.boats && this.boats.activeBoat) this.boats.activeBoat = null;
+    this.walkingOnBoat = null;
+    this.remoteBoatMount = null;
+    this.ridingWithPeerId = null;
+    this.carriedByPeerId = null;
+    this.onFoot = false;
+    if (this.localAvatar) this.localAvatar.visible = false;
+    this.boatCruiseOn = false;
+    this.carCruiseOn = false;
+    this.timedWork = null;
+
+    const vs = this.vehicle.vState;
+    this.vehicle.hydrolocked = false;
+    this.vehicle.ignitionOn = true;
+    this.vehicle.engineRunning = true;
+    if (vs && (vs.fuel || 0) < 20) vs.fuel = Math.max(20, (this.vehicle.spec.fuelCapacity || 80) * 0.5);
+
+    this.world.updateChunks(gx, gz, true);
+    if (this.world.updateMegaBridgeStream) this.world.updateMegaBridgeStream(gx, gz);
+    this.vehicle.pos.set(gx, gy, gz);
+    this.vehicle.quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    this.vehicle.angVel.set(0, 0, 0);
+    this.vehicle.vel.set(Math.sin(yaw) * initSpeedMs, 0, Math.cos(yaw) * initSpeedMs);
+    this.vehicle.speedKmh = Math.abs(initSpeedMs) * 3.6;
+    if (initSpeedMs > 20) {
+      this.vehicle.gear = Math.max(4, this.vehicle.gear || 4);
+      this.vehicle.rpm = Math.max(3600, this.vehicle.rpm || 4200);
+    }
+    this.camOrbitYaw = 0;
+    this.camOrbitPitch = 0.20;
+    if (this.ui && this.ui.activeModal) this.ui.closeModal();
+  }
+
+  triggerTestMegaBridgeGhost() {
+    if (this.audio) this.audio.init();
+    const mbDef = (this.world && this.world.megaBridge) || KK.MEGA_BRIDGE;
+    if (!mbDef) {
+      if (this.ui) this.ui.toast("6-Lane Savanna Mega-Bridge is not available in this build.", true);
+      return;
+    }
+    const dx = (mbDef.endX - mbDef.startX);
+    const dz = (mbDef.endZ - mbDef.startZ);
+    const totalLen = mbDef.totalLen || Math.hypot(dx, dz) || 1;
+    const dirX = mbDef.dirX !== undefined ? mbDef.dirX : (dx / totalLen);
+    const dirZ = mbDef.dirZ !== undefined ? mbDef.dirZ : (dz / totalLen);
+    const rightX = mbDef.rightX !== undefined ? mbDef.rightX : (-dirZ);
+    const rightZ = mbDef.rightZ !== undefined ? mbDef.rightZ : dirX;
+
+    const along = totalLen * 0.35;
+    const laneLat = 5.5;
+    const wx = mbDef.startX + dirX * along + rightX * laneLat;
+    const wz = mbDef.startZ + dirZ * along + rightZ * laneLat;
+    const yaw = Math.atan2(dirX, dirZ);
+
+    this.world.updateChunks(wx, wz, true);
+    if (this.world.updateMegaBridgeStream) this.world.updateMegaBridgeStream(wx, wz);
+    const mbInfo = (this.world.getMegaBridgeInfo) ? this.world.getMegaBridgeInfo(wx, wz) : null;
+    const deckY = (mbInfo && mbInfo.deckY !== undefined) ? mbInfo.deckY : ((mbDef.deckY !== undefined ? mbDef.deckY : ((KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32) + 16.0)));
+
+    this._prepareVehicleForWarp(wx, deckY + 0.95, wz, yaw, 212 / 3.6);
+    this.carCruiseOn = true;
+    this.carCruiseKmh = 215;
+
+    if (this._megaBridgeGhost) this._disposeMegaBridgeGhost();
+    this._megaBridgeGhostCooldown = 0;
+
+    const liveMb = (this.world.getMegaBridgeInfo && this.world.getMegaBridgeInfo(wx, wz)) || mbInfo || {
+      onDeck: true, onApproach: false, deckY, alongDist: along, totalLen, latOffset: laneLat, halfWidth: 16,
+      dirX, dirZ, rightX, rightZ, startX: mbDef.startX, startZ: mbDef.startZ, endX: mbDef.endX, endZ: mbDef.endZ,
+      midX: mbDef.midX, midZ: mbDef.midZ, yaw
+    };
+    this._startMegaBridgeGhost(liveMb, true);
+    if (this.ui) this.ui.toast("🌉 6-Lane Savanna Mega-Bridge @ 212 km/h — check your mirrors! ✨");
+  }
+
+  warpToZolotoyCity() {
+    if (this.audio) this.audio.init();
+    const zc = KK.ZOLOTOY_CITY || { cx: -68000, cz: 61000, blockPitch: 120 };
+    const gx = zc.cx;
+    const gz = zc.cz - 135;
+    this.world.updateChunks(gx, gz, true);
+    const ty = this.world.getTerrainInfo(gx, gz, true).height;
+    this._prepareVehicleForWarp(gx, ty + 1.15, gz, 0, 0);
+    if (this.ui) this.ui.toast("🏙 Warped to Zolotoy City Metropolis — Monument Plaza & Tram Loop ahead!");
+  }
+
+  warpToRaceTrack() {
+    if (this.audio) this.audio.init();
+    const zones = KK.SMOOTH_TARMAC_ZONES || [];
+    const tz = zones.find((z) => z.isGpCircuit) || zones[0];
+    let gx = -62099, gz = 63132, yaw = Math.PI * 0.5;
+    if (tz) {
+      if (tz.startX !== undefined && tz.startZ !== undefined) {
+        gx = tz.startX; gz = tz.startZ;
+        yaw = tz.startYaw !== undefined ? tz.startYaw : (-tz.yaw + Math.PI * 0.5);
+      } else {
+        const c = Math.cos(tz.yaw || 0), s = Math.sin(tz.yaw || 0);
+        const lxG = tz.isGpCircuit ? -240 : (tz.rx || 0);
+        const lzG = tz.isGpCircuit ? -500 : 0;
+        gx = tz.cx + lxG * c + lzG * s;
+        gz = tz.cz - lxG * s + lzG * c;
+        // Face down the main pit straight along +lx
+        yaw = Math.atan2(c, -s);
+      }
+    }
+    this.world.updateChunks(gx, gz, true);
+    const ty = this.world.getTerrainInfo(gx, gz, true).height;
+    this._prepareVehicleForWarp(gx, ty + 1.15, gz, yaw, 0);
+    this.gpLapStartMs = 0;
+    this.gpInGate = false;
+    if (this.ui) this.ui.toast(`🏁 Warped to ${tz ? tz.name : "Krasny-Ring GP"} Start/Finish Grid!`);
+  }
+
+  _startMegaBridgeGhost(mb, forcedTest = false) {
+    if (!mb || !this.vehicle || !KK.VehicleBuilder) return;
+    if (this._megaBridgeGhost) this._disposeMegaBridgeGhost();
+
+    // Clone the player's EXACT active vehicle!
+    const cloneRig = KK.VehicleBuilder.buildVehicle(this.activeVehicleId, this.vehicle.vState, false);
+    if (cloneRig.chassis) {
+      cloneRig.chassis.position.y = ((this.vehicle.vState && this.vehicle.vState.tuning && this.vehicle.vState.tuning.rideHeight) || 0) - 0.34;
+    }
+    if (cloneRig.remoteHeadLight) cloneRig.remoteHeadLight.visible = false;
+    const ghostMats = [];
+    const ghostGeos = [];
+    let meshIdx = 0;
+    cloneRig.root.traverse((obj) => {
+      if (obj.isLight) obj.visible = false;
+      if (obj.isMesh) {
+        meshIdx++;
+        obj.castShadow = false;
+        obj.receiveShadow = false;
+        const tTint = (meshIdx % 5) / 4;
+        // Iridescent cyan-to-warm-gold ethereal glass/aura shader tint
+        const baseCol = new THREE.Color(0x3cf5ff).lerp(new THREE.Color(0xffd26a), tTint * 0.65);
+        const emCol = new THREE.Color(0x28e8ff).lerp(new THREE.Color(0xffb84d), tTint * 0.72);
+        const gMat = new THREE.MeshStandardMaterial({
+          color: baseCol,
+          emissive: emCol,
+          emissiveIntensity: 0.92,
+          roughness: 0.16,
+          metalness: 0.35,
+          transparent: true,
+          opacity: 0.0,
+          depthWrite: false
+        });
+        obj.material = gMat;
+        ghostMats.push(gMat);
+      }
+    });
+
+    // Twin golden-white headlight halos + forward soft light beams (for Stage 2 Double High-Beam Flash!)
+    const spec = this.vehicle.spec || { bodyWidth: 2.0, bodyLen: 4.6, bodyHeight: 1.8 };
+    const halfW = (spec.bodyWidth || 2.0) * 0.36;
+    const frontZ = (spec.bodyLen || 4.6) * 0.50;
+    const rearZ = -(spec.bodyLen || 4.6) * 0.50;
+    const lightY = Math.min(1.25, (spec.bodyHeight || 1.8) * 0.48);
+
+    const haloGeo = new THREE.SphereGeometry(0.36, 12, 10);
+    const beamGeo = new THREE.ConeGeometry(1.65, 11.5, 12, 1, true);
+    beamGeo.translate(0, -5.75, 0);
+    beamGeo.rotateX(-Math.PI * 0.5);
+    ghostGeos.push(haloGeo, beamGeo);
+
+    const haloMeshes = [];
+    const haloMats = [];
+    const beamMeshes = [];
+    const beamMats = [];
+    for (const sx of [-halfW, halfW]) {
+      const hMat = new THREE.MeshBasicMaterial({
+        color: 0xfff5d6, transparent: true, opacity: 0.0,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      });
+      const hMesh = new THREE.Mesh(haloGeo, hMat);
+      hMesh.position.set(sx, lightY, frontZ + 0.08);
+      cloneRig.root.add(hMesh);
+      haloMeshes.push(hMesh); haloMats.push(hMat);
+
+      const bMat = new THREE.MeshBasicMaterial({
+        color: 0xffe49e, transparent: true, opacity: 0.0,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+      });
+      const bMesh = new THREE.Mesh(beamGeo, bMat);
+      bMesh.position.set(sx, lightY, frontZ + 0.14);
+      cloneRig.root.add(bMesh);
+      beamMeshes.push(bMesh); beamMats.push(bMat);
+    }
+
+    // Twin luminous starlight aurora ribbon trails behind taillights!
+    const ribbonSamples = 28;
+    const makeRibbon = () => {
+      const posArr = new Float32Array(ribbonSamples * 2 * 3);
+      const colArr = new Float32Array(ribbonSamples * 2 * 3);
+      const idxArr = [];
+      for (let i = 0; i < ribbonSamples - 1; i++) {
+        const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+        idxArr.push(a, b, c, b, d, c);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(colArr, 3));
+      geo.setIndex(idxArr);
+      const mat = new THREE.MeshBasicMaterial({
+        vertexColors: true, transparent: true, opacity: 0.72,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.frustumCulled = false;
+      this.scene.add(mesh);
+      ghostGeos.push(geo);
+      return { mesh, geo, mat, posArr, colArr, pts: [] };
+    };
+    const ribbonL = makeRibbon();
+    const ribbonR = makeRibbon();
+
+    this.scene.add(cloneRig.root);
+
+    // Determine player travel direction along the Mega-Bridge (+1 toward Savanna, -1 toward Mainland)
+    const vehFwd = this._tmpVehFwd.set(0, 0, 1).applyQuaternion(this.vehicle.quat);
+    const dotDir = vehFwd.x * mb.dirX + vehFwd.z * mb.dirZ;
+    const travelSign = dotDir >= 0 ? 1 : -1;
+
+    // Pick adjacent open lane within the 6 lanes (±3.8m, cleanly avoiding center median |lat|<1.9 and guardrails!)
+    const curLat = mb.latOffset || 0;
+    const halfWBridge = (mb.halfWidth || 16) - 2.6;
+    let targetLat;
+    if (curLat >= 0) {
+      targetLat = (curLat + 3.8 <= halfWBridge) ? (curLat + 3.8) : Math.max(2.6, curLat - 3.8);
+      if (Math.abs(targetLat - curLat) < 2.4) targetLat = curLat - 3.8;
+    } else {
+      targetLat = (curLat - 3.8 >= -halfWBridge) ? (curLat - 3.8) : Math.min(-2.6, curLat + 3.8);
+      if (Math.abs(targetLat - curLat) < 2.4) targetLat = curLat + 3.8;
+    }
+    if (Math.abs(targetLat) < 1.9) targetLat = (targetLat >= 0 ? 3.8 : -3.8);
+    targetLat = Math.max(-halfWBridge, Math.min(halfWBridge, targetLat));
+
+    this._megaBridgeGhost = {
+      rig: cloneRig,
+      ghostMats,
+      ghostGeos,
+      haloMeshes,
+      haloMats,
+      beamMeshes,
+      beamMats,
+      ribbonL,
+      ribbonR,
+      tailHalfW: halfW,
+      tailY: lightY,
+      tailZ: rearZ,
+      travelSign,
+      stage: 1,
+      stageTimer: 0,
+      totalTimer: 0,
+      alongOffset: -65.0,
+      latOffset: curLat,
+      overtakeTargetLat: targetLat,
+      ascendY: 0,
+      opacity: 0.0,
+      flash1Done: false,
+      flash2Done: false,
+      echoShown: false,
+      overtakeSfxDone: false,
+      fadingOut: false,
+      forcedTest: !!forcedTest,
+      wheelSpin: 0,
+      stardustCd: 0
+    };
+
+    if (this.audio && this.audio.playGhostEasterEgg) {
+      this.audio.playGhostEasterEgg("appear");
+    }
+  }
+
+  _updateGhostRibbon(ribbon, gx, gy, gz, opacityScale) {
+    const N = 28;
+    ribbon.pts.unshift({ x: gx, y: gy, z: gz });
+    if (ribbon.pts.length > N) ribbon.pts.pop();
+    const ox = this.world.originX, oz = this.world.originZ;
+    const count = ribbon.pts.length;
+    const halfH = 0.24;
+    for (let i = 0; i < N; i++) {
+      const pt = ribbon.pts[Math.min(i, count - 1)] || { x: gx, y: gy, z: gz };
+      const frac = 1.0 - (i / Math.max(1, N - 1));
+      const wH = halfH * (0.35 + frac * 0.85);
+      const lx = pt.x - ox, ly = pt.y, lz = pt.z - oz;
+      const vi = i * 6;
+      ribbon.posArr[vi]     = lx; ribbon.posArr[vi + 1] = ly + wH; ribbon.posArr[vi + 2] = lz;
+      ribbon.posArr[vi + 3] = lx; ribbon.posArr[vi + 4] = ly - wH; ribbon.posArr[vi + 5] = lz;
+
+      // Blend warm golden starlight at taillight -> shimmering cyan aurora -> transparent fade
+      const fade = frac * frac * opacityScale;
+      const r = (1.0 * frac + 0.22 * (1 - frac)) * fade;
+      const g = (0.86 * frac + 0.96 * (1 - frac)) * fade;
+      const b = (0.48 * frac + 1.0 * (1 - frac)) * fade;
+      ribbon.colArr[vi]     = r; ribbon.colArr[vi + 1] = g; ribbon.colArr[vi + 2] = b;
+      ribbon.colArr[vi + 3] = r; ribbon.colArr[vi + 4] = g; ribbon.colArr[vi + 5] = b;
+    }
+    ribbon.geo.attributes.position.needsUpdate = true;
+    ribbon.geo.attributes.color.needsUpdate = true;
+  }
+
+  _disposeMegaBridgeGhost() {
+    const g = this._megaBridgeGhost;
+    if (!g) return;
+    if (g.rig && g.rig.root) {
+      this.scene.remove(g.rig.root);
+      const disposedGeos = new Set();
+      g.rig.root.traverse((obj) => {
+        if (obj.isMesh && obj.geometry && !disposedGeos.has(obj.geometry)) {
+          obj.geometry.dispose();
+          disposedGeos.add(obj.geometry);
+        }
+      });
+    }
+    if (g.ribbonL && g.ribbonL.mesh) { this.scene.remove(g.ribbonL.mesh); g.ribbonL.mat.dispose(); }
+    if (g.ribbonR && g.ribbonR.mesh) { this.scene.remove(g.ribbonR.mesh); g.ribbonR.mat.dispose(); }
+    for (const m of g.ghostMats) { if (m && m.dispose) m.dispose(); }
+    for (const m of g.haloMats) { if (m && m.dispose) m.dispose(); }
+    for (const m of g.beamMats) { if (m && m.dispose) m.dispose(); }
+    for (const geo of g.ghostGeos) { if (geo && geo.dispose) geo.dispose(); }
+    this._megaBridgeGhost = null;
+  }
+
+  _updateMegaBridgeGhost(dt) {
+    if (this._megaBridgeGhostCooldown > 0) {
+      this._megaBridgeGhostCooldown = Math.max(0, this._megaBridgeGhostCooldown - dt);
+    }
+    if (!this.world || !this.world.getMegaBridgeInfo || !this.vehicle) return;
+
+    const inBoat = !!(this.boats && this.boats.activeBoat);
+    const driving = !this.onFoot && !this.ridingWithPeerId && !this.carriedByPeerId && !inBoat;
+    const mb = this.world.getMegaBridgeInfo(this.vehicle.pos.x, this.vehicle.pos.z);
+
+    if (!this._megaBridgeGhost) {
+      if (driving && mb && mb.onDeck && (this.vehicle.speedKmh || 0) >= 200 && this._megaBridgeGhostCooldown <= 0) {
+        this._startMegaBridgeGhost(mb, false);
+      }
+      return;
+    }
+
+    const g = this._megaBridgeGhost;
+    g.totalTimer += dt;
+    g.stageTimer += dt;
+
+    // Gracefully fade out if player leaves the bridge, gets out, or crashes below 90 km/h (55 km/h during 1-click test)
+    const minSpd = g.forcedTest ? 55 : 90;
+    if (!driving || !mb || (!mb.onDeck && !mb.onApproach) || ((this.vehicle.speedKmh || 0) < minSpd && g.stage < 3)) {
+      g.fadingOut = true;
+    }
+
+    // Safe fallback reference so leaving the bridge while fading out NEVER throws on null `mb`!
+    const mbRef = mb || g.mbRef || (this.world && this.world.megaBridge);
+    if (!mbRef) {
+      this._disposeMegaBridgeGhost();
+      return;
+    }
+    if (mb) {
+      g.mbRef = mb;
+      g.lastAlong = mb.alongDist || 0;
+      g.lastLat = mb.latOffset || 0;
+    }
+    const curLatOffset = mb ? (mb.latOffset || 0) : (g.lastLat || 0);
+    const curAlongDist = mb ? (mb.alongDist || 0) : (g.lastAlong || 0);
+
+    let flashBoost = 0.0;
+    let steerVisualYaw = 0.0;
+    let nosePitch = 0.0;
+    const playerAlongSpd = Math.max(0, (this.vehicle.vel.x * mbRef.dirX + this.vehicle.vel.z * mbRef.dirZ) * g.travelSign);
+    let ghostSpdMs = Math.max(55, playerAlongSpd);
+
+    if (g.fadingOut) {
+      g.opacity = Math.max(0, g.opacity - dt * 0.72);
+      g.ascendY += dt * 3.2;
+      g.alongOffset += 18 * dt;
+      if (g.opacity <= 0.01) {
+        this._disposeMegaBridgeGhost();
+        this._megaBridgeGhostCooldown = 90.0;
+        return;
+      }
+    } else if (g.stage === 1) {
+      // STAGE 1 — MATERIALIZE & TAILGATE (~4.5s)
+      g.opacity = Math.min(0.62, g.opacity + dt * 0.55);
+      const tNorm = Math.min(1, g.stageTimer / 4.5);
+      const eased = 1.0 - Math.pow(1.0 - tNorm, 2.4);
+      g.alongOffset = -65.0 + (65.0 - 13.0) * eased;
+      const weave = Math.sin(g.totalTimer * 2.1) * 0.45 * (1.0 - tNorm * 0.5);
+      const targetLat = curLatOffset + weave;
+      const prevLat = g.latOffset;
+      g.latOffset += (targetLat - g.latOffset) * Math.min(1, dt * 4.5);
+      steerVisualYaw = Math.max(-0.12, Math.min(0.12, (g.latOffset - prevLat) / Math.max(0.01, dt * 28)));
+
+      if (g.stageTimer >= 4.5) {
+        g.stage = 2;
+        g.stageTimer = 0;
+      }
+    } else if (g.stage === 2) {
+      // STAGE 2 — DOUBLE HIGH-BEAM FLASH (~1.8s: FLASH... pause... FLASH!)
+      g.opacity = 0.62;
+      g.alongOffset += (-12.5 - g.alongOffset) * Math.min(1, dt * 4.0);
+      const prevLat = g.latOffset;
+      g.latOffset += (curLatOffset - g.latOffset) * Math.min(1, dt * 5.0);
+      steerVisualYaw = Math.max(-0.10, Math.min(0.10, (g.latOffset - prevLat) / Math.max(0.01, dt * 28)));
+
+      if (g.stageTimer >= 0.15 && g.stageTimer <= 0.50) {
+        flashBoost = Math.sin(((g.stageTimer - 0.15) / 0.35) * Math.PI);
+        if (!g.flash1Done) {
+          g.flash1Done = true;
+          if (this.audio && this.audio.playGhostEasterEgg) this.audio.playGhostEasterEgg("flash");
+        }
+      } else if (g.stageTimer >= 0.90 && g.stageTimer <= 1.32) {
+        flashBoost = Math.sin(((g.stageTimer - 0.90) / 0.42) * Math.PI) * 1.15;
+        if (!g.flash2Done) {
+          g.flash2Done = true;
+          if (this.audio && this.audio.playGhostEasterEgg) this.audio.playGhostEasterEgg("flash");
+        }
+      }
+
+      if (g.stageTimer >= 1.8) {
+        g.stage = 3;
+        g.stageTimer = 0;
+        // Re-lock clean adjacent open lane right before overtaking
+        const curL = curLatOffset;
+        const hWB = (mbRef.halfWidth || 16) - 2.6;
+        let tL = curL >= 0 ? (curL + 3.8 <= hWB ? curL + 3.8 : curL - 3.8) : (curL - 3.8 >= -hWB ? curL - 3.8 : curL + 3.8);
+        if (Math.abs(tL) < 1.9) tL = (curL >= 0 ? Math.min(hWB, curL + 3.8) : Math.max(-hWB, curL - 3.8));
+        g.overtakeTargetLat = Math.max(-hWB, Math.min(hWB, tL));
+      }
+    } else if (g.stage === 3) {
+      // STAGE 3 — SURREAL WHOLESOME OVERTAKE (~6.2s)
+      const prevLat = g.latOffset;
+      g.latOffset += (g.overtakeTargetLat - g.latOffset) * Math.min(1, dt * 3.4);
+      steerVisualYaw = Math.max(-0.18, Math.min(0.18, (g.latOffset - prevLat) / Math.max(0.01, dt * 24)));
+
+      if (g.stageTimer >= 1.25 && !g.echoShown) {
+        g.echoShown = true;
+        const msg = this._ghostEchoMessages[this._megaBridgeGhostMsgIdx % this._ghostEchoMessages.length];
+        this._megaBridgeGhostMsgIdx++;
+        if (this.ui && this.ui.showSurrealEcho) {
+          this.ui.showSurrealEcho(msg, "✨ ECHO // 200+ KM/H");
+        } else if (this.ui) {
+          this.ui.toast(`✨ ECHO // 200+ KM/H — ${msg}`);
+        }
+      }
+
+      if (g.stageTimer < 1.35) {
+        // Pull smoothly alongside the player
+        const tPull = g.stageTimer / 1.35;
+        g.alongOffset = -12.5 + 14.5 * (tPull * tPull * (3 - 2 * tPull));
+      } else if (g.stageTimer < 2.30) {
+        // Brief surreal heartbeat right beside your window!
+        g.alongOffset += 2.6 * dt;
+      } else {
+        // Rocket past at +50% your speed (1.5x current speed, min 300 km/h!)
+        ghostSpdMs = Math.max(300 / 3.6, ((this.vehicle.speedKmh || 200) / 3.6) * 1.5);
+        const relSpd = Math.max(28.0, ghostSpdMs - playerAlongSpd);
+        g.alongOffset += relSpd * dt;
+
+        if (!g.overtakeSfxDone) {
+          g.overtakeSfxDone = true;
+          if (this.audio && this.audio.playGhostEasterEgg) this.audio.playGhostEasterEgg("overtake");
+          // Joyful golden-cyan slipstream particle burst!
+          if (this.particles) {
+            for (let k = 0; k < 22; k++) {
+              const isGold = (k % 2 === 0);
+              this.particles.emitRGB(
+                this.vehicle.pos.x + (Math.random() - 0.5) * 4.5,
+                this.vehicle.pos.y + 0.6 + Math.random() * 1.8,
+                this.vehicle.pos.z + (Math.random() - 0.5) * 4.5,
+                (Math.random() - 0.5) * 8 + mbRef.dirX * g.travelSign * 14,
+                1.8 + Math.random() * 4.2,
+                (Math.random() - 0.5) * 8 + mbRef.dirZ * g.travelSign * 14,
+                isGold ? 1.0 : 0.30, isGold ? 0.86 : 0.96, isGold ? 0.42 : 1.0,
+                0.85 + Math.random() * 0.55, 0.6, 1.4
+              );
+            }
+          }
+        }
+
+        // Gently ascend & dissolve into golden stardust over the ocean during final 2.0s!
+        if (g.stageTimer > 4.2) {
+          const fadeT = Math.min(1, (g.stageTimer - 4.2) / 2.0);
+          g.ascendY += dt * (4.5 + fadeT * 10.5);
+          nosePitch = -0.14 * fadeT;
+          g.opacity = 0.62 * (1.0 - fadeT);
+        }
+      }
+
+      if (g.stageTimer >= 6.2) {
+        this._disposeMegaBridgeGhost();
+        this._megaBridgeGhostCooldown = 90.0;
+        return;
+      }
+    }
+
+    // Position ghost cleanly on the 6-lane Mega-Bridge deck
+    const targetAlong = curAlongDist + g.alongOffset * g.travelSign;
+    const gx = mbRef.startX + mbRef.dirX * targetAlong + mbRef.rightX * g.latOffset;
+    const gz = mbRef.startZ + mbRef.dirZ * targetAlong + mbRef.rightZ * g.latOffset;
+    const baseDeckY = mbRef.deckY !== undefined ? mbRef.deckY : (this.vehicle.pos.y - 0.8);
+    const rideOffY = Math.max(0.45, Math.min(1.6, this.vehicle.pos.y - baseDeckY));
+    const gy = baseDeckY + rideOffY + g.ascendY;
+
+    const bridgeYaw = Math.atan2(mbRef.dirX * g.travelSign, mbRef.dirZ * g.travelSign);
+    this.world.toLocal(gx, gy, gz, g.rig.root.position);
+    g.rig.root.rotation.set(nosePitch, bridgeYaw + steerVisualYaw * g.travelSign, -steerVisualYaw * 0.35, "YXZ");
+
+    // Pulse iridescent ghost materials & headlight halos
+    const shimmer = 0.82 + 0.22 * Math.sin(g.totalTimer * 4.5);
+    const opNorm = Math.max(0, Math.min(1, g.opacity / 0.62));
+    for (let i = 0; i < g.ghostMats.length; i++) {
+      const m = g.ghostMats[i];
+      m.opacity = g.opacity;
+      m.emissiveIntensity = (0.85 + flashBoost * 0.75) * shimmer;
+    }
+    const haloScale = 1.0 + flashBoost * 2.4;
+    for (let i = 0; i < g.haloMeshes.length; i++) {
+      g.haloMeshes[i].scale.setScalar(haloScale);
+      g.haloMats[i].opacity = Math.min(1.0, (0.58 + flashBoost * 0.42) * opNorm);
+      g.beamMeshes[i].scale.set(1.0 + flashBoost * 1.4, 1.0 + flashBoost * 1.4, 1.0 + flashBoost * 1.6);
+      g.beamMats[i].opacity = Math.min(0.85, (0.16 + flashBoost * 0.65) * opNorm);
+    }
+
+    // Spin cloned wheels smoothly without invoking smoke/dirt/thermal side-effects
+    g.wheelSpin += (ghostSpdMs / 0.42) * dt;
+    if (g.rig.wheelAssemblies) {
+      for (let wi = 0; wi < g.rig.wheelAssemblies.length; wi++) {
+        const wa = g.rig.wheelAssemblies[wi];
+        if (wa.spinGroup) wa.spinGroup.rotation.x = g.wheelSpin;
+        if (wa.steerPivot && wa.def && wa.def.steer) wa.steerPivot.rotation.y = steerVisualYaw * 0.55;
+      }
+    }
+
+    // Update twin starlight aurora ribbon trails behind taillights
+    const fwdX = Math.sin(bridgeYaw), fwdZ = Math.cos(bridgeYaw);
+    const rgtX = Math.cos(bridgeYaw), rgtZ = -Math.sin(bridgeYaw);
+    const tlX = gx + fwdX * g.tailZ - rgtX * g.tailHalfW;
+    const tlZ = gz + fwdZ * g.tailZ - rgtZ * g.tailHalfW;
+    const trX = gx + fwdX * g.tailZ + rgtX * g.tailHalfW;
+    const trZ = gz + fwdZ * g.tailZ + rgtZ * g.tailHalfW;
+    this._updateGhostRibbon(g.ribbonL, tlX, gy + g.tailY, tlZ, opNorm);
+    this._updateGhostRibbon(g.ribbonR, trX, gy + g.tailY, trZ, opNorm);
+
+    // Emit gentle golden-cyan stardust particles behind ghost!
+    g.stardustCd -= dt;
+    if (g.stardustCd <= 0 && this.particles) {
+      g.stardustCd = g.stage === 3 ? 0.04 : 0.075;
+      const isGold = Math.random() < 0.52;
+      this.particles.emitRGB(
+        gx + fwdX * (g.tailZ - 0.6) + (Math.random() - 0.5) * 1.8,
+        gy + 0.5 + Math.random() * 0.9,
+        gz + fwdZ * (g.tailZ - 0.6) + (Math.random() - 0.5) * 1.8,
+        -fwdX * 3.5 + (Math.random() - 0.5) * 2.2,
+        0.9 + Math.random() * 1.8,
+        -fwdZ * 3.5 + (Math.random() - 0.5) * 2.2,
+        isGold ? 1.0 : 0.32, isGold ? 0.88 : 0.96, isGold ? 0.44 : 1.0,
+        0.72 + Math.random() * 0.45, 0.35, 1.5
+      );
+    }
   }
 
   _spawnRemoteVisuals(rp) {
@@ -4056,6 +5294,32 @@ KK.Game = class Game {
           dvx: ev.data.dvx, dvy: ev.data.dvy, dvz: ev.data.dvz, spin: ev.data.spin
         });
       }
+      else if (ev.kind === "armor_ram") {
+        const d = ev.data || {};
+        const imp = Math.min(1.0, (d.impactMag || 8) / 14);
+        if (this.audio) {
+          this.audio.playImpact(Math.max(0.65, imp));
+          if (this.audio.playArmorRicochet) this.audio.playArmorRicochet(0.45 + imp * 0.45);
+        }
+        this.cameraShake = Math.max(this.cameraShake, 0.24 + imp * 0.55);
+        for (let s = 0; s < 10; s++) {
+          this.particles.emitRGB(
+            this.vehicle.pos.x + (Math.random() - 0.5) * 2.2,
+            this.vehicle.pos.y + 0.65 + Math.random() * 0.85,
+            this.vehicle.pos.z + (Math.random() - 0.5) * 2.2,
+            (Math.random() - 0.5) * 9, 2.0 + Math.random() * 4.5, (Math.random() - 0.5) * 9,
+            1.0, 0.78, 0.28, 0.36 + Math.random() * 0.2, -9.0, 1.3
+          );
+        }
+        const tgt = d.targetCallsign || "Armored Rig";
+        if ((d.myTier || 1) >= 3 && (d.otherTier || 1) >= 3) {
+          this.ui.toast(`⚙️ HEAVY ARMOR GRIND vs ${tgt}! Steel on steel!`, true);
+        } else if ((d.myTier || 1) > (d.otherTier || 1)) {
+          this.ui.toast(`💥 ARMORED RAM! Shoved ${tgt} aside!`);
+        } else {
+          this.ui.toast(`💥 CRUNCHED BY HEAVY ARMOR (${tgt})!`, true);
+        }
+      }
       else if (ev.kind === "glass_shatter") {
         this.audio.playGlassShatter();
         this.ui.toast(`CRACK! ${ev.data.side === "headlightL" ? "Left" : "Right"} headlight shattered!`, true);
@@ -4098,8 +5362,8 @@ KK.Game = class Game {
           this.walkingOnBoat = null;
         } else {
           if (isMoving) {
-            const camFwd = new THREE.Vector3(); this.camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
-            const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
+            const camFwd = this._tmpCamFwd; this.camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
+            const camRight = this._tmpCamRight.set(-camFwd.z, 0, camFwd.x);
             const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
             // Rotate world movement into boat-local frame
             const c = Math.cos(-(b.yaw || 0)), s = Math.sin(-(b.yaw || 0));
@@ -4115,16 +5379,16 @@ KK.Game = class Game {
         }
       } else {
         if (isMoving) {
-          const camFwd = new THREE.Vector3(); this.camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
-          const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
+          const camFwd = this._tmpCamFwd; this.camera.getWorldDirection(camFwd); camFwd.y = 0; camFwd.normalize();
+          const camRight = this._tmpCamRight.set(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v17.6.1 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v17.9 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
           const dzC = this.playerFoot.z - this.vehicle.pos.z;
-          const fwdC = new THREE.Vector3(0, 0, 1).applyQuaternion(this.vehicle.quat);
+          const fwdC = this._tmpVehFwd.set(0, 0, 1).applyQuaternion(this.vehicle.quat);
           const yawC = Math.atan2(fwdC.x, fwdC.z);
           const cC = Math.cos(-yawC), sC = Math.sin(-yawC);
           let lxC = dxC * cC + dzC * sC;
@@ -4155,11 +5419,16 @@ KK.Game = class Game {
     const focusGx = activeBoatNow ? activeBoatNow.gx : (ridingPeer ? ridingPeer.gx : (this.onFoot ? this.playerFoot.x : this.vehicle.pos.x));
     const focusGz = activeBoatNow ? activeBoatNow.gz : (ridingPeer ? ridingPeer.gz : (this.onFoot ? this.playerFoot.z : this.vehicle.pos.z));
     const focusGy = activeBoatNow ? (activeBoatNow.gy + (activeBoatNow.spec.deckY || 2.0)) : (ridingPeer ? ridingPeer.gy : (this.onFoot ? this.playerFoot.y : this.vehicle.pos.y));
+    const hEff = (this.hazards && this.hazards.getHurricaneEffectAt) ? this.hazards.getHurricaneEffectAt(focusGx, focusGz) : null;
+    const seaDread = (this.oceanCryptids && this.oceanCryptids.seaDreadLevel) || 0;
     const shift = this.world.checkFloatingOrigin(focusGx, focusGz);
     if (shift) { this.camPosSmooth.x += shift.dx; this.camPosSmooth.z += shift.dz; }
     const focusVx = activeBoatNow ? activeBoatNow.vx : (this.onFoot ? 0 : this.vehicle.vel.x);
     const focusVz = activeBoatNow ? activeBoatNow.vz : (this.onFoot ? 0 : this.vehicle.vel.z);
     this.world.updateChunks(focusGx, focusGz, false, focusVx, focusVz);
+    if (this.world && this.world.updateMegaBridgeStream) this.world.updateMegaBridgeStream(focusGx, focusGz);
+    if (this.world && this.world.updateZolotoyCity) this.world.updateZolotoyCity(dt, this.vehicle, this.audio, horn);
+    this._updateMegaBridgeGhost(dt);
 
     if (this.vehicle._hitClosedRampFlag) {
       this.vehicle._hitClosedRampFlag = false;
@@ -4192,7 +5461,11 @@ KK.Game = class Game {
           }
         }
       }
-      this.boats.update(dt, boatIn, this.vehicle, this.particles, this.audio, this.ui, this.network.remotePlayers, this.network.peerId);
+      this.boats.update(dt, boatIn, this.vehicle, this.particles, this.audio, this.ui, this.network.remotePlayers, this.network.peerId, {
+        hurricaneEffect: hEff,
+        seaDread,
+        weather: this.weather ? this.weather.weather : "clear"
+      });
       if (this.boats.updateRemoteBoats) this.boats.updateRemoteBoats(dt, this.network.remotePlayers, this.particles);
       // Weld local car onto remote friend's boat deck at 60 FPS!
       if (this.remoteBoatMount) {
@@ -4250,16 +5523,22 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v17.6.1 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    // v17.9 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
-      const dGate = Math.hypot(gx - (-62099), gz - 63132);
-      if (dGate < 26) {
+      const gpZone = (KK.SMOOTH_TARMAC_ZONES || []).find((z) => z.isGpCircuit);
+      const gateX = (gpZone && gpZone.startX !== undefined) ? gpZone.startX : -62099;
+      const gateZ = (gpZone && gpZone.startZ !== undefined) ? gpZone.startZ : 63132;
+      this.gpNearTrack = !!(gpZone && Math.hypot(gx - gpZone.cx, gz - gpZone.cz) < 1650);
+      if (!this.gpNearTrack && this.gpLapStartMs > 0) this.gpLapStartMs = 0;
+      const dGate = Math.hypot(gx - gateX, gz - gateZ);
+      if (dGate < 18) {
         if (!this.gpInGate) {
           this.gpInGate = true;
           const nowMs = performance.now();
           if (this.gpLapStartMs > 0 && (nowMs - this.gpLapStartMs) > 25000) {
             const lapSec = (nowMs - this.gpLapStartMs) / 1000;
+            this.gpLastLapSec = lapSec;
             const vid = this.vehicle.vState.vehicleId;
             const prevBest = this.gpBestLaps[vid];
             const isPB = (!prevBest || lapSec < prevBest);
@@ -4274,7 +5553,7 @@ KK.Game = class Game {
           }
           this.gpLapStartMs = nowMs;
         }
-      } else if (dGate > 45) {
+      } else if (dGate > 32) {
         this.gpInGate = false;
       }
       if (this.audio && this.audio.updateTireSlip) {
@@ -4285,7 +5564,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v17.6.1 Auto-save persistent vehicle odometer every 10s when driving!
+    // v17.9 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -4293,7 +5572,37 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
-    // v17.6.1 Animate On-Foot Player Actions [1-5] on localAvatar!
+    // v17.9 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
+    if (this.armorViewerActive) this._updateArmorViewerTooltip();
+    if (this.turretPopActive) {
+      this.turretPopY += this.turretPopVy * dt;
+      this.turretPopVy -= 14.5 * dt;
+      this.turretPopPitch += 2.2 * dt;
+      this.turretPopRoll += 1.6 * dt;
+      if (this.turretPopY < 0.2 && this.turretPopVy < 0) {
+        this.turretPopY = 0.2; this.turretPopVy = 0; this.turretPopActive = false;
+      }
+    }
+    if (this.cookoffJetTimer > 0 && this.vehicle && this.particles) {
+      this.cookoffJetTimer = Math.max(0, this.cookoffJetTimer - dt);
+      const vp = this.vehicle.pos;
+      this.particles.emitRGB(
+        vp.x + (Math.random() - 0.5) * 0.8, vp.y + 2.3, vp.z + (Math.random() - 0.5) * 0.8,
+        (Math.random() - 0.5) * 2.5, 11.0 + Math.random() * 6.0, (Math.random() - 0.5) * 2.5,
+        1.0, 0.72, 0.18, 0.55, 1.5, 1.4
+      );
+    }
+    if (this.vehicle && this.vehicle.spec && this.vehicle.spec.isTracked && !this.onFoot) {
+      const curYaw = this.turretYaw || 0;
+      const yawRate = Math.abs(curYaw - this._lastTurretYawForWhine) / Math.max(0.01, dt);
+      this._lastTurretYawForWhine = curYaw;
+      if (this._turretWhineCd > 0) this._turretWhineCd -= dt;
+      if (yawRate > 0.12 && this._turretWhineCd <= 0 && this.audio && this.audio.playTurretWhineTick) {
+        this.audio.playTurretWhineTick(this.tankModules.turretRing < 60);
+        this._turretWhineCd = 0.095;
+      }
+    }
+    // v17.9 Animate On-Foot Player Actions [1-5] on localAvatar!
     if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
       this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
       const tE = performance.now() * 0.012;
@@ -4319,7 +5628,7 @@ KK.Game = class Game {
         if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
       }
     }
-    // v17.6.1 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    // v17.9 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
     if (this.network && this.network.remotePlayers) {
       const nowMs = performance.now();
       for (const [pid, rp] of this.network.remotePlayers.entries()) {
@@ -4351,7 +5660,7 @@ KK.Game = class Game {
       }
     }
     this.vehicleRig.updateVisuals(dt, {
-      brakeHeat: this.vehicle.brakeHeat || 0, windshieldMud: this.windshieldMud || 0, timeOfDay: this.weather ? this.weather.timeOfDay : 12, engineRunning: this.vehicle.engineRunning, rpm: this.vehicle.rpm, gear: this.vehicle.gear, hasPassenger: hasLocalPassenger, glassHp: this.vehicle.vState.health.glass !== undefined ? this.vehicle.vState.health.glass : 100, trackL: this.vehicle.vState.health.trackL !== undefined ? this.vehicle.vState.health.trackL : 100, trackR: this.vehicle.vState.health.trackR !== undefined ? this.vehicle.vState.health.trackR : 100,
+      ammoRackLIntact: this.ammoRackLIntact, ammoRackRIntact: this.ammoRackRIntact, turretPopY: this.turretPopY, turretPopPitch: this.turretPopPitch, turretPopRoll: this.turretPopRoll, brakeHeat: this.vehicle.brakeHeat || 0, windshieldMud: this.windshieldMud || 0, timeOfDay: this.weather ? this.weather.timeOfDay : 12, engineRunning: this.vehicle.engineRunning, rpm: this.vehicle.rpm, gear: this.vehicle.gear, hasPassenger: hasLocalPassenger, glassHp: this.vehicle.vState.health.glass !== undefined ? this.vehicle.vState.health.glass : 100, trackL: this.vehicle.vState.health.trackL !== undefined ? this.vehicle.vState.health.trackL : 100, trackR: this.vehicle.vState.health.trackR !== undefined ? this.vehicle.vState.health.trackR : 100,
       wheelOffsets: this.vehicle.wheels.map((w) => w.visualOffsetY),
       wheelSpins: this.vehicle.wheels.map((w) => w.spinAngle),
       blownTires: this.vehicle.vState.blownTires,
@@ -4451,8 +5760,15 @@ KK.Game = class Game {
       }
     }, { x: this.cryptids.sirenhead.gx, z: this.cryptids.sirenhead.gz }, activeBoatNow ? { x: activeBoatNow.gx, z: activeBoatNow.gz } : null);
 
-    const focusLocal = this.world.toLocal(focusGx, focusGy, focusGz, new THREE.Vector3());
-    this.weather.update(dt, focusLocal, this.audio);
+    const focusLocal = this.world.toLocal(focusGx, focusGy, focusGz, this._tmpFocusLocal);
+    const stormMods = {
+      hurricaneIntensity: hEff ? (hEff.intensity || 0) : 0,
+      inEye: !!(hEff && hEff.inEye),
+      seaDread,
+      windX: hEff ? (hEff.windX || 0) : 0,
+      windZ: hEff ? (hEff.windZ || 0) : 0
+    };
+    this.weather.update(dt, focusLocal, this.audio, stormMods);
     this.hazards.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network, this.boats);
     this.cryptids.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network, this.hazards);
     if (this.oceanCryptids) this.oceanCryptids.update(dt, this.vehicle, this.boats, this.particles, this.audio, this.ui, this.network, this.hazards);
@@ -4581,8 +5897,8 @@ KK.Game = class Game {
 
     if (isArmed) {
       if (!this.turretFrozen) {
-        const camDir = new THREE.Vector3(); this.camera.getWorldDirection(camDir);
-        const localAim = camDir.clone().applyQuaternion(this.vehicle.quat.clone().invert());
+        const camDir = this._tmpCamDir; this.camera.getWorldDirection(camDir);
+        const localAim = this._tmpLocalAim.copy(camDir).applyQuaternion(this._tmpInvQuat.copy(this.vehicle.quat).invert());
         const targetYaw = Math.atan2(localAim.x, localAim.z);
         let dy = targetYaw - this.btrTurretYaw;
         while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
@@ -4666,6 +5982,7 @@ KK.Game = class Game {
           this.audio.playArtilleryExplosion(Math.max(0.16, 1.0 - dPlayer / 950));
           this.cameraShake = Math.max(this.cameraShake, Math.max(0, 1.0 - dPlayer / 360) * 1.15);
         }
+        this._applyIncomingOrdnanceDamage(rk.gx, hitY, rk.gz, "rocket122", 122, rk.isOwner, rk.ox, rk.oy, rk.oz, rk.shooterPeerId || null);
         if (rk.isOwner) {
           if (!cHit.hit) {
             const splash = this.cryptids.applyCannonHit(rk.gx, hitY, rk.gz, "rocket122", this.audio, 122);
@@ -4698,20 +6015,27 @@ KK.Game = class Game {
       if (sc.life <= 0) { this.scene.remove(sc.mesh); if (sc.mesh.material) sc.mesh.material.dispose(); this.smokeClouds.splice(i, 1); }
     }
 
-    const sightEl = document.getElementById("gunner-sight-overlay");
+    const sightEl = this._elSight || (this._elSight = document.getElementById("gunner-sight-overlay"));
     if (sightEl) {
       const showSight = isArmed && this.mouseAimHeld;
       sightEl.classList.toggle("hidden", !showSight);
       if (showSight) {
-        // Compute Live Laser Rangefinder distance!
-        const cDir = new THREE.Vector3(); this.camera.getWorldDirection(cDir);
-        const cOrig = new THREE.Vector3(this.camera.position.x + this.world.originX, this.camera.position.y, this.camera.position.z + this.world.originZ);
-        let rngTxt = ">450m";
-        for (let s = 12; s <= 450; s += 10) {
-          const rx = cOrig.x + cDir.x * s, ry = cOrig.y + cDir.y * s, rz = cOrig.z + cDir.z * s;
-          if (ry <= this.world.getTerrainInfo(rx, rz, false).height + 0.5) { rngTxt = s + "m"; break; }
+        // Compute Live Laser Rangefinder distance (throttled to 10 Hz + 18m steps!)
+        this._lrfTimer -= dt;
+        if (this._lrfTimer <= 0) {
+          this._lrfTimer = 0.1;
+          const cDir = this._tmpCamDir; this.camera.getWorldDirection(cDir);
+          const cOrig = this._tmpCamOrig.set(this.camera.position.x + this.world.originX, this.camera.position.y, this.camera.position.z + this.world.originZ);
+          let lrfRes = ">450m";
+          for (let s = 14; s <= 450; s += 18) {
+            const rx = cOrig.x + cDir.x * s, ry = cOrig.y + cDir.y * s, rz = cOrig.z + cDir.z * s;
+            if (ry <= this.world.getTerrainInfo(rx, rz, false).height + 0.5) { lrfRes = s + "m"; break; }
+          }
+          this._lrfText = lrfRes;
+          this.lastLaserDist = lrfRes;
         }
-        const ammoEl = document.getElementById("gunner-ammo-readout");
+        const rngTxt = this._lrfText || ">450m";
+        const ammoEl = this._elAmmo || (this._elAmmo = document.getElementById("gunner-ammo-readout"));
         if (ammoEl) {
           if (curVid === "pzkpfw_140a4") {
             const vs = this.vehicle.vState;
@@ -4758,7 +6082,8 @@ KK.Game = class Game {
       this.tracers[i].life -= dt;
       if (this.tracers[i].life <= 0) { const tm = this.tracers[i].mesh; this.scene.remove(tm); if (tm.geometry) tm.geometry.dispose(); if (tm.material) tm.material.dispose(); this.tracers.splice(i, 1); }
     }
-    this.cameraShake = Math.max(this.cameraShake * Math.exp(-5.0 * dt), this.cryptids.cameraShakeOut || 0, (this.oceanCryptids && this.oceanCryptids.cameraShakeOut) || 0);
+    const hurrShake = (hEff && hEff.active && !hEff.inEye && hEff.intensity > 0.35) ? (hEff.intensity - 0.35) * 0.24 : 0;
+    this.cameraShake = Math.max(this.cameraShake * Math.exp(-5.0 * dt), this.cryptids.cameraShakeOut || 0, (this.oceanCryptids && this.oceanCryptids.cameraShakeOut) || 0, hurrShake);
     if (this.cryptids.empTrigger) {
       this.empGlitchTimer = Math.max(this.empGlitchTimer, this.cryptids.empTrigger.dur || 6.5);
       this.empKind = this.cryptids.empTrigger.kind || "sonic";
@@ -4767,7 +6092,7 @@ KK.Game = class Game {
       this.empGlitchTimer = Math.max(0, this.empGlitchTimer - dt);
       if (this.empKind === "sonic") this.cameraShake = Math.max(this.cameraShake, Math.min(0.45, this.empGlitchTimer * 0.08));
     }
-    const empEl = document.getElementById("emp-overlay");
+    const empEl = this._elEmp || (this._elEmp = document.getElementById("emp-overlay"));
     if (empEl) {
       empEl.classList.toggle("active", this.empGlitchTimer > 0);
       empEl.classList.toggle("rad", this.empKind === "radiation");
@@ -4776,12 +6101,16 @@ KK.Game = class Game {
     if (this.flareCount < 6 && this.world.getNearbyTownInteraction(this.vehicle.pos.x, this.vehicle.pos.z)) this.flareCount = 6;
     this.audio.updateEngine(this.vehicle.rpm, driveInput.throttle, this.vehicle.boostPsi, KK.ENGINES[this.vehicle.vState.engineId], this.vehicle.engineRunning && !inBoatHelm, this.onFoot, this.weather.weather, !!this.vehicle.vState.upgrades.twinTurboKit, !!this.vehicle.spec.isTracked, this.vehicle.speedKmh, dt);
     const lPos = this.onFoot ? { x: this.playerFoot.x, y: this.playerFoot.y, z: this.playerFoot.z } : this.vehicle.pos;
-    const lRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    const lRight = this._tmpLRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
     this.audio.updateRemoteEngines(this.network.remotePlayers, lPos, lRight);
 
     if (this.waypoint) {
-      const wy = this.world.getTerrainInfo(this.waypoint.x, this.waypoint.z, false).height;
-      this.world.toLocal(this.waypoint.x, wy + 75, this.waypoint.z, this.wpBeacon.position);
+      const wpKey = `${Math.round(this.waypoint.x)},${Math.round(this.waypoint.z)}`;
+      if (wpKey !== this._cachedWpKey) {
+        this._cachedWpKey = wpKey;
+        this._cachedWpY = this.world.getTerrainInfo(this.waypoint.x, this.waypoint.z, false).height;
+      }
+      this.world.toLocal(this.waypoint.x, this._cachedWpY + 75, this.waypoint.z, this.wpBeacon.position);
       this.wpBeacon.visible = true;
     } else { this.wpBeacon.visible = false; }
 
@@ -4888,7 +6217,7 @@ KK.Game = class Game {
       this.particles.emitFrostOrSand(this.vehicle.pos.x, this.vehicle.pos.y + 1.8, this.vehicle.pos.z, true, 2);
     }
 
-    const uwEl = document.getElementById("underwater-overlay");
+    const uwEl = this._elUnderwater || (this._elUnderwater = document.getElementById("underwater-overlay"));
     if (uwEl) {
       uwEl.classList.toggle("active", isUnderwater);
     }
@@ -4905,7 +6234,11 @@ KK.Game = class Game {
       inSanctuary: this.clarksonFarm.isInsideSanctuary(focusGx, focusGz) || this.hammondMesa.isInsideSanctuary(focusGx, focusGz),
       threatNear: this.cryptids.anyThreatNear,
       sandwormDist: this.cryptids.sandwormDist,
-      sandwormActive: this.cryptids.sandwormActive
+      sandwormActive: this.cryptids.sandwormActive,
+      hurricaneIntensity: hEff ? (hEff.intensity || 0) : 0,
+      inEye: !!(hEff && hEff.inEye),
+      seaDread,
+      hurricaneEffect: hEff
     });
 
     this.ui.updateWindshieldOverlay(dt, this);
@@ -4922,7 +6255,7 @@ KK.Game = class Game {
         ctx2.drawImage(this.canvas, 0, 0);
 
         // Stamp clean version watermark in bottom-right corner of every screenshot!
-        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v14.3"}`;
+        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v17.9"}`;
         const fontSize = Math.max(14, Math.round(outCv.height * 0.020));
         ctx2.font = `bold ${fontSize}px monospace`;
         const padX = Math.round(fontSize * 0.72);
@@ -4948,11 +6281,11 @@ KK.Game = class Game {
         const a = document.createElement("a");
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         a.href = dataUrl;
-        a.download = `krasno_kamenka_${KK.VERSION || "v14.3"}_${ts}.png`;
+        a.download = `krasno_kamenka_${KK.VERSION || "v17.9"}_${ts}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v14.3"})!`);
+        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v17.9"})!`);
       } catch (err) {
         this.ui.toast("Screenshot failed: " + err.message, true);
       }
@@ -4960,16 +6293,20 @@ KK.Game = class Game {
   }
 
   _updateContextPrompt() {
-    const el = document.getElementById("context-prompt");
+    const el = this._elContextPrompt || (this._elContextPrompt = document.getElementById("context-prompt"));
     if (!el) return;
-    const deckBar = document.getElementById("boat-deck-bar");
+    const deckBar = this._elDeckBar || (this._elDeckBar = document.getElementById("boat-deck-bar"));
     const setDeckBar = (sig, html) => {
       if (!deckBar) return;
       if (!sig) {
         if (this._lastDeckBarSig !== "") { this._lastDeckBarSig = ""; deckBar.classList.add("hidden"); deckBar.innerHTML = ""; }
         return;
       }
-      if (this._lastDeckBarSig !== "") { this._lastDeckBarSig = ""; deckBar.classList.add("hidden"); deckBar.innerHTML = ""; }
+      if (sig !== this._lastDeckBarSig) {
+        this._lastDeckBarSig = sig;
+        deckBar.innerHTML = html;
+        deckBar.classList.remove("hidden");
+      }
     };
     let prompt = "";
     if (this.boats && this.boats.activeBoat) {

@@ -18,6 +18,7 @@ KK.AudioEngine = class AudioEngine {
     this.birdTimer = 3.5;
     this.eerieTimer = 14.0;
     this.windPhase = 0;
+    this.dreadPhase = 0;
     this.isUnderwater = false;
   }
 
@@ -328,6 +329,38 @@ KK.AudioEngine = class AudioEngine {
     this.sandSrc.connect(this.sandFilter); this.sandFilter.connect(this.sandGain); this.sandGain.connect(this.master);
     this.sandSrc.start();
 
+    // HURRICANE HOWL & SUB-BASS PRESSURE RUMBLE
+    this.hurrWindSrc = this.ctx.createBufferSource();
+    this.hurrWindSrc.buffer = this.noiseBuf; this.hurrWindSrc.loop = true;
+    this.hurrWindBP = this.ctx.createBiquadFilter();
+    this.hurrWindBP.type = "bandpass"; this.hurrWindBP.frequency.value = 380; this.hurrWindBP.Q.value = 2.4;
+    this.hurrWindGain = this.ctx.createGain(); this.hurrWindGain.gain.value = 0.0;
+    this.hurrWindSrc.connect(this.hurrWindBP); this.hurrWindBP.connect(this.hurrWindGain); this.hurrWindGain.connect(this.master);
+    this.hurrWindSrc.start();
+
+    this.hurrSubSrc = this.ctx.createBufferSource();
+    this.hurrSubSrc.buffer = this.noiseBuf; this.hurrSubSrc.loop = true;
+    this.hurrSubLP = this.ctx.createBiquadFilter();
+    this.hurrSubLP.type = "lowpass"; this.hurrSubLP.frequency.value = 110; this.hurrSubLP.Q.value = 1.4;
+    this.hurrSubGain = this.ctx.createGain(); this.hurrSubGain.gain.value = 0.0;
+    this.hurrSubSrc.connect(this.hurrSubLP); this.hurrSubLP.connect(this.hurrSubGain); this.hurrSubGain.connect(this.master);
+    this.hurrSubSrc.start();
+
+    // ABYSSAL SEA DREAD DRONE (38-54 Hz beating thalassophobia sub-oscillators)
+    this.dreadOsc1 = this.ctx.createOscillator();
+    this.dreadOsc1.type = "sine"; this.dreadOsc1.frequency.value = 41.0;
+    this.dreadOsc2 = this.ctx.createOscillator();
+    this.dreadOsc2.type = "triangle"; this.dreadOsc2.frequency.value = 42.3;
+    this.dreadLP = this.ctx.createBiquadFilter();
+    this.dreadLP.type = "lowpass"; this.dreadLP.frequency.value = 115; this.dreadLP.Q.value = 1.2;
+    this.dreadGain = this.ctx.createGain(); this.dreadGain.gain.value = 0.0;
+    this.dreadOsc1.connect(this.dreadLP);
+    this.dreadOsc2.connect(this.dreadLP);
+    this.dreadLP.connect(this.dreadGain);
+    this.dreadGain.connect(this.master);
+    this.dreadOsc1.start();
+    this.dreadOsc2.start();
+
     // 5. CONTINUOUS SIREN HEAD DUAL-HORN VOICE (Unbroken eerie air-raid wail morphing by mood!)
     this.shPhase = 0;
     this.shOscA = this.ctx.createOscillator(); this.shOscA.type = "sawtooth"; this.shOscA.frequency.value = 340;
@@ -422,57 +455,88 @@ KK.AudioEngine = class AudioEngine {
     this.shStatGain.gain.setTargetAtTime(Math.min(0.26, statTarget), t, 0.08);
   }
 
-  playKPVTShot() {
-    if (!this.started || this.muted) return;
-    const t = this.ctx.currentTime;
-    const thump = this.ctx.createOscillator(); thump.type = "triangle";
-    thump.frequency.setValueAtTime(148, t); thump.frequency.exponentialRampToValueAtTime(34, t + 0.16);
-    const tg = this.ctx.createGain();
-    tg.gain.setValueAtTime(0.46, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-    thump.connect(tg); tg.connect(this.master); thump.start(t); thump.stop(t + 0.19);
+  // v17.8.4 LOUD, TERRIFYING CALIBER-SCALED MG / AUTOCANNON SHOT (12.7mm / 14.5mm / 30mm)
+  playKPVTShot(caliberMm = 14.5) {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const cal = Math.max(12, Math.min(45, caliberMm || 14.5));
+    const scale = Math.pow(cal / 14.5, 0.42);
+    const vol = Math.min(1.35, 0.58 * scale);
 
-    const crack = this.ctx.createBufferSource(); crack.buffer = this.noiseBuf;
-    const cf = this.ctx.createBiquadFilter(); cf.type = "bandpass"; cf.frequency.value = 1150; cf.Q.value = 0.9;
-    const cg = this.ctx.createGain();
-    cg.gain.setValueAtTime(0.38, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
-    crack.connect(cf); cf.connect(cg); cg.connect(this.master); crack.start(t); crack.stop(t + 0.15);
+    // 1. Sharp supersonic propellant KRAK transient
+    const nBuf = this._noiseBuffer(0.14 * scale);
+    const nSrc = this.ctx.createBufferSource(); nSrc.buffer = nBuf;
+    const nBp = this.ctx.createBiquadFilter(); nBp.type = "bandpass"; nBp.frequency.value = Math.max(650, 1850 - cal * 28); nBp.Q.value = 0.85;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(vol, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.13 * scale);
+    nSrc.connect(nBp); nBp.connect(nGain); nGain.connect(this.masterGain);
+    nSrc.start(now);
+
+    // 2. Heavy mechanical chest-thump punch
+    const thump = this.ctx.createOscillator(); thump.type = "sawtooth";
+    thump.frequency.setValueAtTime(Math.max(115, 220 - cal * 2.5), now);
+    thump.frequency.exponentialRampToValueAtTime(34, now + 0.11 * scale);
+    const tLp = this.ctx.createBiquadFilter(); tLp.type = "lowpass"; tLp.frequency.value = 340;
+    const tGain = this.ctx.createGain();
+    tGain.gain.setValueAtTime(vol * 0.95, now);
+    tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12 * scale);
+    thump.connect(tLp); tLp.connect(tGain); tGain.connect(this.masterGain);
+    thump.start(now); thump.stop(now + 0.13 * scale);
   }
 
-  // COLOSSAL 125mm 2A46M SMOOTHBORE CANNON BLAST (Chest-shaking boom + supersonic crack + metallic echo!)
-  playTank125mmBlast() {
-    if (!this.started || this.muted) return;
-    const t = this.ctx.currentTime;
+  // v17.8.4 SCARY REALISTIC "KRAK-THOOM" TANK MAIN CANNON BLAST (Caliber-scaled loudness: 105mm / 125mm / 140mm!)
+  playTank125mmBlast(caliberMm = 125) {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const cal = Math.max(90, Math.min(155, caliberMm || 125));
+    const cScale = Math.pow(cal / 125.0, 0.75);
+    const peakVol = Math.min(1.55, 0.95 * cScale);
 
-    // 1. Sub-bass breech concussion punch (110Hz -> 22Hz!)
-    const sub = this.ctx.createOscillator(); sub.type = "sine";
-    sub.frequency.setValueAtTime(112, t);
-    sub.frequency.exponentialRampToValueAtTime(22, t + 0.85);
-    const sg = this.ctx.createGain();
-    sg.gain.setValueAtTime(0.01, t);
-    sg.gain.linearRampToValueAtTime(0.82, t + 0.018);
-    sg.gain.exponentialRampToValueAtTime(0.001, t + 1.15);
-    sub.connect(sg); sg.connect(this.master); sub.start(t); sub.stop(t + 1.2);
+    // 1. STAGE 1 ("KRAK!"): Blistering high-pressure propellant ignition snap (0–90ms)
+    const krakBuf = this._noiseBuffer(0.14);
+    const krakSrc = this.ctx.createBufferSource(); krakSrc.buffer = krakBuf;
+    const krakHp = this.ctx.createBiquadFilter(); krakHp.type = "highpass"; krakHp.frequency.value = 950;
+    const krakGain = this.ctx.createGain();
+    krakGain.gain.setValueAtTime(peakVol * 1.15, now);
+    krakGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    krakSrc.connect(krakHp); krakHp.connect(krakGain); krakGain.connect(this.masterGain);
+    krakSrc.start(now);
 
-    // 2. Broadband muzzle blast roar + rolling valley echo
-    const blast = this.ctx.createBufferSource(); blast.buffer = this.noiseBuf;
-    const bf = this.ctx.createBiquadFilter(); bf.type = "lowpass";
-    bf.frequency.setValueAtTime(1850, t);
-    bf.frequency.exponentialRampToValueAtTime(190, t + 1.45);
-    const bg = this.ctx.createGain();
-    bg.gain.setValueAtTime(0.76, t);
-    bg.gain.exponentialRampToValueAtTime(0.001, t + 1.55);
-    blast.connect(bf); bf.connect(bg); bg.connect(this.master);
-    blast.start(t); blast.stop(t + 1.6);
+    // 2. STAGE 2 ("THOOM!"): Concussive sub-bass shockwave + rolling valley echo (20ms–1.35s)
+    const subOsc = this.ctx.createOscillator(); subOsc.type = "sine";
+    subOsc.frequency.setValueAtTime(118 / Math.sqrt(cScale), now + 0.015);
+    subOsc.frequency.exponentialRampToValueAtTime(22, now + 0.72 * cScale);
+    const subGain = this.ctx.createGain();
+    subGain.gain.setValueAtTime(0.001, now);
+    subGain.gain.linearRampToValueAtTime(peakVol * 1.25, now + 0.025);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.85 * cScale);
+    subOsc.connect(subGain); subGain.connect(this.masterGain);
+    subOsc.start(now); subOsc.stop(now + 0.88 * cScale);
 
-    // 3. Sharp steel turret ring resonance!
+    const boomBuf = this._noiseBuffer(1.45 * cScale);
+    const boomSrc = this.ctx.createBufferSource(); boomSrc.buffer = boomBuf;
+    const boomLp = this.ctx.createBiquadFilter(); boomLp.type = "lowpass";
+    boomLp.frequency.setValueAtTime(680, now + 0.018);
+    boomLp.frequency.exponentialRampToValueAtTime(95, now + 1.25 * cScale);
+    const boomGain = this.ctx.createGain();
+    boomGain.gain.setValueAtTime(0.001, now);
+    boomGain.gain.linearRampToValueAtTime(peakVol * 1.05, now + 0.028);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, now + 1.38 * cScale);
+    boomSrc.connect(boomLp); boomLp.connect(boomGain); boomGain.connect(this.masterGain);
+    boomSrc.start(now);
+
+    // 3. Metallic breech ring / recoil clank
     const ring = this.ctx.createOscillator(); ring.type = "triangle";
-    ring.frequency.setValueAtTime(420, t); ring.frequency.exponentialRampToValueAtTime(185, t + 0.28);
-    const rg = this.ctx.createGain();
-    rg.gain.setValueAtTime(0.24, t); rg.gain.exponentialRampToValueAtTime(0.001, t + 0.30);
-    ring.connect(rg); rg.connect(this.master); ring.start(t); ring.stop(t + 0.32);
+    ring.frequency.setValueAtTime(520 / cScale, now + 0.02);
+    ring.frequency.exponentialRampToValueAtTime(290 / cScale, now + 0.28);
+    const ringGain = this.ctx.createGain();
+    ringGain.gain.setValueAtTime(peakVol * 0.22, now + 0.02);
+    ringGain.gain.exponentialRampToValueAtTime(0.001, now + 0.30);
+    ring.connect(ringGain); ringGain.connect(this.masterGain);
+    ring.start(now + 0.02); ring.stop(now + 0.32);
   }
 
-  // AUTHENTIC 6.5-SECOND T-72B SOVIET CAROUSEL AUTOLOADER MECHANICAL AUDIO SEQUENCE!
   playTankAutoloader() {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;
@@ -644,96 +708,33 @@ KK.AudioEngine = class AudioEngine {
     }
   }
 
+  // v17.8.4 LOUD, SCARY QUAD-23mm SHILKA AUTOCANNON ROAR!
   playShilka23mm() {
-    if (!this.started || this.muted) return;
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator(); osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(195 + Math.random() * 25, t);
-    osc.frequency.exponentialRampToValueAtTime(48, t + 0.085);
-    const flt = this.ctx.createBiquadFilter(); flt.type = "lowpass"; flt.frequency.value = 950;
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const nBuf = this._noiseBuffer(0.16);
+    const nSrc = this.ctx.createBufferSource(); nSrc.buffer = nBuf;
+    const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1150; bp.Q.value = 0.7;
     const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.095);
-    osc.connect(flt); flt.connect(g); g.connect(this.master); osc.start(t); osc.stop(t + 0.10);
+    g.gain.setValueAtTime(0.82, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    nSrc.connect(bp); bp.connect(g); g.connect(this.masterGain);
+    nSrc.start(now);
 
-    const cr = this.ctx.createBufferSource(); cr.buffer = this.noiseBuf;
-    const cf = this.ctx.createBiquadFilter(); cf.type = "bandpass"; cf.frequency.value = 1480; cf.Q.value = 1.2;
-    const cg = this.ctx.createGain();
-    cg.gain.setValueAtTime(0.28, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
-    cr.connect(cf); cf.connect(cg); cg.connect(this.master); cr.start(t); cr.stop(t + 0.08);
+    const osc = this.ctx.createOscillator(); osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(165, now); osc.frequency.exponentialRampToValueAtTime(38, now + 0.12);
+    const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 320;
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0.86, now); og.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    osc.connect(lp); lp.connect(og); og.connect(this.masterGain);
+    osc.start(now); osc.stop(now + 0.14);
   }
 
-  playNpcRam() {
-    if (!this.started || this.muted) return;
-    const t = this.ctx.currentTime;
-    const thud = this.ctx.createOscillator(); thud.type = "sine";
-    thud.frequency.setValueAtTime(140, t); thud.frequency.exponentialRampToValueAtTime(38, t + 0.15);
-    const tg = this.ctx.createGain();
-    tg.gain.setValueAtTime(0.42, t); tg.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
-    thud.connect(tg); tg.connect(this.master); thud.start(t); thud.stop(t + 0.18);
-
-    const yel = this.ctx.createOscillator(); yel.type = "sawtooth";
-    yel.frequency.setValueAtTime(240 + Math.random() * 60, t + 0.03);
-    yel.frequency.exponentialRampToValueAtTime(520 + Math.random() * 120, t + 0.16);
-    yel.frequency.exponentialRampToValueAtTime(180, t + 0.36);
-    const flt = this.ctx.createBiquadFilter(); flt.type = "bandpass"; flt.frequency.value = 780; flt.Q.value = 3.0;
-    const yg = this.ctx.createGain();
-    yg.gain.setValueAtTime(0.001, t + 0.02);
-    yg.gain.linearRampToValueAtTime(0.18, t + 0.06);
-    yg.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
-    yel.connect(flt); flt.connect(yg); yg.connect(this.master); yel.start(t + 0.02); yel.stop(t + 0.40);
-  }
-
-  // v14.2 SCARY HYPER-REALISTIC 140mm Rh-140/56 ETC CANNON THUNDER (Supersonic Whip + Tectonic Concussion + Rolling Canyon Echo!)
+  // v17.8.4 THUNDEROUS 140mm SCHRECKENSFURST KRAK-THOOM!
   play140mmEtcBlast() {
-    if (!this.started || this.muted) return;
-    const t = this.ctx.currentTime;
-
-    // 1. Instant 0.04s supersonic plasma-muzzle shockwave whip-crack
-    const crack = this.ctx.createBufferSource(); crack.buffer = this.noiseBuf;
-    const cf = this.ctx.createBiquadFilter(); cf.type = "highpass"; cf.frequency.value = 1400;
-    const cg = this.ctx.createGain();
-    cg.gain.setValueAtTime(0.95, t); cg.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
-    crack.connect(cf); cf.connect(cg); cg.connect(this.master); crack.start(t); crack.stop(t + 0.16);
-
-    // 2. Electro-Thermal ETC plasma discharge snap (high-energy downward transient)
-    const etc = this.ctx.createOscillator(); etc.type = "triangle";
-    etc.frequency.setValueAtTime(1180, t); etc.frequency.exponentialRampToValueAtTime(72, t + 0.18);
-    const eg = this.ctx.createGain();
-    eg.gain.setValueAtTime(0.55, t); eg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-    etc.connect(eg); eg.connect(this.master); etc.start(t); etc.stop(t + 0.24);
-
-    // 3. Chest-crushing 140mm seismic sub-bass concussion (85 Hz -> 16 Hz)
-    const sub = this.ctx.createOscillator(); sub.type = "sine";
-    sub.frequency.setValueAtTime(86, t); sub.frequency.exponentialRampToValueAtTime(16, t + 1.35);
-    const sg = this.ctx.createGain();
-    sg.gain.setValueAtTime(0.98, t); sg.gain.exponentialRampToValueAtTime(0.001, t + 1.55);
-    sub.connect(sg); sg.connect(this.master); sub.start(t); sub.stop(t + 1.60);
-
-    // 4. Main roaring propellant detonation + 2 delayed valley/mountain thunder echoes!
-    for (const [delay, cutStart, cutEnd, dur, vol] of [
-      [0.00, 2600, 140, 1.85, 0.92],
-      [0.34,  950, 110, 1.90, 0.44],
-      [0.82,  520,  85, 2.15, 0.26]
-    ]) {
-      const st = t + delay;
-      const roar = this.ctx.createBufferSource(); roar.buffer = this.noiseBuf;
-      const rf = this.ctx.createBiquadFilter(); rf.type = "lowpass";
-      rf.frequency.setValueAtTime(cutStart, st); rf.frequency.exponentialRampToValueAtTime(cutEnd, st + dur);
-      const rg = this.ctx.createGain();
-      rg.gain.setValueAtTime(0.005, st); rg.gain.linearRampToValueAtTime(vol, st + 0.03);
-      rg.gain.exponentialRampToValueAtTime(0.001, st + dur + 0.08);
-      roar.connect(rf); rf.connect(rg); rg.connect(this.master); roar.start(st); roar.stop(st + dur + 0.12);
-    }
-
-    // 5. Heavy steel 140mm gun-tube resonant ring
-    const ring = this.ctx.createOscillator(); ring.type = "sine";
-    ring.frequency.setValueAtTime(312, t + 0.03); ring.frequency.exponentialRampToValueAtTime(288, t + 0.65);
-    const rg2 = this.ctx.createGain();
-    rg2.gain.setValueAtTime(0.11, t + 0.03); rg2.gain.exponentialRampToValueAtTime(0.001, t + 0.70);
-    ring.connect(rg2); rg2.connect(this.master); ring.start(t + 0.03); ring.stop(t + 0.72);
+    this.playTank125mmBlast(148);
   }
 
-  // BESPOKE 5-STAGE LINEAR RAM AUTOLOADER Mk.III (4.8s Electro-Hydraulic Sequence for PzKpfw 140A4!)
   playLinearAutoloader() {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;
@@ -785,35 +786,136 @@ KK.AudioEngine = class AudioEngine {
   }
 
   // v14.2 SCARY VISCERAL 40mm AUTOKANONE (Heavy Bofors/Rheinmetall Boom-Crack + Iron Receiver Slam + Echo!)
+  // v17.8.4 HEAVY 40mm AUTOKANONE THUNDER!
   play40mmAutoKanone() {
-    if (!this.started || this.muted) return;
-    const t = this.ctx.currentTime;
-
-    // 1. Deep heavy 40mm percussion thump
-    const sub = this.ctx.createOscillator(); sub.type = "sine";
-    sub.frequency.setValueAtTime(152, t); sub.frequency.exponentialRampToValueAtTime(24, t + 0.28);
-    const sg = this.ctx.createGain();
-    sg.gain.setValueAtTime(0.68, t); sg.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
-    sub.connect(sg); sg.connect(this.master); sub.start(t); sub.stop(t + 0.34);
-
-    // 2. Sharp supersonic 40mm muzzle crack + short rolling canyon slapback echo
-    for (const [del, fHz, dur, vol] of [[0.0, 1450, 0.22, 0.64], [0.16, 520, 0.34, 0.24]]) {
-      const st = t + del;
-      const cr = this.ctx.createBufferSource(); cr.buffer = this.noiseBuf;
-      const cf = this.ctx.createBiquadFilter(); cf.type = "lowpass";
-      cf.frequency.setValueAtTime(fHz, st); cf.frequency.exponentialRampToValueAtTime(160, st + dur);
-      const cg = this.ctx.createGain();
-      cg.gain.setValueAtTime(vol, st); cg.gain.exponentialRampToValueAtTime(0.001, st + dur + 0.03);
-      cr.connect(cf); cf.connect(cg); cg.connect(this.master); cr.start(st); cr.stop(st + dur + 0.05);
-    }
-
-    // 3. Heavy automatic steel bolt-carrier clack + brass shell ring
-    const bolt = this.ctx.createOscillator(); bolt.type = "triangle";
-    bolt.frequency.setValueAtTime(480, t + 0.045); bolt.frequency.exponentialRampToValueAtTime(115, t + 0.14);
-    const bg = this.ctx.createGain();
-    bg.gain.setValueAtTime(0.30, t + 0.045); bg.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-    bolt.connect(bg); bg.connect(this.master); bolt.start(t + 0.045); bolt.stop(t + 0.17);
+    this.playKPVTShot(40);
   }
+
+  // v17.8.4 CALIBER-SCALED METALLIC ARMOR CLANG / RICOCHET WHINE!
+  playArmorClang(caliberMm = 125, isRicochet = false) {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const cal = Math.max(12, Math.min(155, caliberMm || 125));
+    const scale = Math.pow(cal / 75.0, 0.45);
+    const vol = Math.min(1.25, 0.48 * scale);
+
+    // Metallic bell/plate resonance harmonics (lower & heavier for bigger calibers!)
+    const baseHz = Math.max(260, 1150 - cal * 5.2);
+    for (const mult of [1.0, 1.47, 2.13]) {
+      const osc = this.ctx.createOscillator();
+      osc.type = isRicochet ? "sawtooth" : "triangle";
+      osc.frequency.setValueAtTime(baseHz * mult, now);
+      osc.frequency.exponentialRampToValueAtTime(baseHz * mult * (isRicochet ? 0.55 : 0.88), now + (isRicochet ? 0.42 : 0.34) * scale);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(vol * (mult === 1.0 ? 0.72 : 0.34), now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + (isRicochet ? 0.44 : 0.36) * scale);
+      osc.connect(g); g.connect(this.masterGain);
+      osc.start(now); osc.stop(now + 0.46 * scale);
+    }
+    // Sharp steel impact crunch
+    const nBuf = this._noiseBuffer(0.14 * scale);
+    const nSrc = this.ctx.createBufferSource(); nSrc.buffer = nBuf;
+    const hp = this.ctx.createBiquadFilter(); hp.type = "bandpass"; hp.frequency.value = baseHz * 1.8; hp.Q.value = 1.6;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(vol * 0.85, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.13 * scale);
+    nSrc.connect(hp); hp.connect(ng); ng.connect(this.masterGain);
+    nSrc.start(now);
+  }
+
+  // v17.9 LASER WARNING RECEIVER (LWR) SHRILL BEEP!
+  playLwrBeep() {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    for (let k = 0; k < 2; k++) {
+      const osc = this.ctx.createOscillator(); osc.type = "square";
+      osc.frequency.setValueAtTime(2480, now + k * 0.11);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.16, now + k * 0.11);
+      g.gain.exponentialRampToValueAtTime(0.001, now + k * 0.11 + 0.075);
+      osc.connect(g); g.connect(this.masterGain);
+      osc.start(now + k * 0.11); osc.stop(now + k * 0.11 + 0.08);
+    }
+  }
+
+  // v17.9 2-SECOND CONCUSSION EAR-RINGING (NO SCREEN FLASH — 100% EPILEPSY-SAFE!)
+  playConcussionMuffle() {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator(); osc.type = "sine";
+    osc.frequency.setValueAtTime(3850, now);
+    osc.frequency.exponentialRampToValueAtTime(3420, now + 2.0);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.15, now + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 2.0);
+    osc.connect(g); g.connect(this.masterGain);
+    osc.start(now); osc.stop(now + 2.05);
+  }
+
+  // v17.9 SUBTLE TURRET TRAVERSE HYDRAULIC/ELECTRIC WHINE (GRINDS IF RING DAMAGED!)
+  playTurretWhineTick(damaged = false) {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = damaged ? "sawtooth" : "sine";
+    osc.frequency.setValueAtTime(damaged ? 195 : 420, now);
+    osc.frequency.linearRampToValueAtTime(damaged ? 155 : 460, now + 0.09);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(damaged ? 0.065 : 0.028, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
+    osc.connect(g); g.connect(this.masterGain);
+    osc.start(now); osc.stop(now + 0.11);
+  }
+
+  // v17.9 BLOW-OUT PANEL / AMMO COOK-OFF VERTICAL FLAME JET ROAR (3.5s)
+  playCookoffJet() {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const buf = this._noiseBuffer(3.2);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 620; bp.Q.value = 0.65;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.01, now);
+    g.gain.linearRampToValueAtTime(0.68, now + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 3.15);
+    src.connect(bp); bp.connect(g); g.connect(this.masterGain);
+    src.start(now);
+  }
+
+  // v17.8.4 INCOMING ARTILLERY / TANK SHELL DOPPLER WHISTLE!
+  playShellWhistle(caliberMm = 125) {
+    if (!this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const cal = Math.max(75, Math.min(460, caliberMm || 125));
+    const dur = Math.min(0.95, 0.48 + (cal / 460) * 0.38);
+    const startHz = Math.max(900, 1950 - cal * 2.2);
+    const endHz = Math.max(240, startHz * 0.28);
+
+    const osc = this.ctx.createOscillator(); osc.type = "sine";
+    osc.frequency.setValueAtTime(startHz, now);
+    osc.frequency.exponentialRampToValueAtTime(endHz, now + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.001, now);
+    g.gain.linearRampToValueAtTime(0.28, now + dur * 0.72);
+    g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(g); g.connect(this.masterGain);
+    osc.start(now); osc.stop(now + dur + 0.02);
+
+    const nBuf = this._noiseBuffer(dur);
+    const nSrc = this.ctx.createBufferSource(); nSrc.buffer = nBuf;
+    const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass";
+    bp.frequency.setValueAtTime(startHz * 1.1, now);
+    bp.frequency.exponentialRampToValueAtTime(endHz * 1.1, now + dur);
+    bp.Q.value = 4.5;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.001, now);
+    ng.gain.linearRampToValueAtTime(0.22, now + dur * 0.75);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    nSrc.connect(bp); bp.connect(ng); ng.connect(this.masterGain);
+    nSrc.start(now);
+  }
+
 
   playGeigerClick(intensity = 0.6) {
     if (!this.started || this.muted) return;
@@ -977,6 +1079,154 @@ KK.AudioEngine = class AudioEngine {
     o.start(t); o2.start(t); o.stop(t + 3.2); o2.stop(t + 3.2);
   }
 
+  // Procedural Foreboding Sea Terror & Hurricane Signature Cues ("bloop", "yamato", "megalodon", "hurricane")
+  playSeaDreadPulse(intensity = 0.8, kind = "bloop") {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    const v = Math.max(0.12, Math.min(1.0, Number(intensity) || 0.8));
+    const k = String(kind || "bloop").toLowerCase();
+
+    if (k === "bloop" || k === "kraken") {
+      // 1997 NOAA Bloop: haunting ultra-low organic rising underwater sweep + cavernous deep-sea reverb echoes
+      for (const [delay, gainScale, lpCut] of [[0.0, 1.0, 310], [0.68, 0.42, 220], [1.42, 0.20, 165]]) {
+        const st = t + delay;
+        const o1 = this.ctx.createOscillator(); o1.type = "sine";
+        o1.frequency.setValueAtTime(28, st);
+        o1.frequency.exponentialRampToValueAtTime(162, st + 1.32);
+        o1.frequency.exponentialRampToValueAtTime(44, st + 3.10);
+
+        const o2 = this.ctx.createOscillator(); o2.type = "triangle";
+        o2.frequency.setValueAtTime(56, st);
+        o2.frequency.exponentialRampToValueAtTime(248, st + 1.28);
+        o2.frequency.exponentialRampToValueAtTime(76, st + 3.05);
+
+        const lfo = this.ctx.createOscillator(); lfo.type = "sine"; lfo.frequency.value = 4.6;
+        const lfoG = this.ctx.createGain(); lfoG.gain.value = 3.2;
+        lfo.connect(lfoG); lfoG.connect(o1.frequency);
+
+        const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = lpCut; lp.Q.value = 2.2;
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.001, st);
+        g.gain.linearRampToValueAtTime(0.46 * v * gainScale, st + 0.92);
+        g.gain.exponentialRampToValueAtTime(0.001, st + 3.35);
+
+        o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(this.master);
+        o1.start(st); o2.start(st); lfo.start(st);
+        o1.stop(st + 3.45); o2.stop(st + 3.45); lfo.stop(st + 3.45);
+      }
+      // Subtle abyssal pressure swell underneath
+      const sub = this.ctx.createBufferSource(); sub.buffer = this.noiseBuf;
+      const slp = this.ctx.createBiquadFilter(); slp.type = "lowpass"; slp.frequency.value = 95;
+      const sg = this.ctx.createGain();
+      sg.gain.setValueAtTime(0.001, t);
+      sg.gain.linearRampToValueAtTime(0.24 * v, t + 1.1);
+      sg.gain.exponentialRampToValueAtTime(0.001, t + 3.6);
+      sub.connect(slp); slp.connect(sg); sg.connect(this.master);
+      sub.start(t); sub.stop(t + 3.7);
+
+    } else if (k === "yamato") {
+      // Cavernous rusted-steel ghost battleship foghorn (layered detuned ~55/82/110 Hz brassy sub-harmonics + mist echo)
+      const harmonics = [[55.0, 0, "sawtooth", 0.34], [54.2, -5, "triangle", 0.24], [82.4, -7, "sawtooth", 0.26], [110.0, 5, "sawtooth", 0.20], [108.9, -4, "triangle", 0.16]];
+      for (const [delay, gScale, lpCut] of [[0.0, 1.0, 290], [0.92, 0.38, 195]]) {
+        const st = t + delay;
+        const bus = this.ctx.createGain(); bus.gain.value = 1.0;
+        const shaper = this.ctx.createWaveShaper(); shaper.curve = this._makeWarmSaturation(9);
+        const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = lpCut; lp.Q.value = 1.8;
+        const envG = this.ctx.createGain();
+        envG.gain.setValueAtTime(0.001, st);
+        envG.gain.linearRampToValueAtTime(0.42 * v * gScale, st + 0.65);
+        envG.gain.setValueAtTime(0.36 * v * gScale, st + 2.45);
+        envG.gain.exponentialRampToValueAtTime(0.001, st + 4.4);
+        bus.connect(shaper); shaper.connect(lp); lp.connect(envG); envG.connect(this.master);
+
+        for (const [freq, det, type, amp] of harmonics) {
+          const o = this.ctx.createOscillator(); o.type = type;
+          o.frequency.setValueAtTime(freq, st);
+          o.frequency.exponentialRampToValueAtTime(freq * 0.91, st + 4.2);
+          o.detune.value = det;
+          const og = this.ctx.createGain(); og.gain.value = amp;
+          o.connect(og); og.connect(bus);
+          o.start(st); o.stop(st + 4.5);
+        }
+      }
+
+    } else if (k === "megalodon") {
+      // Deep underwater concussion thump + breaching water-crash explosion + visceral low-end abyssal growl
+      const thump = this.ctx.createOscillator(); thump.type = "sine";
+      thump.frequency.setValueAtTime(84, t);
+      thump.frequency.exponentialRampToValueAtTime(21, t + 0.72);
+      const tg = this.ctx.createGain();
+      tg.gain.setValueAtTime(0.68 * v, t);
+      tg.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+      thump.connect(tg); tg.connect(this.master); thump.start(t); thump.stop(t + 0.90);
+
+      // Heavy breaching water-crash noise burst
+      const splash = this.ctx.createBufferSource(); splash.buffer = this.noiseBuf; splash.loop = true;
+      const sf = this.ctx.createBiquadFilter(); sf.type = "lowpass";
+      sf.frequency.setValueAtTime(1650, t + 0.04);
+      sf.frequency.exponentialRampToValueAtTime(210, t + 1.85);
+      const sg = this.ctx.createGain();
+      sg.gain.setValueAtTime(0.001, t + 0.04);
+      sg.gain.linearRampToValueAtTime(0.58 * v, t + 0.14);
+      sg.gain.exponentialRampToValueAtTime(0.001, t + 1.95);
+      splash.connect(sf); sf.connect(sg); sg.connect(this.master);
+      splash.start(t + 0.04); splash.stop(t + 2.05);
+
+      // Visceral low-end guttural growl
+      const growl = this.ctx.createOscillator(); growl.type = "sawtooth";
+      growl.frequency.setValueAtTime(94, t + 0.08);
+      growl.frequency.exponentialRampToValueAtTime(36, t + 1.55);
+      const gLfo = this.ctx.createOscillator(); gLfo.type = "sine"; gLfo.frequency.value = 19;
+      const gLfoG = this.ctx.createGain(); gLfoG.gain.value = 12;
+      gLfo.connect(gLfoG); gLfoG.connect(growl.frequency);
+      const glp = this.ctx.createBiquadFilter(); glp.type = "lowpass"; glp.frequency.value = 250; glp.Q.value = 1.6;
+      const gg = this.ctx.createGain();
+      gg.gain.setValueAtTime(0.001, t + 0.08);
+      gg.gain.linearRampToValueAtTime(0.42 * v, t + 0.24);
+      gg.gain.exponentialRampToValueAtTime(0.001, t + 1.65);
+      growl.connect(glp); glp.connect(gg); gg.connect(this.master);
+      growl.start(t + 0.08); gLfo.start(t + 0.08); growl.stop(t + 1.72); gLfo.stop(t + 1.72);
+
+    } else if (k === "hurricane") {
+      // Violent hurricane thunderclap + sweeping cyclonic squall gust
+      const crack = this.ctx.createBufferSource(); crack.buffer = this.noiseBuf;
+      const cf = this.ctx.createBiquadFilter(); cf.type = "bandpass"; cf.frequency.value = 1250; cf.Q.value = 0.9;
+      const cg = this.ctx.createGain();
+      cg.gain.setValueAtTime(0.62 * v, t);
+      cg.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      crack.connect(cf); cf.connect(cg); cg.connect(this.master); crack.start(t); crack.stop(t + 0.28);
+
+      const boom = this.ctx.createOscillator(); boom.type = "sine";
+      boom.frequency.setValueAtTime(92, t);
+      boom.frequency.exponentialRampToValueAtTime(20, t + 1.35);
+      const bg = this.ctx.createGain();
+      bg.gain.setValueAtTime(0.68 * v, t);
+      bg.gain.exponentialRampToValueAtTime(0.001, t + 1.55);
+      boom.connect(bg); bg.connect(this.master); boom.start(t); boom.stop(t + 1.60);
+
+      const thunder = this.ctx.createBufferSource(); thunder.buffer = this.noiseBuf; thunder.loop = true;
+      const tf = this.ctx.createBiquadFilter(); tf.type = "lowpass";
+      tf.frequency.setValueAtTime(280, t + 0.06); tf.frequency.exponentialRampToValueAtTime(58, t + 2.45);
+      const tg = this.ctx.createGain();
+      tg.gain.setValueAtTime(0.01, t + 0.06);
+      tg.gain.linearRampToValueAtTime(0.54 * v, t + 0.22);
+      tg.gain.exponentialRampToValueAtTime(0.001, t + 2.65);
+      thunder.connect(tf); tf.connect(tg); tg.connect(this.master); thunder.start(t + 0.06); thunder.stop(t + 2.72);
+
+      // Rushing squall wind gust
+      const squall = this.ctx.createBufferSource(); squall.buffer = this.noiseBuf; squall.loop = true;
+      const sqf = this.ctx.createBiquadFilter(); sqf.type = "bandpass"; sqf.Q.value = 2.2;
+      sqf.frequency.setValueAtTime(260, t);
+      sqf.frequency.exponentialRampToValueAtTime(860, t + 0.55);
+      sqf.frequency.exponentialRampToValueAtTime(280, t + 2.3);
+      const sqg = this.ctx.createGain();
+      sqg.gain.setValueAtTime(0.005, t);
+      sqg.gain.linearRampToValueAtTime(0.42 * v, t + 0.35);
+      sqg.gain.exponentialRampToValueAtTime(0.001, t + 2.45);
+      squall.connect(sqf); sqf.connect(sqg); sqg.connect(this.master); squall.start(t); squall.stop(t + 2.52);
+    }
+  }
+
   playTramBell() {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;
@@ -1036,6 +1286,181 @@ KK.AudioEngine = class AudioEngine {
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
     o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.15);
+
+    // Crisp airburst counter-charge snap
+    const snap = this.ctx.createBufferSource(); snap.buffer = this.noiseBuf;
+    const sf = this.ctx.createBiquadFilter(); sf.type = "bandpass"; sf.frequency.value = 1850; sf.Q.value = 1.4;
+    const sg = this.ctx.createGain();
+    sg.gain.setValueAtTime(0.38, t); sg.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    snap.connect(sf); sf.connect(sg); sg.connect(this.master); snap.start(t); snap.stop(t + 0.18);
+  }
+
+  playArmorRicochet(intensity = 0.8) {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+    const s = Math.max(0.2, Math.min(1.0, Number(intensity) || 0.8));
+
+    // 1. High-velocity metallic PING! transient (bell-like armor plate ring)
+    const baseF = 2450 + Math.random() * 520;
+    const ping1 = this.ctx.createOscillator(); ping1.type = "sine";
+    ping1.frequency.setValueAtTime(baseF, t);
+    ping1.frequency.exponentialRampToValueAtTime(baseF * 0.78, t + 0.24);
+    const ping2 = this.ctx.createOscillator(); ping2.type = "triangle";
+    ping2.frequency.setValueAtTime(baseF * 1.54, t);
+    ping2.frequency.exponentialRampToValueAtTime(baseF * 1.18, t + 0.18);
+    const pg = this.ctx.createGain();
+    pg.gain.setValueAtTime(0.001, t);
+    pg.gain.linearRampToValueAtTime(0.34 * s, t + 0.006);
+    pg.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    ping1.connect(pg); ping2.connect(pg); pg.connect(this.master);
+    ping1.start(t); ping2.start(t); ping1.stop(t + 0.30); ping2.stop(t + 0.30);
+
+    // 2. Descending Doppler spinning-shell whine ("pcheeeew!")
+    const whine = this.ctx.createOscillator(); whine.type = "sawtooth";
+    whine.frequency.setValueAtTime(2200 + Math.random() * 380, t + 0.012);
+    whine.frequency.exponentialRampToValueAtTime(360 + Math.random() * 90, t + 0.46);
+    const lfo = this.ctx.createOscillator(); lfo.type = "sine"; lfo.frequency.value = 32 + Math.random() * 14;
+    const lfoG = this.ctx.createGain(); lfoG.gain.value = 75;
+    lfo.connect(lfoG); lfoG.connect(whine.frequency);
+
+    const wf = this.ctx.createBiquadFilter(); wf.type = "bandpass";
+    wf.frequency.setValueAtTime(2100, t + 0.012);
+    wf.frequency.exponentialRampToValueAtTime(480, t + 0.46);
+    wf.Q.value = 4.2;
+    const wg = this.ctx.createGain();
+    wg.gain.setValueAtTime(0.001, t + 0.01);
+    wg.gain.linearRampToValueAtTime(0.28 * s, t + 0.045);
+    wg.gain.exponentialRampToValueAtTime(0.001, t + 0.50);
+    whine.connect(wf); wf.connect(wg); wg.connect(this.master);
+    whine.start(t + 0.01); lfo.start(t + 0.01);
+    whine.stop(t + 0.52); lfo.stop(t + 0.52);
+
+    // 3. Sharp spark graze snap
+    const sp = this.ctx.createBufferSource(); sp.buffer = this.noiseBuf;
+    const spf = this.ctx.createBiquadFilter(); spf.type = "highpass"; spf.frequency.value = 3100;
+    const spg = this.ctx.createGain();
+    spg.gain.setValueAtTime(0.26 * s, t); spg.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    sp.connect(spf); spf.connect(spg); spg.connect(this.master); sp.start(t); sp.stop(t + 0.10);
+  }
+
+  playEraDetonation() {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+
+    // 1. Sharp snappy reactive explosive CRACK!
+    const crack = this.ctx.createBufferSource(); crack.buffer = this.noiseBuf;
+    const cf = this.ctx.createBiquadFilter(); cf.type = "bandpass";
+    cf.frequency.setValueAtTime(2100, t); cf.frequency.exponentialRampToValueAtTime(290, t + 0.25);
+    cf.Q.value = 0.9;
+    const cg = this.ctx.createGain();
+    cg.gain.setValueAtTime(0.01, t);
+    cg.gain.linearRampToValueAtTime(0.76, t + 0.005);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    crack.connect(cf); cf.connect(cg); cg.connect(this.master); crack.start(t); crack.stop(t + 0.30);
+
+    // 2. Concussive punchy low-mid blast thump
+    const sub = this.ctx.createOscillator(); sub.type = "sine";
+    sub.frequency.setValueAtTime(195, t); sub.frequency.exponentialRampToValueAtTime(36, t + 0.24);
+    const sg = this.ctx.createGain();
+    sg.gain.setValueAtTime(0.62, t); sg.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+    sub.connect(sg); sg.connect(this.master); sub.start(t); sub.stop(t + 0.28);
+
+    // 3. Flyer-plate heavy metallic CLANG!
+    for (const [f0, f1, amp] of [[760, 690, 0.26], [1215, 1120, 0.18]]) {
+      const m = this.ctx.createOscillator(); m.type = "triangle";
+      m.frequency.setValueAtTime(f0, t + 0.008); m.frequency.exponentialRampToValueAtTime(f1, t + 0.36);
+      const mf = this.ctx.createBiquadFilter(); mf.type = "bandpass"; mf.frequency.value = f0; mf.Q.value = 3.2;
+      const mg = this.ctx.createGain();
+      mg.gain.setValueAtTime(0.001, t + 0.006);
+      mg.gain.linearRampToValueAtTime(amp, t + 0.018);
+      mg.gain.exponentialRampToValueAtTime(0.001, t + 0.40);
+      m.connect(mf); mf.connect(mg); mg.connect(this.master);
+      m.start(t + 0.006); m.stop(t + 0.42);
+    }
+  }
+
+  playGhostEasterEgg(phase = "appear") {
+    if (!this.started || this.muted) return;
+    const t = this.ctx.currentTime;
+
+    if (phase === "appear") {
+      // Warm lush major-9th dreamy synth swell (Cmaj9: C4, E4, G4, B4, D5)
+      const notes = [261.63, 329.63, 392.00, 493.88, 587.33];
+      const padLp = this.ctx.createBiquadFilter(); padLp.type = "lowpass";
+      padLp.frequency.setValueAtTime(420, t);
+      padLp.frequency.exponentialRampToValueAtTime(2400, t + 1.4);
+      padLp.frequency.exponentialRampToValueAtTime(980, t + 3.8);
+      const padG = this.ctx.createGain();
+      padG.gain.setValueAtTime(0.001, t);
+      padG.gain.linearRampToValueAtTime(0.18, t + 1.15);
+      padG.gain.setValueAtTime(0.16, t + 2.3);
+      padG.gain.exponentialRampToValueAtTime(0.001, t + 4.1);
+      padLp.connect(padG); padG.connect(this.master);
+
+      notes.forEach((freq, idx) => {
+        const o1 = this.ctx.createOscillator(); o1.type = "sine";
+        o1.frequency.setValueAtTime(freq, t);
+        const o2 = this.ctx.createOscillator(); o2.type = "triangle";
+        o2.frequency.setValueAtTime(freq * (1.003 + idx * 0.0004), t);
+        const og = this.ctx.createGain();
+        og.gain.value = idx === 0 ? 0.34 : 0.22;
+        o1.connect(og); o2.connect(og); og.connect(padLp);
+        o1.start(t + idx * 0.06); o2.start(t + idx * 0.06);
+        o1.stop(t + 4.2); o2.stop(t + 4.2);
+      });
+    } else if (phase === "flash") {
+      // Bright crystalline fifth chime (G5 + D6 + octave sparkle G6)
+      const chimeNotes = [[783.99, 0.16, 0.65], [1174.66, 0.13, 0.72], [1567.98, 0.07, 0.55]];
+      chimeNotes.forEach(([freq, vol, dur], idx) => {
+        const o = this.ctx.createOscillator(); o.type = "sine";
+        o.frequency.setValueAtTime(freq, t + idx * 0.015);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.001, t + idx * 0.015);
+        g.gain.linearRampToValueAtTime(vol, t + idx * 0.015 + 0.009);
+        g.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.015 + dur);
+        o.connect(g); g.connect(this.master);
+        o.start(t + idx * 0.015); o.stop(t + idx * 0.015 + dur + 0.03);
+      });
+    } else if (phase === "overtake") {
+      // Uplifting ethereal harmonic shimmer + sweeping stereo slipstream whoosh!
+      const whoosh = this.ctx.createBufferSource(); whoosh.buffer = this.noiseBuf;
+      const wf = this.ctx.createBiquadFilter(); wf.type = "bandpass";
+      wf.frequency.setValueAtTime(280, t);
+      wf.frequency.exponentialRampToValueAtTime(1950, t + 0.55);
+      wf.frequency.exponentialRampToValueAtTime(420, t + 1.85);
+      wf.Q.value = 1.6;
+      const wg = this.ctx.createGain();
+      wg.gain.setValueAtTime(0.001, t);
+      wg.gain.linearRampToValueAtTime(0.32, t + 0.42);
+      wg.gain.exponentialRampToValueAtTime(0.001, t + 1.95);
+      whoosh.connect(wf); wf.connect(wg);
+      if (this.ctx.createStereoPanner) {
+        const pan = this.ctx.createStereoPanner();
+        pan.pan.setValueAtTime(-0.85, t);
+        pan.pan.linearRampToValueAtTime(0.85, t + 1.55);
+        wg.connect(pan); pan.connect(this.master);
+      } else {
+        wg.connect(this.master);
+      }
+      whoosh.start(t); whoosh.stop(t + 2.0);
+
+      // Ascending crystalline major-9th harmonic shimmer arpeggio
+      const arp = [523.25, 659.25, 783.99, 987.77, 1174.66, 1567.98];
+      arp.forEach((freq, idx) => {
+        const st = t + idx * 0.065;
+        const o = this.ctx.createOscillator(); o.type = "sine";
+        o.frequency.setValueAtTime(freq, st);
+        const o2 = this.ctx.createOscillator(); o2.type = "triangle";
+        o2.frequency.setValueAtTime(freq * 2.0, st);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.001, st);
+        g.gain.linearRampToValueAtTime(0.11, st + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.001, st + 1.65);
+        const g2 = this.ctx.createGain(); g2.gain.value = 0.25;
+        o.connect(g); o2.connect(g2); g2.connect(g); g.connect(this.master);
+        o.start(st); o2.start(st); o.stop(st + 1.70); o2.stop(st + 1.70);
+      });
+    }
   }
 
   playCameraShutter() {
@@ -1103,14 +1528,61 @@ KK.AudioEngine = class AudioEngine {
     const riverDist = (info && typeof info.riverDist === "number") ? info.riverDist : 999;
 
     let windBase = 0.022 + Math.min(0.06, alt / 3200) + Math.min(0.045, spdKmh / 2200);
-    if (weather === "storm") windBase += 0.075;
+    if (weather === "hurricane") windBase += 0.105;
+    else if (weather === "storm") windBase += 0.075;
     else if (weather === "snow" || weather === "rain") windBase += 0.032;
     if (biomes.desert > 0.45) windBase += 0.024;
+    const hurrEff = info && info.hurricaneEffect;
+    const hurrInt = Math.max(0, Math.min(1, (info && typeof info.hurricaneIntensity === "number")
+      ? info.hurricaneIntensity : ((hurrEff && hurrEff.active) ? (hurrEff.intensity || 0) : 0)));
+    const inEye = !!((info && info.inEye) || (hurrEff && hurrEff.active && hurrEff.inEye));
+    const seaDread = Math.max(0, Math.min(1, (info && typeof info.seaDread === "number") ? info.seaDread : 0));
+
+    if (inEye) windBase = 0.012;
     if (underwater) windBase = 0.008;
 
     const windFreq = 240 + Math.min(340, alt * 0.8 + spdKmh * 1.4) + Math.sin(this.windPhase * 1.3) * 65;
     this.windFilter.frequency.setTargetAtTime(windFreq, t, 0.15);
-    this.windGain.gain.setTargetAtTime(Math.min(0.14, windBase * gust), t, 0.18);
+    this.windGain.gain.setTargetAtTime(Math.min(0.16, windBase * gust), t, 0.18);
+
+    // Layer 1: Hurricane Roar (howling cyclonic wind + sub-bass eyewall pressure rumble; eerie hush inside Eye!)
+    if (this.hurrWindGain && this.hurrSubGain) {
+      if (inEye) {
+        this.hurrWindBP.frequency.setTargetAtTime(195, t, 0.25);
+        this.hurrWindBP.Q.setTargetAtTime(1.4, t, 0.25);
+        this.hurrWindGain.gain.setTargetAtTime(0.018, t, 0.28);
+        this.hurrSubLP.frequency.setTargetAtTime(75, t, 0.25);
+        this.hurrSubGain.gain.setTargetAtTime(0.032, t, 0.28);
+        if (this.rainGain) this.rainGain.gain.setTargetAtTime(0.012, t, 0.30);
+      } else if (hurrInt > 0.01 || weather === "hurricane") {
+        const hLvl = Math.max(hurrInt, weather === "hurricane" ? 0.55 : 0);
+        const howlFreq = 250 + hLvl * 430 + Math.sin(this.windPhase * 2.15) * (88 * hLvl) + Math.sin(this.windPhase * 5.2) * (34 * hLvl);
+        this.hurrWindBP.frequency.setTargetAtTime(underwater ? 155 : howlFreq, t, 0.14);
+        this.hurrWindBP.Q.setTargetAtTime(1.8 + hLvl * 2.1, t, 0.18);
+        this.hurrWindGain.gain.setTargetAtTime((underwater ? 0.04 : 0.23) * hLvl * (0.78 + 0.22 * gust), t, 0.18);
+        this.hurrSubLP.frequency.setTargetAtTime(82 + hLvl * 92, t, 0.18);
+        this.hurrSubGain.gain.setTargetAtTime((underwater ? 0.09 : 0.22) * hLvl, t, 0.20);
+      } else {
+        this.hurrWindGain.gain.setTargetAtTime(0.0, t, 0.25);
+        this.hurrSubGain.gain.setTargetAtTime(0.0, t, 0.25);
+      }
+    }
+
+    // Layer 2: Abyssal Sea Dread Drone (~38-54 Hz beating thalassophobia oscillators)
+    if (this.dreadGain && this.dreadOsc1 && this.dreadOsc2) {
+      this.dreadPhase = (this.dreadPhase || 0) + dt * (0.34 + seaDread * 0.58);
+      if (seaDread > 0.15) {
+        const dNorm = Math.min(1.0, (seaDread - 0.15) / 0.85);
+        const fBase = 39.5 + dNorm * 9.5 + Math.sin(this.dreadPhase) * 3.4;
+        const beatHz = 0.72 + dNorm * 1.48;
+        this.dreadOsc1.frequency.setTargetAtTime(fBase, t, 0.20);
+        this.dreadOsc2.frequency.setTargetAtTime(fBase + beatHz, t, 0.20);
+        this.dreadLP.frequency.setTargetAtTime(92 + dNorm * 86, t, 0.22);
+        this.dreadGain.gain.setTargetAtTime(dNorm * (underwater ? 0.24 : 0.18), t, 0.24);
+      } else {
+        this.dreadGain.gain.setTargetAtTime(0.0, t, 0.30);
+      }
+    }
 
     const riverProx = Math.max(0, 1.0 - riverDist / 120.0);
     const riverVol = underwater ? 0.11 : (riverProx * riverProx * 0.085);
@@ -1136,8 +1608,8 @@ KK.AudioEngine = class AudioEngine {
 
     const inSanctuary = !!(info && info.inSanctuary);
     const threatNear = !!(info && info.threatNear);
-    // Birds go DEAD SILENT when a cryptid is stalking nearby (organic survival clue!)
-    if (!underwater && !threatNear && !(info && info.isNight) && (weather === "clear" || weather === "overcast") && (biomes.taiga > 0.28 || biomes.rust > 0.45 || inSanctuary)) {
+    // Birds go DEAD SILENT when a cryptid is stalking nearby or a hurricane/abyssal threat looms!
+    if (!underwater && !threatNear && hurrInt < 0.1 && seaDread < 0.2 && !(info && info.isNight) && (weather === "clear" || weather === "overcast") && (biomes.taiga > 0.28 || biomes.rust > 0.45 || inSanctuary)) {
       this.birdTimer -= dt;
       if (this.birdTimer <= 0) {
         this.birdTimer = 6.5 + Math.random() * 11.0;
@@ -1511,7 +1983,7 @@ KK.AudioEngine = class AudioEngine {
       this.turboHumGain.gain.setTargetAtTime(0, t, 0.10);
     }
 
-    const rainVol = (weather === "storm") ? 0.13 : (weather === "rain" ? 0.07 : 0.0);
+    const rainVol = (weather === "hurricane") ? 0.18 : ((weather === "storm") ? 0.13 : (weather === "rain" ? 0.07 : 0.0));
     this.rainGain.gain.setTargetAtTime(rainVol, t, 0.35);
   }
 

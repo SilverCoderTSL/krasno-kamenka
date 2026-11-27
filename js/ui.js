@@ -17,9 +17,40 @@ KK.UIManager = class UIManager {
     this.availableContracts = [];
     this.toastTimeout = null;
     this._hudCache = {};
+    this._hudLastVal = {};
+    this._tmpFwd = new THREE.Vector3();
+    this._lanExpanded = false;
+    this._lanUserCollapsedOnline = false;
+    this._lanLastOnline = false;
+    this._quickHelpOpen = false;
     this._bindButtons();
     this.mapCtrl = KK.MapController ? new KK.MapController(game, this) : null;
     this.generateContracts();
+  }
+
+  _getEl(id) {
+    return this._hudCache[id] || (this._hudCache[id] = document.getElementById(id));
+  }
+
+  toggleLanPanel(forceExpanded) {
+    const next = typeof forceExpanded === "boolean" ? forceExpanded : !this._lanExpanded;
+    this._lanExpanded = next;
+    const isOnline = !!(this.game.network && this.game.network.mode !== "offline");
+    if (isOnline && !next) this._lanUserCollapsedOnline = true;
+    else if (next) this._lanUserCollapsedOnline = false;
+    const box = this._getEl("lan-box");
+    if (box) box.classList.toggle("collapsed", !next);
+    const caret = this._getEl("lan-toggle-caret");
+    if (caret) caret.textContent = next ? "▴" : "▾";
+  }
+
+  toggleQuickHelp(forceOpen) {
+    const next = typeof forceOpen === "boolean" ? forceOpen : !this._quickHelpOpen;
+    this._quickHelpOpen = next;
+    const pop = this._getEl("quick-controls-popover");
+    if (pop) pop.classList.toggle("hidden", !next);
+    const btn = this._getEl("qbtn-help");
+    if (btn) btn.classList.toggle("on", next);
   }
 
   _bindButtons() {
@@ -71,10 +102,19 @@ KK.UIManager = class UIManager {
         this.toast("Joining Online Room: " + code.toUpperCase());
       };
     }
+    if (q("btn-lan-toggle")) {
+      q("btn-lan-toggle").onclick = (e) => {
+        this.toggleLanPanel();
+        if (e && e.currentTarget) e.currentTarget.blur();
+      };
+    }
     if (q("lan-status-pill")) {
       q("lan-status-pill").onclick = () => {
         const rc = this.game.network.roomCode;
-        if (!rc) return;
+        if (!rc) {
+          this.toggleLanPanel();
+          return;
+        }
         const url = this.game.network.getShareInviteUrl();
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(url).then(() => {
@@ -86,6 +126,79 @@ KK.UIManager = class UIManager {
       };
     }
 
+    // Quick Vehicle Systems & Controls Bar (blur after click so Space/Enter stay bound to driving)
+    const bindQuick = (id, fn) => {
+      const btn = q(id);
+      if (!btn) return;
+      btn.onclick = () => { fn(); btn.blur(); };
+    };
+    bindQuick("qbtn-lights", () => {
+      const g = this.game;
+      if (g.boats && g.boats.activeBoat) {
+        g.boats.activeBoat.navLightsOn = !g.boats.activeBoat.navLightsOn;
+        this.toast("Nav Lights [L]: " + (g.boats.activeBoat.navLightsOn ? "ON" : "OFF"));
+      } else if (g.vehicle) {
+        g.vehicle.headlights = !g.vehicle.headlights;
+        this.toast("Headlights [L]: " + (g.vehicle.headlights ? "ON" : "OFF"));
+      }
+    });
+    bindQuick("qbtn-4wd", () => {
+      const g = this.game;
+      if (!g.vehicle) return;
+      const modes = ["2H", "4H", "4L"];
+      g.vehicle.driveMode = modes[(modes.indexOf(g.vehicle.driveMode) + 1) % modes.length];
+      this.toast("Transfer Case [V]: " + g.vehicle.driveMode);
+    });
+    bindQuick("qbtn-diffs", () => {
+      const g = this.game;
+      if (!g.vehicle) return;
+      const hasF = !!(g.vehicle.spec.hasFactoryFrontLock || g.vehicle.vState.upgrades.diffLocks);
+      const hasR = !!(g.vehicle.spec.hasFactoryRearLock || g.vehicle.vState.upgrades.diffLocks);
+      if (!hasF && !hasR) {
+        this.toast("Buy Air Diff Locks at a Town Garage!", true);
+        return;
+      }
+      const anyLocked = (hasF && g.vehicle.frontLock) || (hasR && g.vehicle.rearLock);
+      const nextLock = !anyLocked;
+      if (hasF) g.vehicle.frontLock = nextLock;
+      if (hasR) g.vehicle.rearLock = nextLock;
+      this.toast("Diff Locks [2/3]: " + (nextLock ? "LOCKED" : "OPEN"));
+    });
+    bindQuick("qbtn-winch", () => {
+      const g = this.game;
+      if (!g.vehicle) return;
+      if (g.vehicle.winch && g.vehicle.winch.active) {
+        g.vehicle.winch.active = false;
+        g.vehicle.winch.targetPeerId = null;
+        if (g.network) g.network.send({ type: "winch_update", active: false });
+        this.toast("Winch cable released!");
+      } else if (typeof g.attachWinch === "function") {
+        g.attachWinch();
+      }
+    });
+    bindQuick("qbtn-flip", () => {
+      const g = this.game;
+      if (g.vehicle && typeof g.vehicle.flipUpright === "function") g.vehicle.flipUpright(g.world);
+    });
+    bindQuick("qbtn-cam", () => {
+      const g = this.game;
+      if (g.boats && g.boats.activeBoat) {
+        g.boatCamMode = ((g.boatCamMode || 0) + 1) % 4;
+        g.camOrbitYaw = 0; g.camOrbitPitch = 0;
+        this.toast("Naval Camera [C]: " + ["Wide Helm Chase Cam", "Bridge / First-Person Helm", "Cargo Deck / Loading Cam", "Low Waterline Cinematic Cam"][g.boatCamMode]);
+      } else {
+        g.camMode = ((g.camMode || 0) + 1) % 4;
+        g.camOrbitYaw = 0; g.camOrbitPitch = 0;
+        this.toast("Camera [C]: " + ["Chase Cam", "Hood / Bumper Cam", "Wide Convoy Cam", "First-Person Cockpit Cam"][g.camMode]);
+      }
+    });
+    bindQuick("qbtn-help", () => this.toggleQuickHelp());
+    bindQuick("btn-qpop-all", () => {
+      this.toggleQuickHelp(false);
+      this.envTab = "controls";
+      this.openModal("env");
+    });
+
   }
 
   toast(msg, isWarn = false) {
@@ -95,6 +208,42 @@ KK.UIManager = class UIManager {
     el.className = "toast-banner show" + (isWarn ? " warn" : "");
     clearTimeout(this.toastTimeout);
     this.toastTimeout = setTimeout(() => { el.classList.remove("show"); }, 3800);
+  }
+
+  showSurrealEcho(message, kicker = "✨ ECHO // 200+ KM/H") {
+    if (!message) return;
+    let el = document.getElementById("surreal-echo-banner");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "surreal-echo-banner";
+      el.className = "surreal-echo-banner";
+      el.setAttribute("role", "status");
+      el.setAttribute("aria-live", "polite");
+      el.innerHTML = `<div class="surreal-echo-inner">
+        <div class="surreal-echo-kicker"></div>
+        <div class="surreal-echo-msg"></div>
+      </div>`;
+      document.body.appendChild(el);
+    }
+    const kickerEl = el.querySelector(".surreal-echo-kicker");
+    const msgEl = el.querySelector(".surreal-echo-msg");
+    if (kickerEl) kickerEl.textContent = String(kicker || "✨ ECHO // 200+ KM/H");
+    if (msgEl) msgEl.textContent = String(message);
+
+    clearTimeout(this._surrealEchoFadeTimer);
+    clearTimeout(this._surrealEchoHideTimer);
+    el.classList.remove("fading", "hidden", "show");
+    void el.offsetWidth;
+    el.classList.add("show");
+
+    this._surrealEchoFadeTimer = setTimeout(() => {
+      el.classList.remove("show");
+      el.classList.add("fading");
+    }, 6800);
+    this._surrealEchoHideTimer = setTimeout(() => {
+      el.classList.remove("fading");
+      el.classList.add("hidden");
+    }, 7800);
   }
 
   addChatLine(sender, text, isSystem = false) {
@@ -171,11 +320,11 @@ KK.UIManager = class UIManager {
     } else if (game.onFoot) {
       headingDeg = (Math.atan2(Math.sin(game.playerFoot.yaw), -Math.cos(game.playerFoot.yaw)) * 180 / Math.PI + 360) % 360;
     } else {
-      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(game.vehicle.quat);
+      const fwd = this._tmpFwd.set(0, 0, 1).applyQuaternion(game.vehicle.quat);
       headingDeg = (Math.atan2(fwd.x, -fwd.z) * 180 / Math.PI + 360) % 360;
     }
 
-    const cv = document.getElementById("compass-canvas");
+    const cv = this._getEl("compass-canvas");
     if (cv) {
       const ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
       ctx.clearRect(0, 0, W, H);
@@ -231,6 +380,17 @@ KK.UIManager = class UIManager {
       if (KK.HAMMOND_MESA && Math.hypot(KK.HAMMOND_MESA.x - px, KK.HAMMOND_MESA.z - pz) < 5500) {
         plotMarker(KK.HAMMOND_MESA.x, KK.HAMMOND_MESA.z, "MESA", "#f4a261", false);
       }
+      const mbComp = (game.world && game.world.megaBridge) || KK.MEGA_BRIDGE;
+      if (mbComp && typeof mbComp.startX === "number" && typeof mbComp.endX === "number") {
+        const dxM = mbComp.endX - mbComp.startX, dzM = mbComp.endZ - mbComp.startZ;
+        const lenSqM = dxM * dxM + dzM * dzM;
+        if (lenSqM > 1) {
+          const tM = Math.max(0, Math.min(1, ((px - mbComp.startX) * dxM + (pz - mbComp.startZ) * dzM) / lenSqM));
+          const nxM = mbComp.startX + dxM * tM, nzM = mbComp.startZ + dzM * tM;
+          const dM = Math.hypot(nxM - px, nzM - pz);
+          if (dM > 250 && dM < 8500) plotMarker(nxM, nzM, "BRIDGE", "#00f5ff", true);
+        }
+      }
       for (const rp of game.network.remotePlayers.values()) plotMarker(rp.gx, rp.gz, rp.callsign, "#ffd166", false);
       if (game.waypoint) plotMarker(game.waypoint.x, game.waypoint.z, "GPS", "#00f5d4", true);
 
@@ -241,7 +401,7 @@ KK.UIManager = class UIManager {
       ctx.fillText(String(Math.round(headingDeg)).padStart(3, "0") + "°", W * 0.5, H - 4);
     }
 
-    const rcv = document.getElementById("mini-radar-canvas");
+    const rcv = this._getEl("mini-radar-canvas");
     if (rcv) {
       const rctx = rcv.getContext("2d"), RW = rcv.width, RH = rcv.height;
       const cx = RW * 0.5, cy = RH * 0.5, R = RW * 0.46, radarRange = 1600, headRad = (headingDeg * Math.PI) / 180;
@@ -281,6 +441,48 @@ KK.UIManager = class UIManager {
         rctx.moveTo(x0, y0); rctx.lineTo(x1, y1);
       }
       rctx.stroke();
+
+      // Draw 6-Lane Savanna Mega-Bridge on Mini-Radar when within range!
+      const mbRad = (game.world && game.world.megaBridge) || KK.MEGA_BRIDGE;
+      if (mbRad && typeof mbRad.startX === "number" && typeof mbRad.endX === "number") {
+        const dxB = mbRad.endX - mbRad.startX, dzB = mbRad.endZ - mbRad.startZ;
+        const lenSqB = dxB * dxB + dzB * dzB;
+        if (lenSqB > 1) {
+          const tNear = Math.max(0, Math.min(1, ((px - mbRad.startX) * dxB + (pz - mbRad.startZ) * dzB) / lenSqB));
+          const nearX = mbRad.startX + dxB * tNear, nearZ = mbRad.startZ + dzB * tNear;
+          if (Math.hypot(nearX - px, nearZ - pz) < radarRange + 240) {
+            const lenB = Math.sqrt(lenSqB);
+            const padT = (radarRange + 420) / lenB;
+            const t0 = Math.max(0, tNear - padT);
+            const t1 = Math.min(1, tNear + padT);
+            const [bx0, by0] = worldToRadar(mbRad.startX + dxB * t0, mbRad.startZ + dzB * t0);
+            const [bx1, by1] = worldToRadar(mbRad.startX + dxB * t1, mbRad.startZ + dzB * t1);
+            const rLen = Math.hypot(bx1 - bx0, by1 - by0);
+            if (rLen > 0.5) {
+              const rnx = -(by1 - by0) / rLen;
+              const rny = (bx1 - bx0) / rLen;
+              rctx.save();
+              rctx.lineCap = "round";
+              rctx.strokeStyle = "rgba(0, 229, 255, 0.30)";
+              rctx.lineWidth = 11;
+              rctx.beginPath(); rctx.moveTo(bx0, by0); rctx.lineTo(bx1, by1); rctx.stroke();
+              rctx.strokeStyle = "#081826";
+              rctx.lineWidth = 7.2;
+              rctx.beginPath(); rctx.moveTo(bx0, by0); rctx.lineTo(bx1, by1); rctx.stroke();
+              rctx.strokeStyle = "#00f5ff";
+              rctx.lineWidth = 1.4;
+              rctx.beginPath();
+              rctx.moveTo(bx0 + rnx * 3.4, by0 + rny * 3.4); rctx.lineTo(bx1 + rnx * 3.4, by1 + rny * 3.4);
+              rctx.moveTo(bx0 - rnx * 3.4, by0 - rny * 3.4); rctx.lineTo(bx1 - rnx * 3.4, by1 - rny * 3.4);
+              rctx.stroke();
+              rctx.strokeStyle = "#ffd166";
+              rctx.lineWidth = 1.8;
+              rctx.beginPath(); rctx.moveTo(bx0, by0); rctx.lineTo(bx1, by1); rctx.stroke();
+              rctx.restore();
+            }
+          }
+        }
+      }
       if (KK.RIVER_FORDS) {
         for (const fd of KK.RIVER_FORDS) {
           if (Math.hypot(fd.x - px, fd.z - pz) > radarRange) continue;
@@ -955,8 +1157,8 @@ KK.UIManager = class UIManager {
   // Live 2D Windshield Raindrops, Mud Splatters & Sweeping Wiper Arcs (Cockpit Cam ONLY!)
   updateWindshieldOverlay(dt, game) {
     // v15.9.1: Strictly NO 2D screen-space wipers or mud — all wipers & mud live on the 3D windshield glass!
-    const cv = document.getElementById("windshield-canvas");
-    if (cv) cv.classList.add("hidden");
+    const cv = this._getEl("windshield-canvas");
+    if (cv && !this._wsHiddenOnce) { cv.classList.add("hidden"); this._wsHiddenOnce = true; }
     return;
     const inCockpit = (!game.onFoot && !game.ridingWithPeerId && game.camMode === 3);
     cv.classList.toggle("hidden", !inCockpit);
@@ -1151,7 +1353,7 @@ KK.UIManager = class UIManager {
             <div class="admin-card-title">🌦 DYNAMIC WEATHER CONTROL (LAN SYNCED)</div>
             <div class="admin-pill-grid3">
               ${weathers.map(([id, ic, nm]) => `
-                <button class="admin-tile ${w.weather === id ? "active" : ""}" onclick="window.__GAME__.setServerEnv({ weather: '${id}' })">
+                <button class="admin-tile ${id === "hurricane" ? "admin-tile-wide" : ""} ${w.weather === id ? "active" : ""}" onclick="window.__GAME__.setServerEnv({ weather: '${id}' })">
                   <span class="tile-ic">${ic}</span><b>${nm}</b>
                 </button>`).join("")}
             </div>
@@ -1161,6 +1363,19 @@ KK.UIManager = class UIManager {
               <button class="btn small warn" onclick="window.__GAME__.setServerEnv({ timeOfDay: 23.0, weather: 'fog' })">👻 HORROR FOG NIGHT</button>
               <button class="btn small accent" onclick="window.__GAME__.setServerEnv({ timeOfDay: 22.0, weather: 'storm' })">⛈ MONSOON STORM</button>
               <button class="btn small" onclick="window.__GAME__.setServerEnv({ timeOfDay: 16.5, weather: 'snow' })">❄ BLIZZARD EXPEDITION</button>
+            </div>
+          </div>
+          <div class="admin-card showcase-warp-card">
+            <div class="admin-card-title" style="color:#ffd166;">⚡ QUICK WARP &amp; DESTINATIONS</div>
+            <div class="showcase-warp-grid">
+              <button class="btn btn-showcase city" onclick="window.__GAME__?.warpToZolotoyCity?.(); window.__GAME__?.ui?.closeModal?.();">
+                <b>🏙 ZOLOTOY CITY METROPOLIS</b>
+                <small>Monument plaza, overpasses, live tram &amp; AI traffic</small>
+              </button>
+              <button class="btn btn-showcase track" onclick="window.__GAME__?.warpToRaceTrack?.(); window.__GAME__?.ui?.closeModal?.();">
+                <b>🏁 KRASNY-RING GP CIRCUIT</b>
+                <small>Start/finish grid, pit garages &amp; timed laps</small>
+              </button>
             </div>
           </div>
         </div>`;
@@ -1262,6 +1477,25 @@ KK.UIManager = class UIManager {
                 <button class="btn small" onclick="window.__GAME__.triggerAvalancheNow()">❄ AVALANCHE</button>
               </div>
             </div>
+            <div class="admin-card-title" style="color:#7dd3fc;margin-top:14px;">🌊 OPEN-SEA ABYSSAL &amp; HURRICANE SUMMONS (SEA ONLY)</div>
+            <div class="sea-trigger-grid">
+              <button class="btn btn-abyssal hurricane" onclick="window.__GAME__?.triggerTestHurricane?.(5);">
+                <b>🌀 SPAWN CAT-5 HURRICANE</b>
+                <small>Open ocean only — eyewall winds &amp; calm eye</small>
+              </button>
+              <button class="btn btn-abyssal megalodon" onclick="window.__GAME__?.triggerTestOceanCryptid?.('megalodon');">
+                <b>🦈 SPAWN MEGALODON</b>
+                <small>Open ocean only — El Gran Maja (34m)</small>
+              </button>
+              <button class="btn btn-abyssal kraken" onclick="window.__GAME__?.triggerTestOceanCryptid?.('kraken');">
+                <b>🦑 SPAWN THE BLOOP</b>
+                <small>Open ocean only — 120m+ Abyssal Kraken</small>
+              </button>
+              <button class="btn btn-abyssal yamato" onclick="window.__GAME__?.triggerTestOceanCryptid?.('yamato');">
+                <b>⚓ SPAWN YAMATO</b>
+                <small>Open ocean only — Ghost Battleship</small>
+              </button>
+            </div>
             <div class="info-box small" style="margin-top:12px;line-height:1.5;">
               <b>Radio Folklore:</b> Listen closely to wind shifts, sudden bird silence, earth tremors, and distant static. Southwest of HQ lies <b>Clarkson's Farm Sanctuary</b>—nothing unnatural crosses his fence, and Jeremy repairs rigs for free if his sheep stay safe.
             </div>
@@ -1269,11 +1503,16 @@ KK.UIManager = class UIManager {
         </div>`;
     } else if (tab === "gps") {
       const q = (this.envSearch || "").toLowerCase();
+      const mbGps = (g.world && g.world.megaBridge) || KK.MEGA_BRIDGE || null;
+      const mbMidX = mbGps ? (typeof mbGps.midX === "number" ? mbGps.midX : (mbGps.startX + mbGps.endX) * 0.5) : null;
+      const mbMidZ = mbGps ? (typeof mbGps.midZ === "number" ? mbGps.midZ : (mbGps.startZ + mbGps.endZ) * 0.5) : null;
       const rows = [
+        ...(mbGps && typeof mbMidX === "number" ? [{ name: "🌉 Savanna 6-Lane Mega-Bridge", sub: "6-Lane Cable-Stayed Ocean Highway (Mainland ↔ Zolotoy Savanna) • 200+ km/h Surreal Echo Corridor", x: mbMidX, z: mbMidZ, col: "#00f5ff" }] : []),
+        ...(KK.ZOLOTOY_CITY ? [{ name: "🏙 Zolotoy City Metropolis", sub: "Savanna 6x6 Metropolis • Monument Plaza, Overpasses, Live Electric Tram & AI Traffic", x: KK.ZOLOTOY_CITY.cx, z: KK.ZOLOTOY_CITY.cz, col: "#ffd166" }] : []),
+        ...(KK.SMOOTH_TARMAC_ZONES || []).map((tz) => ({ name: "🏁 Krasny-Ring GP Circuit", sub: tz.desc || "5.6 km High-Grip Grand Prix Circuit • Pit Garages & Grandstands", x: tz.cx, z: tz.cz, col: "#00f5ff" })),
         { name: "🐑 Clarkson's Farm (Free Repairs & Sanctuary)", sub: "Diddly Squat Oblast — Don't run over his sheep!", x: KK.CLARKSON_FARM.x, z: KK.CLARKSON_FARM.z, col: "#80ed99" },
         { name: "🍺 James May's Pub (Beer Deliveries & Sandero)", sub: "The Slow & Steady Arms", x: KK.JAMES_MAY_BAR.dockX, z: KK.JAMES_MAY_BAR.dockZ, col: "#ffb703" },
         { name: "🏜 Hammond's Rocky Mesa (BTR-80 Rearm & Oliver)", sub: "Sandwyrm-Safe Desert Plateau — Rearm BTR-80 KPVT 14.5mm!", x: KK.HAMMOND_MESA.x, z: KK.HAMMOND_MESA.z, col: "#f4a261" },
-        ...(KK.SMOOTH_TARMAC_ZONES || []).map((tz) => ({ name: "🏁 " + tz.name, sub: "Glass-smooth high-grip tarmac & drift skidpad", x: tz.cx, z: tz.cz, col: "#00f5ff" })),
         ...(KK.BAD_ROAD_ZONES || []).map((bz) => ({ name: "⚠ " + bz.name, sub: "Brutal craters, washboard ruts & broken concrete", x: bz.x, z: bz.z, col: "#ff5c77" })),
         ...KK.TOWNS.map((tw) => ({ name: "🏙 " + tw.name, sub: tw.desc, x: tw.dockX, z: tw.dockZ, col: "#2de08b" })),
         ...KK.LANDMARKS.map((lm) => {
@@ -1362,6 +1601,8 @@ KK.UIManager = class UIManager {
               <div><b>Z</b><span>Cycle Optics (Day / FLIR Thermal / Green or Crimson Red NVD)</span></div>
               <div><b>G</b><span>81mm Smoke / Shilka Radar / Donnerschild APS / Road Flare</span></div>
               <div><b>Hold X</b><span>Live X-Ray Mechanical &amp; Autoloader View</span></div>
+              <div><b>; (Semicolon)</b><span>Toggle Armor Viewer (True Silhouette + Live Mouse Raycast)</span></div>
+              <div><b>&#96; (Backquote)</b><span>Toggle Laser Rangefinder / FCS Lead &amp; LWR</span></div>
             </div>
           </div>
           <div class="admin-card">
@@ -1399,17 +1640,139 @@ KK.UIManager = class UIManager {
       ${bodyHtml}`;
   }
 
+  _updateSharedHudSystems(game, getEl, setTxt, setHtml, setCls, focusGx, focusGz) {
+    // 1. Auto-expand Online/LAN box on connection; keep compact in Solo mode unless toggled
+    const isOnline = !!(game.network && game.network.mode !== "offline");
+    if (isOnline && !this._lanLastOnline) {
+      this._lanUserCollapsedOnline = false;
+      this.toggleLanPanel(true);
+    } else if (!isOnline && this._lanLastOnline) {
+      this._lanUserCollapsedOnline = false;
+    }
+    this._lanLastOnline = isOnline;
+    if (isOnline && !this._lanExpanded && !this._lanUserCollapsedOnline) {
+      this.toggleLanPanel(true);
+    }
+
+    // 2. Foreboding Sea Threat & Cat 1-5 Hurricane HUD Banner + Vignette/Helm Pulse
+    const oc = game.oceanCryptids;
+    const seaWarn = (oc && oc.activeWarning) ? oc.activeWarning : null;
+    const seaDread = (oc && typeof oc.seaDreadLevel === "number") ? oc.seaDreadLevel : 0;
+    const hEff = (game.hazards && typeof game.hazards.getHurricaneEffectAt === "function")
+      ? game.hazards.getHurricaneEffectAt(focusGx, focusGz) : null;
+    const hasHurr = !!(hEff && hEff.active);
+
+    const isEyewall = !!(hasHurr && hEff.inEyewall);
+    const isDread = seaDread > 0.35;
+    if (this._hudLastVal["_body:dread"] !== isDread) {
+      this._hudLastVal["_body:dread"] = isDread;
+      document.body.classList.toggle("sea-dread-active", isDread);
+    }
+    if (this._hudLastVal["_body:eyewall"] !== isEyewall) {
+      this._hudLastVal["_body:eyewall"] = isEyewall;
+      document.body.classList.toggle("hurricane-eyewall-active", isEyewall);
+    }
+    setCls("hud-helm", "sea-dread-active", isDread);
+    setCls("hud-helm", "hurricane-eyewall-active", isEyewall);
+
+    const showSeaBanner = !!(seaWarn || hasHurr);
+    setCls("sea-threat-banner", "hidden", !showSeaBanner);
+    if (showSeaBanner) {
+      let bannerHtml = "";
+      if (seaWarn) {
+        const kind = seaWarn.kind || "kraken";
+        const sev = seaWarn.severity || "omen";
+        const kickerMap = {
+          kraken: "🦑 ABYSSAL SONAR CONTACT // THE BLOOP",
+          megalodon: "🦈 APEX SURFACE CONTACT // EL GRAN MAJA",
+          yamato: "⚓ GHOST DREADNOUGHT RADAR // YAMATO"
+        };
+        const kicker = kickerMap[kind] || "🌊 ABYSSAL ANOMALY DETECTED";
+        const safeTitle = String(seaWarn.title || "UNKNOWN SEA CONTACT").replace(/</g, "&lt;");
+        const safeDetail = String(seaWarn.detail || "").replace(/</g, "&lt;");
+        bannerHtml += `<div class="sea-threat-card kind-${kind} sev-${sev}">
+          <div class="sea-threat-kicker">${kicker}</div>
+          <div class="sea-threat-title">${safeTitle}</div>
+          ${safeDetail ? `<div class="sea-threat-detail">${safeDetail}</div>` : ""}
+        </div>`;
+      }
+      if (hasHurr) {
+        const cat = Math.max(1, Math.min(5, Math.round(hEff.cat || 3)));
+        const phase = hEff.inEye ? "INSIDE THE EYE" : (hEff.inEyewall ? "EYEWALL" : "APPROACHING");
+        const phaseCls = hEff.inEye ? "phase-eye" : (hEff.inEyewall ? "phase-eyewall" : "phase-approaching");
+        const baseHpa = [1002, 988, 974, 956, 938, 915][cat] || 956;
+        const hpa = Math.round(baseHpa - (hEff.inEye ? 6 : (hEff.intensity || 0) * 4));
+        const distM = typeof hEff.dist === "number" ? hEff.dist : 0;
+        const distTxt = distM >= 1000 ? `${(distM / 1000).toFixed(1)} km` : `${Math.round(distM)} m`;
+        bannerHtml += `<div class="hurricane-baro-card ${phaseCls}">
+          <span class="hbaro-cat">🌀 CAT-${cat} HURRICANE</span>
+          <span class="hbaro-phase">${phase}</span>
+          <span class="hbaro-meta">${hpa} hPa • ${distTxt}</span>
+        </div>`;
+      }
+      setHtml("sea-threat-banner", bannerHtml);
+    }
+
+    // 3. Compact Quick Vehicle Systems Bar state sync
+    const activeBoat = game.boats ? game.boats.activeBoat : null;
+    const showCarBtns = !activeBoat && !game.onFoot && !game.ridingWithPeerId;
+    setCls("quick-veh-btns", "hidden", !showCarBtns);
+    if (showCarBtns && game.vehicle) {
+      const veh = game.vehicle;
+      setCls("qbtn-lights", "on", !!veh.headlights);
+      setTxt("qbtn-4wd-lbl", veh.driveMode || "4H");
+      setCls("qbtn-4wd", "on", veh.driveMode === "4H" || veh.driveMode === "4L");
+      setCls("qbtn-4wd", "warn", veh.driveMode === "4L");
+      setCls("qbtn-diffs", "on", !!(veh.frontLock || veh.rearLock));
+      setCls("qbtn-winch", "on", !!(veh.winch && veh.winch.active));
+    }
+  }
+
   updateHUD(game) {
     const v = game.vehicle, vs = v.vState, spec = v.spec, eng = KK.ENGINES[vs.engineId];
-    const getEl = (id) => this._hudCache[id] || (this._hudCache[id] = document.getElementById(id));
-    const setTxt = (id, val) => { const e = getEl(id); if (e) e.textContent = val; };
-    const engOverall = KK.getEngineOverallHealth(vs);
+    const cache = this._hudCache, last = this._hudLastVal;
+    const getEl = (id) => cache[id] || (cache[id] = document.getElementById(id));
+    const setTxt = (id, val) => {
+      const s = String(val);
+      if (last[id] === s) return;
+      last[id] = s;
+      const e = getEl(id);
+      if (e) e.textContent = s;
+    };
+    const setHtml = (id, html) => {
+      const k = id + ":h";
+      if (last[k] === html) return;
+      last[k] = html;
+      const e = getEl(id);
+      if (e) e.innerHTML = html;
+    };
+    const setStyle = (id, prop, val) => {
+      const k = id + ":s:" + prop;
+      if (last[k] === val) return;
+      last[k] = val;
+      const e = getEl(id);
+      if (e) e.style[prop] = val;
+    };
+    const setAttr = (id, attr, val) => {
+      const k = id + ":a:" + attr;
+      if (last[k] === val) return;
+      last[k] = val;
+      const e = getEl(id);
+      if (e) e.setAttribute(attr, val);
+    };
+    const setCls = (id, cls, force) => {
+      const b = !!force;
+      const k = id + ":c:" + cls;
+      if (last[k] === b) return;
+      last[k] = b;
+      const e = getEl(id);
+      if (e) e.classList.toggle(cls, b);
+    };
 
+    const engOverall = KK.getEngineOverallHealth(vs);
     const activeBoat = game.boats ? game.boats.activeBoat : null;
-    const dashEl = getEl("hud-dash");
-    const helmEl = getEl("hud-helm");
-    if (dashEl) dashEl.classList.toggle("hidden", !!activeBoat);
-    if (helmEl) helmEl.classList.toggle("hidden", !activeBoat);
+    setCls("hud-dash", "hidden", !!activeBoat);
+    setCls("hud-helm", "hidden", !activeBoat);
 
     if (activeBoat) {
       const sp = activeBoat.spec;
@@ -1430,20 +1793,14 @@ KK.UIManager = class UIManager {
       setTxt("helm-hdg", `HDG ${String(hdg).padStart(3, "0")}°`);
       setTxt("helm-depth", depthTxt);
       setTxt("helm-payload", maxT > 0 ? `${loadT}/${maxT}t` : "SOLO 1P");
-      const lockEl = getEl("helm-lock");
-      if (lockEl) {
-        lockEl.textContent = maxT > 0 ? (activeBoat.deckLocked ? "LOCKED" : "OPEN") : "N/A";
-        lockEl.style.color = activeBoat.deckLocked ? "#ffd166" : "#2de08b";
-      }
-      const ancEl = getEl("helm-anchor");
-      if (ancEl) {
-        ancEl.textContent = sp.amphibious ? (activeBoat.anchored ? "DUMPED" : "HOVER") : (activeBoat.anchored ? "DROPPED" : "WEIGHED");
-        ancEl.style.color = activeBoat.anchored ? "#ff9f1c" : "#2de08b";
-      }
-      const bNav = getEl("helm-badge-nav"); if (bNav) bNav.classList.toggle("on", !!activeBoat.navLightsOn);
-      const bSpot = getEl("helm-badge-spot"); if (bSpot) bSpot.classList.toggle("on", !!activeBoat.spotLightOn);
-      const bAnc = getEl("helm-badge-anc"); if (bAnc) bAnc.classList.toggle("warn", !!activeBoat.anchored);
-      const bCr = getEl("helm-badge-cruise"); if (bCr) bCr.classList.toggle("on", boatCr);
+      setTxt("helm-lock", maxT > 0 ? (activeBoat.deckLocked ? "LOCKED" : "OPEN") : "N/A");
+      setStyle("helm-lock", "color", activeBoat.deckLocked ? "#ffd166" : "#2de08b");
+      setTxt("helm-anchor", sp.amphibious ? (activeBoat.anchored ? "DUMPED" : "HOVER") : (activeBoat.anchored ? "DROPPED" : "WEIGHED"));
+      setStyle("helm-anchor", "color", activeBoat.anchored ? "#ff9f1c" : "#2de08b");
+      setCls("helm-badge-nav", "on", !!activeBoat.navLightsOn);
+      setCls("helm-badge-spot", "on", !!activeBoat.spotLightOn);
+      setCls("helm-badge-anc", "warn", !!activeBoat.anchored);
+      setCls("helm-badge-cruise", "on", boatCr);
 
       setTxt("hud-coords", `${(activeBoat.gx / 1000).toFixed(2)}km, ${(activeBoat.gz / 1000).toFixed(2)}km | SEA HELM`);
       setTxt("hud-cash", "$" + Math.floor(game.money).toLocaleString());
@@ -1451,16 +1808,17 @@ KK.UIManager = class UIManager {
       setTxt("hud-weather", game.weather.weather.toUpperCase());
       setTxt("hud-biome", game.world.getBiomeName(activeBoat.gx, activeBoat.gz));
       setTxt("hud-account-pill", game.account && game.account.username ? ("👤 " + game.account.username) : "👤 GUEST (LOGIN)");
-      const cargoBox = getEl("hud-cargo-box"); if (cargoBox) cargoBox.classList.add("hidden");
-      const wpEl = getEl("hud-waypoint");
-      if (wpEl) {
-        if (game.waypoint) {
-          const dx = game.waypoint.x - activeBoat.gx, dz = game.waypoint.z - activeBoat.gz;
-          const bearing = (Math.atan2(dx, -dz) * 180 / Math.PI + 360) % 360;
-          wpEl.textContent = `GPS: ${game.waypoint.label} — ${(Math.hypot(dx, dz) / 1000).toFixed(2)} km (HDG ${Math.round(bearing)}°)`;
-          wpEl.classList.remove("hidden");
-        } else { wpEl.classList.add("hidden"); }
+      setCls("hud-cargo-box", "hidden", true);
+      if (game.waypoint) {
+        const dx = game.waypoint.x - activeBoat.gx, dz = game.waypoint.z - activeBoat.gz;
+        const bearing = (Math.atan2(dx, -dz) * 180 / Math.PI + 360) % 360;
+        setTxt("hud-waypoint", `GPS: ${game.waypoint.label} — ${(Math.hypot(dx, dz) / 1000).toFixed(2)} km (HDG ${Math.round(bearing)}°)`);
+        setCls("hud-waypoint", "hidden", false);
+      } else {
+        setCls("hud-waypoint", "hidden", true);
       }
+      setTxt("hud-warnings", "");
+      this._updateSharedHudSystems(game, getEl, setTxt, setHtml, setCls, activeBoat.gx, activeBoat.gz);
       this.drawCompassAndRadar(game);
       return;
     }
@@ -1479,8 +1837,8 @@ KK.UIManager = class UIManager {
       setTxt("hud-egt", Math.floor(Math.random() * 1999) + "°C");
       setTxt("hud-fuel", Math.floor(Math.random() * 199) + "%");
       setTxt("hud-engine-hp", Math.random() < 0.4 ? "ERR" : (Math.floor(Math.random() * 100) + "%"));
-      const rpmBar = document.getElementById("hud-rpm-bar");
-      if (rpmBar) { rpmBar.style.width = Math.floor(Math.random() * 100) + "%"; rpmBar.style.background = isRad ? "#00e5ff" : "#ff3b5c"; }
+      setStyle("hud-rpm-bar", "width", Math.floor(Math.random() * 100) + "%");
+      setStyle("hud-rpm-bar", "background", isRad ? "#00e5ff" : "#ff3b5c");
       setTxt("hud-coords", `???.??km, ???.??km | SIGNAL LOST`);
     } else {
       setTxt("hud-speed", Math.round(v.speedKmh));
@@ -1489,31 +1847,22 @@ KK.UIManager = class UIManager {
       setTxt("hud-boost", v.boostPsi.toFixed(1) + " PSI");
       setTxt("hud-drivemode", v.driveMode + (v.rearLock ? " +RLOCK" : "") + (v.frontLock ? " +FLOCK" : "") + (game.carCruiseOn ? ` • CC ${Math.round(game.carCruiseKmh)}` : ""));
       const rpmPct = Math.min(100, (v.rpm / eng.redlineRpm) * 100);
-      const rpmBar = document.getElementById("hud-rpm-bar");
-      if (rpmBar) { rpmBar.style.width = rpmPct + "%"; rpmBar.style.background = rpmPct > 86 ? "#ef476f" : "#00e5ff"; }
+      setStyle("hud-rpm-bar", "width", rpmPct.toFixed(1) + "%");
+      setStyle("hud-rpm-bar", "background", rpmPct > 86 ? "#ef476f" : "#00e5ff");
       // v16.7 CPM2 Analog RPM Needle (-135° -> +125°), Fuel Needle (-65° -> +65°), CEL & Odometer!
-      const rpmNeedle = document.getElementById("hud-rpm-needle");
-      if (rpmNeedle) {
-        const rpmNorm10 = Math.max(0, Math.min(1.0, (v.rpm || 0) / Math.max(7000, eng.redlineRpm * 1.15)));
-        const deg = -135 + rpmNorm10 * 260;
-        rpmNeedle.setAttribute("transform", `rotate(${deg.toFixed(1)} 110 108)`);
-      }
-      const fuelNeedle = document.getElementById("hud-fuel-needle");
-      if (fuelNeedle) {
-        const fFrac = Math.max(0, Math.min(1, (vs.fuel || 0) / Math.max(1, spec.fuelCapacity || 60)));
-        fuelNeedle.setAttribute("transform", `rotate(${(-65 + fFrac * 130).toFixed(1)} 110 194)`);
-      }
-      const celIcon = document.getElementById("hud-cel-icon");
-      if (celIcon) {
-        const celOn = (engOverall < 68 || v.coolantTemp > 110 || v.hydrolocked);
-        celIcon.setAttribute("opacity", celOn ? "1.0" : "0.18");
-      }
+      const rpmNorm10 = Math.max(0, Math.min(1.0, (v.rpm || 0) / Math.max(7000, eng.redlineRpm * 1.15)));
+      const deg = -135 + rpmNorm10 * 260;
+      setAttr("hud-rpm-needle", "transform", `rotate(${deg.toFixed(1)} 110 108)`);
+      const fFrac = Math.max(0, Math.min(1, (vs.fuel || 0) / Math.max(1, spec.fuelCapacity || 60)));
+      setAttr("hud-fuel-needle", "transform", `rotate(${(-65 + fFrac * 130).toFixed(1)} 110 194)`);
+      const celOn = (engOverall < 68 || v.coolantTemp > 110 || v.hydrolocked);
+      setAttr("hud-cel-icon", "opacity", celOn ? "1.0" : "0.18");
       const odoKm = (((vs.odometerM || 0) / 1000) || (game.stats ? game.stats.distanceKm : 0)).toFixed(1).padStart(6, "0");
       setTxt("hud-odo", odoKm);
       setTxt("hud-temp", Math.round(v.coolantTemp) + "°C");
-      const tempEl = document.getElementById("hud-temp"); if (tempEl) tempEl.style.color = v.coolantTemp > 112 ? "#ff4d6d" : "#dce6f2";
+      setStyle("hud-temp", "color", v.coolantTemp > 112 ? "#ff4d6d" : "#dce6f2");
       setTxt("hud-egt", Math.round(v.egtTemp) + "°C");
-      const egtEl = document.getElementById("hud-egt"); if (egtEl) egtEl.style.color = v.egtTemp > 890 ? "#ff4d6d" : "#ffb703";
+      setStyle("hud-egt", "color", v.egtTemp > 890 ? "#ff4d6d" : "#ffb703");
       setTxt("hud-fuel", `${Math.round((vs.fuel / spec.fuelCapacity) * 100)}%`);
       setTxt("hud-engine-hp", `${Math.round(engOverall)}%`);
       setTxt("hud-coords", `${(v.pos.x / 1000).toFixed(2)}km, ${(v.pos.z / 1000).toFixed(2)}km | Dirt ${Math.round((vs.dirtLevel || 0) * 100)}%`);
@@ -1524,83 +1873,57 @@ KK.UIManager = class UIManager {
     setTxt("hud-biome", game.world.getBiomeName(v.pos.x, v.pos.z));
     setTxt("hud-account-pill", game.account && game.account.username ? ("👤 " + game.account.username) : "👤 GUEST (LOGIN)");
 
-    const cargoBox = document.getElementById("hud-cargo-box");
-    if (cargoBox) {
-      const totalCargo = v.cargoCount + (game.trailer ? game.trailer.cargoCount : 0);
-      if (totalCargo > 0 || game.activeContract || game.trailer) {
-        cargoBox.classList.remove("hidden");
-        const ac = game.activeContract;
-        const needPickup = !!(ac && !ac.pickedUp);
-        const targetTown = ac ? (needPickup ? (KK.TOWNS[ac.fromTown] || KK.TOWNS[0]) : (ac.toBar ? { name: "James May's Pub", x: KK.JAMES_MAY_BAR.dockX, z: KK.JAMES_MAY_BAR.dockZ } : KK.TOWNS[ac.toTown])) : null;
-        const distTxt = targetTown ? `${(Math.hypot(targetTown.x - v.pos.x, targetTown.z - v.pos.z) / 1000).toFixed(2)} km` : (game.trailer ? `Trailer: ${game.trailer.hitched ? "HITCHED [1]" : "UNHITCHED [1]"}` : "--");
-        const trTag = game.trailer ? ` + Tr:${game.trailer.cargoCount}` : "";
-        setTxt("hud-cargo-info", needPickup ? `Awaiting Pickup at Origin Dock [F]` : `Load: ${v.cargoCount}${trTag} | ${v.cargoStrapped ? "STRAPPED" : "UNSTRAPPED!"} | Intact: ${v.cargoIntegrity.toFixed(0)}%`);
-        setTxt("hud-cargo-dest", targetTown ? `${needPickup ? "PICKUP" : "To"} ${targetTown.name} (${distTxt})` : "Free Cargo Haul");
-        const gBar = document.getElementById("hud-gforce-bar");
-        if (gBar) { const gp = Math.min(100, (v.peakGForce / 4.0) * 100); gBar.style.width = gp + "%"; gBar.style.background = gp > 55 ? "#ff3b5c" : "#ffd166"; }
-      } else { cargoBox.classList.add("hidden"); }
+    const totalCargo = v.cargoCount + (game.trailer ? game.trailer.cargoCount : 0);
+    if (totalCargo > 0 || game.activeContract || game.trailer) {
+      setCls("hud-cargo-box", "hidden", false);
+      const ac = game.activeContract;
+      const needPickup = !!(ac && !ac.pickedUp);
+      const targetTown = ac ? (needPickup ? (KK.TOWNS[ac.fromTown] || KK.TOWNS[0]) : (ac.toBar ? { name: "James May's Pub", x: KK.JAMES_MAY_BAR.dockX, z: KK.JAMES_MAY_BAR.dockZ } : KK.TOWNS[ac.toTown])) : null;
+      const distTxt = targetTown ? `${(Math.hypot(targetTown.x - v.pos.x, targetTown.z - v.pos.z) / 1000).toFixed(2)} km` : (game.trailer ? `Trailer: ${game.trailer.hitched ? "HITCHED [1]" : "UNHITCHED [1]"}` : "--");
+      const trTag = game.trailer ? ` + Tr:${game.trailer.cargoCount}` : "";
+      setTxt("hud-cargo-info", needPickup ? `Awaiting Pickup at Origin Dock [F]` : `Load: ${v.cargoCount}${trTag} | ${v.cargoStrapped ? "STRAPPED" : "UNSTRAPPED!"} | Intact: ${v.cargoIntegrity.toFixed(0)}%`);
+      setTxt("hud-cargo-dest", targetTown ? `${needPickup ? "PICKUP" : "To"} ${targetTown.name} (${distTxt})` : "Free Cargo Haul");
+      const gp = Math.min(100, (v.peakGForce / 4.0) * 100);
+      setStyle("hud-gforce-bar", "width", gp.toFixed(1) + "%");
+      setStyle("hud-gforce-bar", "background", gp > 55 ? "#ff3b5c" : "#ffd166");
+    } else {
+      setCls("hud-cargo-box", "hidden", true);
     }
 
-    const wpEl = document.getElementById("hud-waypoint");
-    if (wpEl) {
-      if (game.waypoint) {
-        const dx = game.waypoint.x - v.pos.x, dz = game.waypoint.z - v.pos.z;
-        const bearing = (Math.atan2(dx, -dz) * 180 / Math.PI + 360) % 360;
-        wpEl.textContent = `GPS: ${game.waypoint.label} — ${(Math.hypot(dx, dz) / 1000).toFixed(2)} km (HDG ${Math.round(bearing)}°)`;
-        wpEl.classList.remove("hidden");
-      } else { wpEl.classList.add("hidden"); }
+    if (game.waypoint) {
+      const dx = game.waypoint.x - v.pos.x, dz = game.waypoint.z - v.pos.z;
+      const bearing = (Math.atan2(dx, -dz) * 180 / Math.PI + 360) % 360;
+      setTxt("hud-waypoint", `GPS: ${game.waypoint.label} — ${(Math.hypot(dx, dz) / 1000).toFixed(2)} km (HDG ${Math.round(bearing)}°)`);
+      setCls("hud-waypoint", "hidden", false);
+    } else {
+      setCls("hud-waypoint", "hidden", true);
     }
 
+    const focusGx = game.onFoot && game.playerFoot ? game.playerFoot.x : v.pos.x;
+    const focusGz = game.onFoot && game.playerFoot ? game.playerFoot.z : v.pos.z;
+    this._updateSharedHudSystems(game, getEl, setTxt, setHtml, setCls, focusGx, focusGz);
     this.drawCompassAndRadar(game);
 
-    const cAlert = document.getElementById("cryptid-alert"); if (cAlert) cAlert.classList.add("hidden");
+    setCls("cryptid-alert", "hidden", true);
 
     // Live Multi-Step Timed Repair / Tire-Swap Progress Bar!
-    const wBox = document.getElementById("work-progress-box");
-    if (wBox) {
-      const tw = game.timedWork;
-      if (tw) {
-        const pct = Math.min(100, Math.round((tw.elapsed / tw.totalDur) * 100));
-        const curStep = tw.steps[tw.stepIdx] || tw.steps[tw.steps.length - 1];
-        wBox.innerHTML = `<div class="work-title">${tw.title} (${pct}%)</div>
-          <div class="work-step">Step ${tw.stepIdx + 1}/${tw.steps.length}: ${curStep.label}</div>
-          <div class="work-bar-bg"><div class="work-bar-fill" style="width:${pct}%"></div></div>
-          <div class="small muted" style="margin-top:3px;">Press [ESC] to cancel</div>`;
-        wBox.classList.remove("hidden");
-      } else {
-        wBox.classList.add("hidden");
-      }
+    const tw = game.timedWork;
+    if (tw) {
+      const pct = Math.min(100, Math.round((tw.elapsed / tw.totalDur) * 100));
+      const curStep = tw.steps[tw.stepIdx] || tw.steps[tw.steps.length - 1];
+      setHtml("work-progress-box", `<div class="work-title">${tw.title} (${pct}%)</div>
+        <div class="work-step">Step ${tw.stepIdx + 1}/${tw.steps.length}: ${curStep.label}</div>
+        <div class="work-bar-bg"><div class="work-bar-fill" style="width:${pct}%"></div></div>
+        <div class="small muted" style="margin-top:3px;">Press [ESC] to cancel</div>`);
+      setCls("work-progress-box", "hidden", false);
+    } else {
+      setCls("work-progress-box", "hidden", true);
     }
 
-    // Live X-Ray Mechanical Overlay while holding [X]!
-    const xPanel = document.getElementById("xray-hud-panel");
-    if (xPanel) { xPanel.classList.add("hidden"); return; }
-    if (xPanel) {
-      if (game.xrayActive) {
-        const p = vs.parts;
-        const badge = (lbl, val) => {
-          const c = val > 68 ? "#00ff88" : (val > 36 ? "#ffd166" : "#ff2a4a");
-          return `<div class="xray-item"><span>${lbl}</span><b style="color:${c}">${Math.round(val)}%</b></div>`;
-        };
-        xPanel.innerHTML = `<div class="xray-title">X-RAY MECHANICAL TELEMETRY (HOLD [X])</div>
-          <div class="xray-grid">
-            ${badge("Engine/Pistons", (p.pistons.hp + p.headGasket.hp + p.crankshaft.hp) / 3)}
-            ${badge("Fuel/Sparks", (p.fuelInjectors.hp + p.sparkPlugs.hp + p.airFilter.hp) / 3)}
-            ${badge("Radiator", p.radiator.hp)}
-            ${badge("Intercooler", p.intercooler.hp)}
-            ${badge("Gearbox/Clutch", (p.gearboxGears.hp + p.clutchPack.hp) / 2)}
-            ${badge("Transfer/Shaft", (p.transferCase.hp + p.driveshaft.hp) / 2)}
-            ${badge("Shocks Avg", (p.shockFL.hp + p.shockFR.hp + p.shockRL.hp + p.shockRR.hp) / 4)}
-            ${badge("Tie-Rods/Brakes", (p.tieRods.hp + p.brakeSystem.hp) / 2)}
-          </div>`;
-        xPanel.classList.remove("hidden");
-      } else {
-        xPanel.classList.add("hidden");
-      }
-    }
+    // 3D X-ray lives directly on the vehicle rig — keep 2D box hidden without short-circuiting below!
+    setCls("xray-hud-panel", "hidden", true);
 
     // v14.0B: TOP RED STRIP (#hud-warnings) SHOWS STRICTLY BROKEN / CRITICAL CAR FAULTS ONLY!
-    // Zero keybind hints, zero "how to fix" instructions, zero environmental/cryptid warnings!
     this.drawShilkaRadar(game);
     const warns = [];
     const blownList = (vs.blownTires || []).map((b, i) => b ? spec.wheels[i].id : null).filter(Boolean);
@@ -1620,87 +1943,84 @@ KK.UIManager = class UIManager {
     if ((vs.health.taillightL ?? 100) <= 2 || (vs.health.taillightR ?? 100) <= 2) warns.push("BROKEN TAILLIGHT");
     if ((vs.fuel / spec.fuelCapacity) < 0.12) warns.push("CRITICAL FUEL");
 
-    // v14.1A: DEDICATED BOTTOM-RIGHT MILITARY / TANK INTERFACE (Replaces old controls strip!)
-    const milEl = getEl("hud-military-panel");
-    if (milEl) {
-      const vid = vs.vehicleId;
-      const isMil = !game.onFoot && (vid === "t72" || vid === "pzkpfw_140a4" || vid === "bm21" || vid === "shilka" || (vid === "btr80" && !!vs.upgrades.btrTurret));
-      if (isMil) {
-        milEl.classList.remove("hidden");
-        let htmlM = "";
-        const thMode = game.thermalMode || 0;
-        const slewErr = Math.round(game.turretSlewErrorDeg || 0);
-        const lockPill = game.turretFrozen ? `<span class="mil-chip warn">🔒 LOCKED</span>` : (slewErr > 2 ? `<span class="mil-chip warn">↻ ${slewErr}°</span>` : `<span class="mil-chip active">⌖ ALIGNED</span>`);
+    // v14.1A: DEDICATED BOTTOM-RIGHT MILITARY / TANK INTERFACE
+    const vid = vs.vehicleId;
+    const isMil = !game.onFoot && (vid === "t72" || vid === "pzkpfw_140a4" || vid === "bm21" || vid === "shilka" || (vid === "btr80" && !!vs.upgrades.btrTurret));
+    setCls("hud-military-panel", "hidden", !isMil);
+    if (isMil) {
+      let htmlM = "";
+      const thMode = game.thermalMode || 0;
+      const slewErr = Math.round(game.turretSlewErrorDeg || 0);
+      const lockPill = game.turretFrozen ? `<span class="mil-chip warn">🔒 LOCKED</span>` : (slewErr > 2 ? `<span class="mil-chip warn">↻ ${slewErr}°</span>` : `<span class="mil-chip active">⌖ ALIGNED</span>`);
 
-        if (vid === "pzkpfw_140a4") {
-          const curSh = vs.p140ShellType || "ap140";
-          const shells = [
-            ["ap140",    "APFSDS",   vs.p140ApAmmo || 0],
-            ["hesh140",  "HESH",     vs.p140HeshAmmo || 0],
-            ["therm140", "THERM",    vs.p140ThermAmmo || 0],
-            ["rlg140",   "RLG-140K", vs.p140RlgAmmo || 0]
-          ];
-          const rRem = game.t72ReloadTimer || 0, rTot = game.t72ReloadTotal || 4.8;
-          const rPct = rRem > 0 ? Math.max(0, Math.min(100, (1 - rRem / rTot) * 100)) : 100;
-          const thLbl = ["DAY", "TRI-FLIR", "RED NVD"][thMode];
-          htmlM = `
-            <div class="mil-row-top">
-              <span class="mil-title" style="color:#ff5c77;">Rh-140/56 ETC</span>
-              <div class="mil-bar-wrap"><div class="mil-bar-fill" style="width:${rPct.toFixed(0)}%;background:${rRem > 0 ? "#ffb703" : "#2de08b"};"></div><span>${rRem > 0 ? "RAM " + rRem.toFixed(1) + "s" : "READY"}</span></div>
-              ${lockPill}
-            </div>
-            <div class="mil-chips">${shells.map(([id, nm, cnt]) => `<span class="mil-chip ${curSh === id ? "active" : ""}">${nm} <b>${cnt}</b></span>`).join("")}</div>
-            <div class="mil-sub">40mm AutoKanone: <b>${vs.p140AutoAmmo || 0}</b> • APS: <b style="color:#00f5ff;">DONNERSCHILD A7</b> • <b>${thLbl}</b></div>`;
-        } else if (vid === "t72") {
-          const curSh = vs.t72ShellType || "he";
-          const shells = [["he", "HE-FRAG", vs.t72HeAmmo || 0], ["ap", "APFSDS", vs.t72ApAmmo || 0]];
-          if (vs.upgrades.t72SeismicFcs) shells.push(["therm", "3BK-THERM", vs.t72ThermAmmo || 0]);
-          const rRem = game.t72ReloadTimer || 0, rTot = game.t72ReloadTotal || 6.5;
-          const rPct = rRem > 0 ? Math.max(0, Math.min(100, (1 - rRem / rTot) * 100)) : 100;
-          const thLbl = ["DAY", "FLIR", "NVG"][thMode];
-          const snOn = !!(vs.upgrades.t72Snorkel && !(vs.stowedUpgrades && vs.stowedUpgrades.t72Snorkel));
-          htmlM = `
-            <div class="mil-row-top">
-              <span class="mil-title">2A46M 125mm</span>
-              <div class="mil-bar-wrap"><div class="mil-bar-fill" style="width:${rPct.toFixed(0)}%;background:${rRem > 0 ? "#ffb703" : "#2de08b"};"></div><span>${rRem > 0 ? "LOAD " + rRem.toFixed(1) + "s" : "READY"}</span></div>
-              ${lockPill}
-            </div>
-            <div class="mil-chips">${shells.map(([id, nm, cnt]) => `<span class="mil-chip ${curSh === id ? "active" : ""}">${nm} <b>${cnt}</b></span>`).join("")}</div>
-            <div class="mil-sub">14.5mm: <b>${vs.t72CoaxAmmo || 0}</b> • Smoke: <b>${vs.t72SmokeCharges || 0}</b> • ${thLbl}${vs.upgrades.t72Snorkel ? ` • Snorkel [6]: <b>${snOn ? "UP" : "STOWED"}</b>` : ""}</div>`;
-        } else if (vid === "bm21") {
-          const fm = vs.bm21FireMode === "salvo" ? "10-ROCKET SALVO" : "SINGLE SHOT";
-          htmlM = `
-            <div class="mil-row-top"><span class="mil-title">BM-21 GRAD 122mm</span>${lockPill}</div>
-            <div class="mil-chips"><span class="mil-chip active">ROCKETS <b>${vs.bm21Rockets || 0}/40</b></span><span class="mil-chip">${fm}</span></div>`;
-        } else if (vid === "shilka") {
-          const thLbl = ["DAY", "FLIR", "NVG"][thMode];
-          htmlM = `
-            <div class="mil-row-top"><span class="mil-title">ZSU-23-4 QUAD-23mm</span>${lockPill}</div>
-            <div class="mil-chips"><span class="mil-chip active">23mm <b>${vs.shilkaAmmo || 0}/800</b></span><span class="mil-chip ${game.shilkaRadarOn ? "active" : ""}">RADAR ${game.shilkaRadarOn ? "ON" : "OFF"}</span><span class="mil-chip">${thLbl}</span></div>`;
-        } else {
-          const thLbl = ["DAY", "FLIR", "NVG"][thMode];
-          htmlM = `
-            <div class="mil-row-top"><span class="mil-title">BTR-80 KPVT 14.5mm</span>${lockPill}</div>
-            <div class="mil-chips"><span class="mil-chip active">14.5mm <b>${vs.btrAmmo || 0}/120</b></span><span class="mil-chip">${thLbl}</span></div>`;
-        }
-        milEl.innerHTML = htmlM;
+      if (vid === "pzkpfw_140a4") {
+        const curSh = vs.p140ShellType || "ap140";
+        const shells = [
+          ["ap140",    "APFSDS",   vs.p140ApAmmo || 0],
+          ["hesh140",  "HESH",     vs.p140HeshAmmo || 0],
+          ["therm140", "THERM",    vs.p140ThermAmmo || 0],
+          ["rlg140",   "RLG-140K", vs.p140RlgAmmo || 0]
+        ];
+        const rRem = game.t72ReloadTimer || 0, rTot = game.t72ReloadTotal || 4.8;
+        const rPct = rRem > 0 ? Math.max(0, Math.min(100, (1 - rRem / rTot) * 100)) : 100;
+        const thLbl = ["DAY", "TRI-FLIR", "RED NVD"][thMode];
+        htmlM = `
+          <div class="mil-row-top">
+            <span class="mil-title" style="color:#ff5c77;">Rh-140/56 ETC</span>
+            <div class="mil-bar-wrap"><div class="mil-bar-fill" style="width:${rPct.toFixed(0)}%;background:${rRem > 0 ? "#ffb703" : "#2de08b"};"></div><span>${rRem > 0 ? "RAM " + rRem.toFixed(1) + "s" : "READY"}</span></div>
+            ${lockPill}
+          </div>
+          <div class="mil-chips">${shells.map(([id, nm, cnt]) => `<span class="mil-chip ${curSh === id ? "active" : ""}">${nm} <b>${cnt}</b></span>`).join("")}</div>
+          <div class="mil-sub">40mm AutoKanone: <b>${vs.p140AutoAmmo || 0}</b> • APS: <b style="color:#00f5ff;">DONNERSCHILD A7</b> • <b>${thLbl}</b></div>`;
+      } else if (vid === "t72") {
+        const curSh = vs.t72ShellType || "he";
+        const shells = [["he", "HE-FRAG", vs.t72HeAmmo || 0], ["ap", "APFSDS", vs.t72ApAmmo || 0]];
+        if (vs.upgrades.t72SeismicFcs) shells.push(["therm", "3BK-THERM", vs.t72ThermAmmo || 0]);
+        const rRem = game.t72ReloadTimer || 0, rTot = game.t72ReloadTotal || 6.5;
+        const rPct = rRem > 0 ? Math.max(0, Math.min(100, (1 - rRem / rTot) * 100)) : 100;
+        const thLbl = ["DAY", "FLIR", "NVG"][thMode];
+        const snOn = !!(vs.upgrades.t72Snorkel && !(vs.stowedUpgrades && vs.stowedUpgrades.t72Snorkel));
+        htmlM = `
+          <div class="mil-row-top">
+            <span class="mil-title">2A46M 125mm</span>
+            <div class="mil-bar-wrap"><div class="mil-bar-fill" style="width:${rPct.toFixed(0)}%;background:${rRem > 0 ? "#ffb703" : "#2de08b"};"></div><span>${rRem > 0 ? "LOAD " + rRem.toFixed(1) + "s" : "READY"}</span></div>
+            ${lockPill}
+          </div>
+          <div class="mil-chips">${shells.map(([id, nm, cnt]) => `<span class="mil-chip ${curSh === id ? "active" : ""}">${nm} <b>${cnt}</b></span>`).join("")}</div>
+          <div class="mil-sub">14.5mm: <b>${vs.t72CoaxAmmo || 0}</b> • Smoke: <b>${vs.t72SmokeCharges || 0}</b> • ${thLbl}${vs.upgrades.t72Snorkel ? ` • Snorkel [6]: <b>${snOn ? "UP" : "STOWED"}</b>` : ""}</div>`;
+      } else if (vid === "bm21") {
+        const fm = vs.bm21FireMode === "salvo" ? "10-ROCKET SALVO" : "SINGLE SHOT";
+        htmlM = `
+          <div class="mil-row-top"><span class="mil-title">BM-21 GRAD 122mm</span>${lockPill}</div>
+          <div class="mil-chips"><span class="mil-chip active">ROCKETS <b>${vs.bm21Rockets || 0}/40</b></span><span class="mil-chip">${fm}</span></div>`;
+      } else if (vid === "shilka") {
+        const thLbl = ["DAY", "FLIR", "NVG"][thMode];
+        htmlM = `
+          <div class="mil-row-top"><span class="mil-title">ZSU-23-4 QUAD-23mm</span>${lockPill}</div>
+          <div class="mil-chips"><span class="mil-chip active">23mm <b>${vs.shilkaAmmo || 0}/800</b></span><span class="mil-chip ${game.shilkaRadarOn ? "active" : ""}">RADAR ${game.shilkaRadarOn ? "ON" : "OFF"}</span><span class="mil-chip">${thLbl}</span></div>`;
       } else {
-        milEl.classList.add("hidden");
+        const thLbl = ["DAY", "FLIR", "NVG"][thMode];
+        htmlM = `
+          <div class="mil-row-top"><span class="mil-title">BTR-80 KPVT 14.5mm</span>${lockPill}</div>
+          <div class="mil-chips"><span class="mil-chip active">14.5mm <b>${vs.btrAmmo || 0}/120</b></span><span class="mil-chip">${thLbl}</span></div>`;
       }
+      setHtml("hud-military-panel", htmlM);
     }
-    const warnEl = document.getElementById("hud-warnings");
-    if (warnEl) warnEl.textContent = warns.join("  •  ");
+    setTxt("hud-warnings", warns.join("  •  "));
   }
 
 
   // LIVE 360° ZSU-23-4 "SHILKA" 1RL33 MOVING-TARGET CRYPTID & TORNADO RADAR SCOPE (1,200m range!)
   drawShilkaRadar(game) {
-    const wrap = document.getElementById("shilka-radar-wrap");
-    const cv = document.getElementById("shilka-radar-canvas");
+    const wrap = this._getEl("shilka-radar-wrap");
+    const cv = this._getEl("shilka-radar-canvas");
     if (!wrap || !cv) return;
     const show = (!game.photoMode && !game.onFoot && !game.ridingWithPeerId &&
                   game.vehicle && game.vehicle.vState.vehicleId === "shilka" && !!game.shilkaRadarOn);
-    wrap.classList.toggle("hidden", !show);
+    if (this._hudLastVal["shilka-radar-wrap:c:hidden"] !== !show) {
+      this._hudLastVal["shilka-radar-wrap:c:hidden"] = !show;
+      wrap.classList.toggle("hidden", !show);
+    }
     if (!show) return;
 
     const ctx = cv.getContext("2d");
@@ -1729,7 +2049,7 @@ KK.UIManager = class UIManager {
 
     // Plot active cryptids & tornadoes relative to Shilka heading!
     const px = game.vehicle.pos.x, pz = game.vehicle.pos.z;
-    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(game.vehicle.quat);
+    const fwd = this._tmpFwd.set(0, 0, 1).applyQuaternion(game.vehicle.quat);
     const headAng = Math.atan2(fwd.x, fwd.z);
     let hits = 0;
 

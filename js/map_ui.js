@@ -280,11 +280,50 @@ KK.MapController = class MapController {
     this.render();
   }
 
+  _getMegaBridge() {
+    const mb = (this.game && this.game.world && this.game.world.megaBridge) || KK.MEGA_BRIDGE || null;
+    if (!mb || typeof mb.startX !== "number" || typeof mb.endX !== "number") return null;
+    const midX = typeof mb.midX === "number" ? mb.midX : (mb.startX + mb.endX) * 0.5;
+    const midZ = typeof mb.midZ === "number" ? mb.midZ : (mb.startZ + mb.endZ) * 0.5;
+    return {
+      startX: mb.startX,
+      startZ: mb.startZ,
+      endX: mb.endX,
+      endZ: mb.endZ,
+      midX,
+      midZ
+    };
+  }
+
   _collectAllPOIs() {
     const list = [];
+    const mb = this._getMegaBridge();
+    if (mb && this.layers.bridges) {
+      list.push({
+        type: "megabridge", priority: 106,
+        x: mb.midX, z: mb.midZ,
+        name: "Savanna 6-Lane Mega-Bridge",
+        sub: "6-Lane Cable-Stayed Ocean Highway (Mainland ↔ Zolotoy Savanna) • 200+ km/h Surreal Echo Corridor",
+        color: "#00f5ff", icon: "🌉",
+        pinX: mb.midX, pinZ: mb.midZ
+      });
+    }
     if (this.layers.towns) {
       for (const tw of KK.TOWNS) {
-        list.push({ type: "town", priority: 100, x: tw.x, z: tw.z, name: tw.name, sub: tw.desc, color: "#2de08b", icon: "●", pinX: tw.dockX, pinZ: tw.dockZ });
+        const isZolotoyMetro = (tw.id === 11 || !!tw.isMetro);
+        list.push({
+          type: "town",
+          priority: isZolotoyMetro ? 105 : 100,
+          x: tw.x, z: tw.z,
+          name: isZolotoyMetro ? "Zolotoy City Metropolis" : tw.name,
+          sub: isZolotoyMetro
+            ? "Savanna 6x6 Metropolis • Monument Plaza, Overpasses, Live Electric Tram & AI Traffic"
+            : tw.desc,
+          color: isZolotoyMetro ? "#ffd166" : "#2de08b",
+          icon: isZolotoyMetro ? "🏙" : "●",
+          pinX: tw.dockX !== undefined ? tw.dockX : tw.x,
+          pinZ: tw.dockZ !== undefined ? tw.dockZ : tw.z
+        });
       }
     }
     if (this.layers.towns && KK.PORTS) {
@@ -310,7 +349,13 @@ KK.MapController = class MapController {
         list.push({ type: "zone", priority: 94, x: KK.HAMMOND_MESA.x, z: KK.HAMMOND_MESA.z, name: "Hammond's Mesa (Safe)", sub: "Sandwyrm-Safe Rock Plateau • BTR-80 KPVT Rearm & Oliver!", color: "#f4a261", icon: "🏜", r: KK.HAMMOND_MESA.radius });
       }
       for (const tz of (KK.SMOOTH_TARMAC_ZONES || [])) {
-        list.push({ type: "tarmac", priority: 90, x: tz.cx, z: tz.cz, name: "Krasny-Ring Tarmac", sub: "Glass-smooth high-grip oval & drift skidpad", color: "#00f5ff", icon: "🏁", zone: tz });
+        list.push({
+          type: "tarmac", priority: 104,
+          x: tz.cx, z: tz.cz,
+          name: "Krasny-Ring GP Circuit",
+          sub: tz.desc || "5.6 km High-Grip Grand Prix Circuit • Pit Garages, Grandstands & Floodlights",
+          color: "#00f5ff", icon: "🏁", zone: tz
+        });
       }
       for (const bz of (KK.BAD_ROAD_ZONES || [])) {
         list.push({ type: "badroad", priority: 82, x: bz.x, z: bz.z, name: bz.name.split("(")[0].trim(), sub: bz.desc, color: "#ff5c77", icon: "⚠", r: bz.radius });
@@ -388,10 +433,12 @@ KK.MapController = class MapController {
       const px = it.pinX !== undefined ? it.pinX : it.x;
       const pz = it.pinZ !== undefined ? it.pinZ : it.z;
       const safeName = it.name.split("'").join("");
+      const focusZ = it.type === "megabridge" ? 3.2 : (it.type === "town" ? 8 : 11);
+      const prefix = (it.type === "megabridge" || it.type === "tarmac" || it.icon === "🏙") ? (it.icon + " ") : "";
       return `
-        <div class="map-poi-row" onclick="window.__GAME__.ui.mapCtrl.focusOn(${it.x}, ${it.z}, ${it.type === 'town' ? 8 : 11})">
+        <div class="map-poi-row" onclick="window.__GAME__.ui.mapCtrl.focusOn(${it.x}, ${it.z}, ${focusZ})">
           <div style="min-width:0;">
-            <div class="map-poi-name" style="color:${it.color};">${it.name}</div>
+            <div class="map-poi-name" style="color:${it.color};">${prefix}${it.name}</div>
             <div class="small muted">${dKm} km away</div>
           </div>
           <button class="btn small primary" style="padding:3px 7px;" onclick="event.stopPropagation(); window.__GAME__.setWaypoint(${px}, ${pz}, '${safeName}'); window.__GAME__.ui.mapCtrl.render();">GPS</button>
@@ -490,6 +537,96 @@ KK.MapController = class MapController {
       ctx.strokeStyle = coreCol;   ctx.lineWidth = baseRoadW;       ctx.stroke();
     }
 
+    // 6-Lane Savanna Mega-Bridge Ocean Span (Mainland ↔ Zolotoy Savanna)
+    const mb = this._getMegaBridge();
+    if (mb && this.layers.bridges) {
+      const [sx, sy] = this._toPx(mb.startX, mb.startZ, W, H);
+      const [ex, ey] = this._toPx(mb.endX, mb.endZ, W, H);
+      const [mx, my] = this._toPx(mb.midX, mb.midZ, W, H);
+      const segLen = Math.hypot(ex - sx, ey - sy);
+      if (segLen > 1) {
+        const nx = -(ey - sy) / segLen;
+        const ny = (ex - sx) / segLen;
+        const railOff = Math.max(2.6, Math.min(6.2, this.zoom * 1.15 + 1.4));
+
+        ctx.save();
+        ctx.lineCap = "round";
+        // Outer luminous cyan aura
+        ctx.strokeStyle = "rgba(0, 229, 255, 0.30)";
+        ctx.lineWidth = Math.max(10, Math.min(20, this.zoom * 3.0 + 6));
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+
+        // Dark 6-lane bridge deck casing
+        ctx.strokeStyle = "#081826";
+        ctx.lineWidth = Math.max(6.0, Math.min(13, this.zoom * 2.1 + 3.5));
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+
+        // Twin glowing cyan outer lanes/rails
+        ctx.strokeStyle = "#00f5ff";
+        ctx.lineWidth = Math.max(1.5, Math.min(2.8, this.zoom * 0.52 + 0.9));
+        ctx.beginPath();
+        ctx.moveTo(sx + nx * railOff, sy + ny * railOff);
+        ctx.lineTo(ex + nx * railOff, ey + ny * railOff);
+        ctx.moveTo(sx - nx * railOff, sy - ny * railOff);
+        ctx.lineTo(ex - nx * railOff, ey - ny * railOff);
+        ctx.stroke();
+
+        // Crisp glowing gold center highway span
+        ctx.strokeStyle = "#ffd166";
+        ctx.lineWidth = Math.max(1.9, Math.min(3.6, this.zoom * 0.72 + 1.0));
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+
+        // Cable-stayed pylon ticks along the span
+        const pylonCount = Math.min(18, Math.max(5, Math.round(segLen / 28)));
+        const tickHalf = railOff + 2.4;
+        ctx.strokeStyle = "rgba(128, 250, 255, 0.85)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        for (let pi = 1; pi < pylonCount; pi++) {
+          const frac = pi / pylonCount;
+          const pxP = sx + (ex - sx) * frac;
+          const pyP = sy + (ey - sy) * frac;
+          if (pxP < -16 || pxP > W + 16 || pyP < -16 || pyP > H + 16) continue;
+          ctx.moveTo(pxP - nx * tickHalf, pyP - ny * tickHalf);
+          ctx.lineTo(pxP + nx * tickHalf, pyP + ny * tickHalf);
+        }
+        ctx.stroke();
+
+        // Glowing cyan-gold bridgehead anchor beacons
+        for (const [ax, ay] of [[sx, sy], [ex, ey]]) {
+          if (ax < -20 || ax > W + 20 || ay < -20 || ay > H + 20) continue;
+          ctx.fillStyle = "#ffd166";
+          ctx.beginPath(); ctx.arc(ax, ay, 4.2, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#00f5ff";
+          ctx.lineWidth = 1.6;
+          ctx.stroke();
+        }
+
+        // Crisp pill label: "6-LANE SAVANNA MEGA-BRIDGE"
+        let lx = mx, ly = my;
+        if (lx < 50 || lx > W - 50 || ly < 24 || ly > H - 24) {
+          const tC = Math.max(0.12, Math.min(0.88, ((W * 0.5 - sx) * (ex - sx) + (H * 0.5 - sy) * (ey - sy)) / (segLen * segLen)));
+          lx = sx + (ex - sx) * tC;
+          ly = sy + (ey - sy) * tC;
+        }
+        if (lx >= -60 && lx <= W + 60 && ly >= -24 && ly <= H + 24) {
+          const lbl = "6-LANE SAVANNA MEGA-BRIDGE";
+          ctx.font = "bold 10.5px monospace";
+          const tw = ctx.measureText(lbl).width + 14;
+          const bx = Math.max(8, Math.min(W - tw - 8, lx - tw * 0.5));
+          const by = Math.max(8, Math.min(H - 36, ly - 22));
+          ctx.fillStyle = "rgba(6, 18, 30, 0.90)";
+          ctx.fillRect(bx, by, tw, 17);
+          ctx.strokeStyle = "#00f5ff";
+          ctx.lineWidth = 1.3;
+          ctx.strokeRect(bx, by, tw, 17);
+          ctx.fillStyle = "#ffd166";
+          ctx.fillText(lbl, bx + 7, by + 12);
+        }
+        ctx.restore();
+      }
+    }
+
     if (this.layers.zones) {
       if (KK.CLARKSON_FARM) {
         const cf = KK.CLARKSON_FARM, [cx, cy] = this._toPx(cf.x, cf.z, W, H);
@@ -504,9 +641,24 @@ KK.MapController = class MapController {
         ctx.strokeStyle = "#f4a261"; ctx.lineWidth = 2; ctx.stroke();
       }
       for (const tz of (KK.SMOOTH_TARMAC_ZONES || [])) {
-        const [tx, ty] = this._toPx(tz.cx, tz.cz, W, H);
-        ctx.strokeStyle = "#00f5ff"; ctx.lineWidth = 2.6;
-        ctx.beginPath(); ctx.ellipse(tx, ty, Math.max(6, (tz.rx / spanX) * W), Math.max(4, (tz.rz / spanZ) * H), tz.yaw, 0, Math.PI * 2); ctx.stroke();
+        if (tz.waypoints && tz.waypoints.length >= 3) {
+          const cyaw = Math.cos(tz.yaw || 0), syaw = Math.sin(tz.yaw || 0);
+          ctx.beginPath();
+          for (let wi = 0; wi < tz.waypoints.length; wi++) {
+            const [lx, lz] = tz.waypoints[wi];
+            const wx = tz.cx + lx * cyaw - lz * syaw;
+            const wz = tz.cz + lx * syaw + lz * cyaw;
+            const [tx, ty] = this._toPx(wx, wz, W, H);
+            if (wi === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty);
+          }
+          ctx.closePath();
+          ctx.strokeStyle = "rgba(6, 18, 28, 0.85)"; ctx.lineWidth = Math.max(4.4, Math.min(9, this.zoom * 1.4)); ctx.stroke();
+          ctx.strokeStyle = "#00f5ff"; ctx.lineWidth = Math.max(2.2, Math.min(4.6, this.zoom * 0.8)); ctx.stroke();
+        } else {
+          const [tx, ty] = this._toPx(tz.cx, tz.cz, W, H);
+          ctx.strokeStyle = "#00f5ff"; ctx.lineWidth = 2.6;
+          ctx.beginPath(); ctx.ellipse(tx, ty, Math.max(6, (tz.rx / spanX) * W), Math.max(4, (tz.rz / spanZ) * H), tz.yaw, 0, Math.PI * 2); ctx.stroke();
+        }
       }
       for (const bz of (KK.BAD_ROAD_ZONES || [])) {
         const [bx, by] = this._toPx(bz.x, bz.z, W, H);
@@ -534,7 +686,17 @@ KK.MapController = class MapController {
 
       const isHov = (this.hoverItem === item);
       ctx.fillStyle = item.color;
-      if (item.type === "bridge") {
+      if (item.type === "megabridge") {
+        const sz = isHov ? 7.5 : 5.2;
+        ctx.fillStyle = "#ffd166";
+        ctx.strokeStyle = "#00f5ff";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(px, py - sz); ctx.lineTo(px + sz, py); ctx.lineTo(px, py + sz); ctx.lineTo(px - sz, py);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (item.type === "bridge") {
         const sz = isHov ? 6.5 : 4.5;
         ctx.fillRect(px - sz, py - sz, sz * 2, sz * 2);
       } else {
@@ -546,6 +708,7 @@ KK.MapController = class MapController {
       }
 
       const showLabel = isHov || item.type === "town" || item.type === "friend"
+        || (item.type === "tarmac" && this.zoom >= 1.4)
         || (item.type === "zone" && this.zoom >= 1.8)
         || (item.type === "landmark" && this.zoom >= 2.2)
         || ((item.type === "bridge" || item.type === "ford") && this.zoom >= 4.2);

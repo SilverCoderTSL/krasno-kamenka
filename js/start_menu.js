@@ -1,5 +1,5 @@
 // ============================================================================
-// js/start_menu.js (v17.6.1 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
+// js/start_menu.js (v17.9 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
 // Clean Spawn Map (Roads, Rivers & Settlements Only + Survivability Ratings) &
 // Account Password Management
 // ============================================================================
@@ -85,7 +85,7 @@ KK.StartMenu = class StartMenu {
     if (!this._raf) this._tick(performance.now());
   }
 
-  goToSpawnMap() {
+  _applyMenuNetworkInputs() {
     const g = this.game;
     const csInput = document.getElementById("sm-callsign-input");
     if (csInput && csInput.value.trim()) {
@@ -103,8 +103,21 @@ KK.StartMenu = class StartMenu {
       if (hudH) hudH.value = code.toUpperCase();
       g.network.joinRoom(code, g.network.callsign);
     }
+  }
+
+  goToSpawnMap() {
+    this._applyMenuNetworkInputs();
     this.deployStep = "map";
     this.renderTab();
+  }
+
+  quickDeploy() {
+    this._applyMenuNetworkInputs();
+    if (this.game && !this.game.tutorialComplete) {
+      this.selectedTownId = 0;
+      this.selectedPortId = null;
+    }
+    this.closeAndDeploy();
   }
 
   backToRigStep() {
@@ -278,6 +291,83 @@ KK.StartMenu = class StartMenu {
         ctx.strokeStyle = seg.isModernHwy ? "rgba(255, 214, 102, 0.72)" : (seg.isTropikaHell ? "rgba(210, 140, 88, 0.65)" : "rgba(195, 210, 225, 0.55)");
         ctx.lineWidth = seg.isModernHwy ? 2.4 : 1.5;
         ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      }
+    }
+
+    // 6-Lane Savanna Mega-Bridge Ocean Span (Mainland ↔ Zolotoy Savanna)
+    const mb = (this.game && this.game.world && this.game.world.megaBridge) || KK.MEGA_BRIDGE || null;
+    if (mb && typeof mb.startX === "number" && typeof mb.endX === "number") {
+      const midX = typeof mb.midX === "number" ? mb.midX : (mb.startX + mb.endX) * 0.5;
+      const midZ = typeof mb.midZ === "number" ? mb.midZ : (mb.startZ + mb.endZ) * 0.5;
+      const [sx, sy] = toPx(mb.startX, mb.startZ);
+      const [ex, ey] = toPx(mb.endX, mb.endZ);
+      const [mx, my] = toPx(midX, midZ);
+      const segLen = Math.hypot(ex - sx, ey - sy);
+      if (segLen > 1) {
+        const nx = -(ey - sy) / segLen;
+        const ny = (ex - sx) / segLen;
+        const zScale = Math.sqrt(this.mapZoom);
+        const railOff = Math.max(2.3, Math.min(5.2, 2.3 * zScale));
+
+        ctx.save();
+        ctx.lineCap = "round";
+        // Outer cyan-gold aurora halo
+        ctx.strokeStyle = "rgba(0, 229, 255, 0.34)";
+        ctx.lineWidth = Math.max(9.0, Math.min(18, 8.5 * zScale));
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+
+        // Asphalt deck bed
+        ctx.strokeStyle = "#081826";
+        ctx.lineWidth = Math.max(5.2, Math.min(11, 5.0 * zScale));
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+
+        // Double glowing cyan outer highway rails
+        ctx.strokeStyle = "#00f5ff";
+        ctx.lineWidth = Math.max(1.3, Math.min(2.4, 1.35 * zScale));
+        ctx.beginPath();
+        ctx.moveTo(sx + nx * railOff, sy + ny * railOff);
+        ctx.lineTo(ex + nx * railOff, ey + ny * railOff);
+        ctx.moveTo(sx - nx * railOff, sy - ny * railOff);
+        ctx.lineTo(ex - nx * railOff, ey - ny * railOff);
+        ctx.stroke();
+
+        // Crisp glowing gold 6-lane highway spine
+        ctx.strokeStyle = "#ffd166";
+        ctx.lineWidth = Math.max(1.7, Math.min(3.2, 1.75 * zScale));
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+
+        // Bridgehead anchor beacons
+        for (const [ax, ay] of [[sx, sy], [ex, ey]]) {
+          ctx.fillStyle = "#ffd166";
+          ctx.beginPath(); ctx.arc(ax, ay, 3.6, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#00f5ff";
+          ctx.lineWidth = 1.4;
+          ctx.stroke();
+        }
+
+        // Floating pill label: "6-LANE SAVANNA MEGA-BRIDGE"
+        let lx = mx, ly = my;
+        if (lx < 40 || lx > W - 40 || ly < 20 || ly > H - 20) {
+          const tC = Math.max(0.15, Math.min(0.85, ((W * 0.5 - sx) * (ex - sx) + (H * 0.5 - sy) * (ey - sy)) / (segLen * segLen)));
+          lx = sx + (ex - sx) * tC;
+          ly = sy + (ey - sy) * tC;
+        }
+        if (lx >= -60 && lx <= W + 60 && ly >= -20 && ly <= H + 20) {
+          const lbl = "6-LANE SAVANNA MEGA-BRIDGE";
+          ctx.font = "bold 9.5px monospace";
+          ctx.textAlign = "center";
+          const padW = ctx.measureText(lbl).width + 12;
+          const bx = Math.max(6, Math.min(W - padW - 6, lx - padW * 0.5));
+          const by = Math.max(6, Math.min(H - 22, ly - 17));
+          ctx.fillStyle = "rgba(6, 18, 30, 0.90)";
+          ctx.fillRect(bx, by, padW, 15);
+          ctx.strokeStyle = "#00f5ff";
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(bx, by, padW, 15);
+          ctx.fillStyle = "#ffd166";
+          ctx.fillText(lbl, bx + padW * 0.5, by + 10.5);
+        }
+        ctx.restore();
       }
     }
 
@@ -476,12 +566,13 @@ KK.StartMenu = class StartMenu {
             <label class="sm-lbl">STEP 1/2 — SELECT YOUR VEHICLE (${ownedIds.length} OWNED)</label>
             <div class="sm-rig-grid">${rigChips}</div>
           </div>
-          <div style="margin-top:14px;display:flex;gap:12px;align-items:center;">
-            <button class="btn primary sm-deploy-btn" onclick="window.__GAME__.startMenu.goToSpawnMap()">NEXT: CHOOSE SPAWN ON MAP ▶</button>
-            <div class="small muted" style="line-height:1.35;">
-              <b>Online Status:</b> ${(!g.network || g.network.mode === "offline") ? '<span style="color:#ffd166;">SOLO MODE (CLICK HOST TO PLAY ONLINE)</span>' : '<span style="color:#2de08b;">' + (g.network.isHost ? "HOSTING ROOM " : "JOINED ROOM ") + (g.network.roomCode || "") + '</span>'}<br/>
-              Pick your rig first, then choose your deployment settlement on the Oblast map.
-            </div>
+          <div class="sm-deploy-actions">
+            <button class="btn sm-deploy-btn sm-quick-deploy-btn" onclick="window.__GAME__.startMenu.quickDeploy()">⚡ QUICK DEPLOY (JUMP RIGHT IN)</button>
+            <button class="btn primary sm-deploy-btn" onclick="window.__GAME__.startMenu.goToSpawnMap()">🗺 CHOOSE SPAWN ON MAP ▶</button>
+          </div>
+          <div class="small muted" style="margin-top:8px;line-height:1.38;">
+            <b>Online Status:</b> ${(!g.network || g.network.mode === "offline") ? '<span style="color:#ffd166;">SOLO MODE (CLICK HOST TO PLAY ONLINE)</span>' : '<span style="color:#2de08b;">' + (g.network.isHost ? "HOSTING ROOM " : "JOINED ROOM ") + (g.network.roomCode || "") + '</span>'} •
+            Jump straight into your selected rig now, or open the 200km Archipelago Map to choose a settlement or ocean port.
           </div>`;
       } else {
         body.innerHTML = `
@@ -582,7 +673,7 @@ KK.StartMenu = class StartMenu {
             </div>
           </div>
           <div class="sm-acc-box small" style="line-height:1.5;">
-            <label class="sm-lbl">v17.6.1 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
+            <label class="sm-lbl">v17.9 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
             <b>[F]</b> Universal Interact / Enter-Exit (Front/Rear for Hood • <b>Shift+F</b> Force Exit)<br/>
             <b>[E]</b> On-Foot Inventory • <b>[Q/E]</b> Manual Gears (in car) • <b>[4]</b> Auto/Manual<br/>
             <b>[LMB/RMB/MMB]</b> Fire Primary / Turret Scope / Lock Turret<br/>

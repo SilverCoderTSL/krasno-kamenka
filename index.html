@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Krasno-Kamenka Oblast v14.3 — CPM2 Tuning &amp; Off-Road LAN Simulator</title>
+  <title>Krasno-Kamenka Oblast v17.9 ONLINE — Off-Road &amp; Abyssal Sandbox</title>
   <link rel="stylesheet" href="css/style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
           onerror="this.onerror=null;this.src='https://unpkg.com/three@0.128.0/build/three.min.js';"></script>
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
-  <!-- v14.3 ATMOSPHERIC STARTING MENU & PRE-GAME COMMAND HUB -->
+  <!-- v17.9 ONLINE ATMOSPHERIC STARTING MENU & PRE-GAME COMMAND HUB -->
   <div id="start-menu-overlay" class="start-menu-overlay">
     <canvas id="start-menu-canvas" class="start-menu-canvas"></canvas>
     <div class="start-menu-shell">
       <div class="sm-header">
         <div>
-          <div class="sm-kicker">SIBERIAN FRONTIER VEHICULAR HORROR SANDBOX • v17.6.1 ONLINE</div>
-          <h1 class="sm-title">KRASNO-KAMENKA OBLAST <span class="sm-ver-badge">v17.6.1 ONLINE</span></h1>
+          <div class="sm-kicker">SIBERIAN FRONTIER VEHICULAR HORROR SANDBOX • v17.9 ONLINE</div>
+          <h1 class="sm-title">KRASNO-KAMENKA OBLAST <span class="sm-ver-badge">v17.9 ONLINE</span></h1>
         </div>
         <div class="sm-header-pills">
           <span id="sm-header-balance" class="cash-badge">$18,000</span>
@@ -39,6 +39,7 @@
   <div id="emp-overlay" class="emp-overlay"></div>
   <div id="thermal-overlay" class="thermal-overlay"></div>
   <div id="skinwalker-overlay" class="skinwalker-overlay"></div>
+  <div id="sea-dread-vignette" class="sea-dread-vignette"></div>
   <div id="shilka-radar-wrap" class="shilka-radar-wrap hidden">
     <canvas id="shilka-radar-canvas" width="186" height="186"></canvas>
   </div>
@@ -65,7 +66,7 @@
   <div id="hud-top">
     <div class="hud-panel hud-top-left">
       <div class="title-line">
-        <span>KRASNO-KAMENKA v17.6.1 ONLINE</span>
+        <span>KRASNO-KAMENKA v17.9 ONLINE</span>
         <span id="hud-cash" class="cash-badge">$18,000</span>
         <button id="btn-open-account" class="acc-pill" title="Login / Register Server Account & Leaderboard [O]"><span id="hud-account-pill">👤 GUEST (LOGIN)</span></button>
       </div>
@@ -77,6 +78,7 @@
       <canvas id="compass-canvas" width="440" height="44"></canvas>
       <div id="hud-waypoint" class="hidden">GPS: --</div>
       <div id="hud-warnings"></div>
+      <div id="sea-threat-banner" class="sea-threat-banner hidden"></div>
       <div id="cryptid-alert" class="cryptid-alert hidden"></div>
     </div>
 
@@ -87,15 +89,20 @@
         <button id="btn-open-map" class="btn">[M] 100KM MAP</button>
         <button id="btn-open-env" class="btn btn-opt-gleam" title="Options, Controls &amp; World Settings [O]">[O] OPTIONS</button>
       </div>
-      <div class="hud-panel lan-box">
-        <div class="lan-row"><span id="lan-status-pill" class="lan-pill offline" style="cursor:pointer;" title="Click to copy Room Code & Invite Link!">SOLO MODE — HOST OR JOIN</span></div>
-        <div class="lan-row">
-          <input id="lan-host-input" type="text" placeholder="Room Code (KK-A1B2)" title="Enter Host Room Code" />
-          <input id="lan-callsign-input" type="text" placeholder="Callsign" title="Your Driver Callsign" />
-          <button id="btn-lan-host" class="btn small accent" title="Create a new Online Room">HOST</button>
-          <button id="btn-lan-connect" class="btn small primary" title="Join an existing Room Code">JOIN</button>
+      <div id="lan-box" class="hud-panel lan-box collapsed">
+        <div class="lan-header-row">
+          <button id="btn-lan-toggle" class="btn small lan-toggle-btn" title="Expand / Collapse Online &amp; LAN Multiplayer Controls">🌐 ONLINE / LAN <span id="lan-toggle-caret">▾</span></button>
+          <span id="lan-status-pill" class="lan-pill offline" style="cursor:pointer;" title="Click to expand or copy Room Code &amp; Invite Link!">SOLO MODE — HOST OR JOIN</span>
         </div>
-        <div id="lan-roster"><span class="muted">Solo / Click HOST to invite friends</span></div>
+        <div id="lan-expandable" class="lan-expandable">
+          <div class="lan-row">
+            <input id="lan-host-input" type="text" placeholder="Room Code (KK-A1B2)" title="Enter Host Room Code" />
+            <input id="lan-callsign-input" type="text" placeholder="Callsign" title="Your Driver Callsign" />
+            <button id="btn-lan-host" class="btn small accent" title="Create a new Online Room">HOST</button>
+            <button id="btn-lan-connect" class="btn small primary" title="Join an existing Room Code">JOIN</button>
+          </div>
+          <div id="lan-roster"><span class="muted">Solo / Click HOST to invite friends</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -187,7 +194,7 @@
     <div id="hud-military-panel" class="hud-military-panel hidden"></div>
   </div>
 
-  <!-- v17.6.1 DEDICATED NAUTICAL HELM HUD (Replaces Car Dash Completely When Piloting Any Boat!) -->
+  <!-- v17.9 DEDICATED NAUTICAL HELM HUD (Replaces Car Dash Completely When Piloting Any Boat!) -->
   <div id="hud-helm" class="hidden">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
       <span id="helm-vessel-name" style="color:#00f5ff;font-weight:900;font-size:12px;letter-spacing:0.6px;">⚓ VESSEL HELM</span>
@@ -214,6 +221,37 @@
       <span class="helm-tag">DECK [E]</span>
       <span class="helm-tag">LOAD [V]</span>
     </div>
+  </div>
+
+  <!-- v17.9 COMPACT ON-SCREEN CONTROLS PILL & QUICK VEHICLE SYSTEMS BAR -->
+  <div id="quick-controls-popover" class="quick-controls-popover hidden">
+    <div class="qpop-head">
+      <span>⌨ QUICK FIELD CONTROLS</span>
+      <button id="btn-qpop-all" class="btn small primary">ALL KEYBINDS [O]</button>
+    </div>
+    <div class="qpop-grid">
+      <div><b>W/A/S/D</b> Drive / Steer</div>
+      <div><b>Space / P</b> Handbrake / Park</div>
+      <div><b>F / Shift+F</b> Interact / Exit</div>
+      <div><b>L / K / B</b> Lights / Roof / Wipers</div>
+      <div><b>V / 2 / 3</b> 2H-4H-4L / Diff Locks</div>
+      <div><b>T / Y</b> Aim Winch / Cut</div>
+      <div><b>U / X</b> Flip Rig / X-Ray</div>
+      <div><b>C / Scroll</b> Camera / Zoom</div>
+      <div><b>M / J / O</b> Map / Jobs / Options</div>
+      <div><b>Boat</b> W/S Helm • P Anchor • E Deck</div>
+    </div>
+  </div>
+  <div id="quick-controls-dock" class="quick-controls-dock">
+    <div id="quick-veh-btns" class="qdock-group">
+      <button id="qbtn-lights" class="qdock-btn" title="Toggle Headlights [L]">💡 LIGHTS <span>[L]</span></button>
+      <button id="qbtn-4wd" class="qdock-btn" title="Cycle Transfer Case 2H / 4H / 4L [V]">⚙ <b id="qbtn-4wd-lbl">4H</b> <span>[V]</span></button>
+      <button id="qbtn-diffs" class="qdock-btn" title="Toggle Front &amp; Rear Diff Locks [2/3]">🔒 DIFFS <span>[2/3]</span></button>
+      <button id="qbtn-winch" class="qdock-btn" title="Attach or Cut Winch [T/Y]">🪝 WINCH <span>[T]</span></button>
+      <button id="qbtn-flip" class="qdock-btn" title="Right Overturned Rig [U]">🔄 FLIP <span>[U]</span></button>
+      <button id="qbtn-cam" class="qdock-btn" title="Cycle Camera View [C]">📷 CAM <span>[C]</span></button>
+    </div>
+    <button id="qbtn-help" class="qdock-btn qdock-help-btn" title="Show / Hide Quick Controls Guide">[?] CONTROLS</button>
   </div>
 
   <div id="modal-overlay" class="hidden">
@@ -275,7 +313,7 @@
     </div>
   </div>
 
-    <!-- v17.6.1 UNDERTALE-STYLE DEV TUTORIAL DIALOGUE BOX -->
+    <!-- v17.9 UNDERTALE-STYLE DEV TUTORIAL DIALOGUE BOX -->
   <div id="tutorial-box" class="hidden">
     <div class="tut-header">
       <span class="tut-speaker">📡 [DEV // DISPATCH]</span>
@@ -288,6 +326,14 @@
       <button id="tut-next-btn" class="tut-next" onclick="window.__GAME__ && window.__GAME__.advanceTutorialDialog()">NEXT ▶</button>
     </div>
   </div>
+
+  
+  <!-- v17.9 ARMOR VIEWER [;] BANNER, TOOLTIP & LWR/FCS HUD -->
+  <div id="armor-viewer-banner" class="hidden">
+    🛡️ ARMOR VIEWER [;] — HOVER MOUSE OVER ARMOR PLATES TO INSPECT THICKNESS &amp; EFFECTIVE ANGLE &nbsp;|&nbsp; <span style="color:#fde047;">PRESS [;] TO EXIT</span>
+  </div>
+  <div id="armor-viewer-tooltip" class="hidden"></div>
+  <div id="lwr-fcs-banner" class="hidden"></div>
 
   <script src="js/config.js"></script>
   <script src="js/settlements.js"></script>

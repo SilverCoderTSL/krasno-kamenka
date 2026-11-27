@@ -27,9 +27,40 @@ KK.VehiclePhysics = class VehiclePhysics {
     this.engineRunning = true;
     this.treeHitCooldown = 0;
     this.carHitCooldown = 0;
+    this.tramHitCooldown = 0;
     this.hydrolocked = false;
     this.steerAngle = 0; this.lastGroundedWheels = 4;
-    this._vFwd = new THREE.Vector3(); this._vRight = new THREE.Vector3(); this._vUp = new THREE.Vector3();
+    this.wheelSlipRatio = 0;
+    this.driftIntensity = 0;
+    this.currentSurface = "gravel";
+    this.brakeHeat = 0;
+
+    // Pre-allocated scratch objects to eliminate per-substep GC churn (120Hz)
+    this._vFwd = new THREE.Vector3();
+    this._vRight = new THREE.Vector3();
+    this._vUp = new THREE.Vector3();
+    this._totalForce = new THREE.Vector3();
+    this._totalTorque = new THREE.Vector3();
+    this._localMount = new THREE.Vector3();
+    this._worldMount = new THREE.Vector3();
+    this._rWorld = new THREE.Vector3();
+    this._patchVel = new THREE.Vector3();
+    this._wFwd = new THREE.Vector3();
+    this._wRight = new THREE.Vector3();
+    this._fWorld = new THREE.Vector3();
+    this._cogShift = new THREE.Vector3();
+    this._tmpV1 = new THREE.Vector3();
+    this._tmpV2 = new THREE.Vector3();
+    this._tmpV3 = new THREE.Vector3();
+    this._prevVel = new THREE.Vector3();
+    this._invQuat = new THREE.Quaternion();
+    this._dq = new THREE.Quaternion();
+    this._fPt = new THREE.Vector3();
+    this._rPt = new THREE.Vector3();
+    this._upAxis = new THREE.Vector3(0, 1, 0);
+    this._shockPartIds = ["shockFL", "shockFR", "shockFL", "shockFR", "shockRL", "shockRR", "shockRL", "shockRR"];
+    this._defaultCryptidMods = { ice: 0, quicksand: 0 };
+
     this.smoothThrottle = 0;
     this.prevRawThrottle = 0;
     this.backfireTimer = 0;
@@ -50,6 +81,7 @@ KK.VehiclePhysics = class VehiclePhysics {
       spinAngle: 0, grounded: false, surface: "gravel", waterDepth: 0, mudDepth: 0,
       worldContact: new THREE.Vector3()
     }));
+    this._wheelForcesY = new Float32Array(this.wheels.length);
 
     this.speedKmh = 0; this.onBridgeId = null; this.inWaterDepth = 0; this.events = [];
     this.distanceMetersFrame = 0;
@@ -57,7 +89,8 @@ KK.VehiclePhysics = class VehiclePhysics {
 
   swapVehicleState(newVState, preservePosition = true) {
     KK.ensurePartsInitialized(newVState);
-    const oldPos = this.pos.clone(), oldQuat = this.quat.clone();
+    this._tmpV1.copy(this.pos);
+    this._invQuat.copy(this.quat);
     this.vState = newVState;
     this.spec = KK.VEHICLES[newVState.vehicleId];
     const eng = KK.ENGINES[newVState.engineId] || KK.ENGINES.umz_24;
@@ -67,13 +100,17 @@ KK.VehiclePhysics = class VehiclePhysics {
       spinAngle: 0, grounded: false, surface: "gravel", waterDepth: 0, mudDepth: 0,
       worldContact: new THREE.Vector3()
     }));
+    if (!this._wheelForcesY || this._wheelForcesY.length !== this.wheels.length) {
+      this._wheelForcesY = new Float32Array(this.wheels.length);
+    }
     if (preservePosition) {
-      this.pos.copy(oldPos); this.pos.y += 1.0; this.quat.copy(oldQuat);
+      this.pos.copy(this._tmpV1); this.pos.y += 1.0; this.quat.copy(this._invQuat);
     }
     this.vel.set(0, 0, 0); this.angVel.set(0, 0, 0);
     this.gear = 1; this.driveMode = this.spec.defaultDriveMode || "4H";
     this.rearLock = false; this.frontLock = false;
     this.rpm = eng.idleRpm; this.boostPsi = 0; this.smoothThrottle = 0;
+    this.wheelSlipRatio = 0; this.driftIntensity = 0; this.currentSurface = "gravel"; this.brakeHeat = 0;
     this.hydrolocked = false;
     this.engineRunning = newVState.parts.headGasket.hp > 4 && newVState.fuel > 0.05;
     this.coolantTemp = 82; this.egtTemp = 340; this.steerAngle = 0;
@@ -85,13 +122,21 @@ KK.VehiclePhysics = class VehiclePhysics {
     return this.spec.massKg + this.cargoCount * cDef.massPerUnitKg;
   }
 
+  getArmorTier(spec) {
+    if (!spec) return 1;
+    const id = spec.id;
+    if (spec.isSchreckensfurst || id === "t72" || id === "harimau") return 3;
+    if (id === "shilka" || id === "btr80" || id === "komodo_turret" || id === "komodo_std" || id === "komodo_recon" || id === "maz537") return 2;
+    return 1;
+  }
+
   emit(kind, data) { this.events.push({ kind, data }); }
   consumeEvents() { const out = this.events; this.events = []; return out; }
 
   flipUpright(world) {
     const fwd = this._vFwd.set(0, 0, 1).applyQuaternion(this.quat);
     const yaw = Math.atan2(fwd.x, fwd.z);
-    this.quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    this.quat.setFromAxisAngle(this._upAxis, yaw);
     const tInfo = world.getTerrainInfo(this.pos.x, this.pos.z, true);
     this.pos.y = Math.max(this.pos.y, tInfo.height + 1.4);
     this.vel.set(0, 0, 0); this.angVel.set(0, 0, 0);
@@ -113,23 +158,22 @@ KK.VehiclePhysics = class VehiclePhysics {
   //   • Firing LEFT  rolls tank RIGHT so RIGHT suspension squishes deep!
   //   • Firing RIGHT rolls tank LEFT  so LEFT  suspension squishes deep!
   applyRecoilTorque(gunDirWorld, linearKick = 2.1, pitchKick = 1.25, rollKick = 2.35) {
-    const recoilWorld = gunDirWorld.clone().normalize().negate();
+    const recoilWorld = this._tmpV1.copy(gunDirWorld).normalize().negate();
     // 1. Linear pushback strictly along the recoil line (horizontal component so hull doesn't uniformly squat!)
     this.vel.x += recoilWorld.x * linearKick;
     this.vel.z += recoilWorld.z * linearKick;
 
     // 2. Transform recoil into vehicle local frame to compute exact directional pitch & roll torque!
-    const invQ = this.quat.clone().invert();
-    const recLocal = recoilWorld.clone().applyQuaternion(invQ);
+    const invQ = this._invQuat.copy(this.quat).invert();
+    const recLocal = this._tmpV2.copy(recoilWorld).applyQuaternion(invQ);
     // Right-hand rule with lever = (0, +1, 0): lever x (rx, ry, rz) = (rz, 0, -rx)
     //   • Fire forward (+Z -> rz = -1): localAng.x = -pitchKick -> nose lifts (+Y), rear squishes (-Y)!
     //   • Fire to +X side (rx = -1):    localAng.z = +rollKick  -> +X lifts (+Y), -X squishes (-Y)!
-    const localAngKick = new THREE.Vector3(
+    const localAngKick = this._tmpV3.set(
       recLocal.z * pitchKick,
       0,
       -recLocal.x * rollKick
-    );
-    localAngKick.applyQuaternion(this.quat);
+    ).applyQuaternion(this.quat);
     this.angVel.add(localAngKick);
   }
 
@@ -215,7 +259,8 @@ KK.VehiclePhysics = class VehiclePhysics {
     const sdt = clampedDt / 2;
     if (this.treeHitCooldown > 0) this.treeHitCooldown = Math.max(0, this.treeHitCooldown - clampedDt);
     if (this.carHitCooldown > 0) this.carHitCooldown = Math.max(0, this.carHitCooldown - clampedDt);
-    const cMods = cryptidMods || { ice: 0, quicksand: 0 };
+    if (this.tramHitCooldown > 0) this.tramHitCooldown = Math.max(0, this.tramHitCooldown - clampedDt);
+    const cMods = cryptidMods || this._defaultCryptidMods;
     for (let s = 0; s < 2; s++) this._substep(sdt, input, world, weatherGrip, remotePlayersMap, weatherName || "clear", cMods);
   }
 
@@ -231,7 +276,7 @@ KK.VehiclePhysics = class VehiclePhysics {
 
     const right = this._vRight.set(1, 0, 0).applyQuaternion(this.quat);
     const up = this._vUp.set(0, 1, 0).applyQuaternion(this.quat);
-    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.quat);
+    const forward = this._vFwd.set(0, 0, 1).applyQuaternion(this.quat);
 
     const fwdSpeed = this.vel.dot(forward), latSpeed = this.vel.dot(right);
     this.speedKmh = Math.abs(fwdSpeed) * 3.6;
@@ -249,7 +294,13 @@ KK.VehiclePhysics = class VehiclePhysics {
         if (vs.blownTires[wi]) flatPull += (this.wheels[wi].def.x < 0 ? 0.095 : -0.095) * (this.wheels[wi].def.steer ? 1.0 : 0.45);
       }
     }
-    const targetSteer = input.steer * maxSteerRad * speedSteerFactor + hlth.tieRodBias + flatPull;
+    let counterSteer = 0;
+    if (Math.abs(input.steer) < 0.04 && !spec.isTracked && this.lastGroundedWheels >= 2 && fwdSpeed > 4.5 && Math.abs(latSpeed) > 1.2) {
+      // Gentle self-aligning castor counter-steer assist during a slide for crisp keyboard driving
+      const driftAngle = Math.atan2(latSpeed, fwdSpeed);
+      counterSteer = Math.max(-maxSteerRad * 0.48, Math.min(maxSteerRad * 0.48, driftAngle * 0.52));
+    }
+    const targetSteer = input.steer * maxSteerRad * speedSteerFactor + counterSteer + hlth.tieRodBias + flatPull;
     this.steerAngle += (targetSteer - this.steerAngle) * Math.min(1, dt * (spec.agileSteer ? 11.8 : 8.5));
     this.steerAngle = Math.max(-maxSteerRad * 1.1, Math.min(maxSteerRad * 1.1, this.steerAngle));
 
@@ -332,14 +383,26 @@ KK.VehiclePhysics = class VehiclePhysics {
     const outProbe = KK.computeEngineOutput(vs, this.rpm, throttle, this.boostPsi);
     const effRedline = outProbe.redline;
 
-    // Clutch slip based on clutchPack health!
+    // Clutch slip based on clutchPack health + wheelspin / torque-converter slip model!
     const clutchSlip = 1.0 + (100 - parts.clutchPack.hp) * 0.0055;
     const wheelRpm = (Math.abs(fwdSpeed) / (2 * Math.PI * wheelRad)) * 60;
     let targetRpm = 0;
     if (this.engineRunning) {
-      if (this.gear === 0) targetRpm = eng.idleRpm + throttle * (effRedline - eng.idleRpm) * 0.92;
-      else if (this.lastGroundedWheels === 0) targetRpm = eng.idleRpm + throttle * (effRedline - eng.idleRpm) * 0.86;
-      else targetRpm = Math.max(eng.idleRpm + throttle * 850, wheelRpm * totalRatio * clutchSlip);
+      if (this.gear === 0) {
+        targetRpm = eng.idleRpm + throttle * (effRedline - eng.idleRpm) * 0.92;
+      } else if (this.lastGroundedWheels === 0) {
+        targetRpm = eng.idleRpm + throttle * (effRedline - eng.idleRpm) * 0.86;
+      } else {
+        const isLowGear = (this.gear === 1 || this.gear === -1 || this.driveMode === "4L");
+        const stallBoost = (isLowGear && absSpd < 8.0)
+          ? Math.max(850, (eng.peakTorqueRpm - eng.idleRpm) * 0.55) * Math.max(0.25, 1.0 - absSpd / 10.0)
+          : 850;
+        const stallFloor = eng.idleRpm + throttle * stallBoost;
+        const wheelSpinRpm = (this.wheelSlipRatio > 0.015 && throttle > 0.08)
+          ? (eng.idleRpm + (effRedline - eng.idleRpm) * Math.min(0.87, 0.30 + 0.57 * this.wheelSlipRatio) * Math.pow(throttle, 0.75))
+          : 0;
+        targetRpm = Math.max(stallFloor, wheelRpm * totalRatio * clutchSlip, wheelSpinRpm);
+      }
       targetRpm = Math.min(effRedline * 1.025, targetRpm);
     }
     this.rpm += (targetRpm - this.rpm) * Math.min(1, dt * (7.5 + flywheelPerf * 4.0));
@@ -361,7 +424,7 @@ KK.VehiclePhysics = class VehiclePhysics {
         this.rpm = effRedline * (0.94 + Math.random() * 0.045);
         if (this.backfireTimer <= 0 && Math.random() < dt * 11.0) { this.backfireTimer = 0.12; this.justBackfired = true; }
       }
-      if (this.rpm > effRedline * 0.91 && this.gear < gears.length && throttle > 0.2) {
+      if (this.rpm > effRedline * 0.91 && this.gear < gears.length && throttle > 0.2 && (this.wheelSlipRatio < 0.55 || wheelRpm * totalRatio > effRedline * 0.82)) {
         this.gear++;
         this.angVel.x -= 0.22 * throttle;
         if (throttle > 0.65) { this.backfireTimer = 0.14; this.justBackfired = true; }
@@ -408,21 +471,22 @@ KK.VehiclePhysics = class VehiclePhysics {
       const targetEgt = 255 + baseLoad * 335 + (overBoost * 9.5) / Math.max(0.18, realIcEff) + (icHpFrac < 0.15 ? 160 * baseLoad : 0);
       this.egtTemp += (targetEgt - this.egtTemp) * Math.min(1, dt * 1.25);
 
-      const driveWear = (0.0055 + load * 0.022) * dt;
+      // Toned-down passive normal-cruising wear (~40% gentler) while keeping abuse damage impactful
+      const driveWear = (0.0033 + load * 0.0132) * dt;
       this._wearPart("sparkPlugs", driveWear * 1.15);
       this._wearPart("fuelInjectors", driveWear * 0.75);
       this._wearPart("fuelRails", driveWear * 0.40);
       this._wearPart("waterPump", driveWear * 0.60);
-      this._wearPart("camshaft", driveWear * (0.45 + (rpmFrac > 0.88 ? 0.75 : 0)));
-      this._wearPart("crankshaft", driveWear * (0.35 + (rpmFrac > 0.92 ? 0.90 : 0)));
-      this._wearPart("pistons", driveWear * (0.40 + overBoost * 0.045));
-      this._wearPart("exhaustManifold", driveWear * (0.45 + overBoost * 0.055));
-      this._wearPart("intercooler", driveWear * (0.30 + overBoost * 0.035));
+      this._wearPart("camshaft", driveWear * (0.45 + (rpmFrac > 0.88 ? 1.25 : 0)));
+      this._wearPart("crankshaft", driveWear * (0.35 + (rpmFrac > 0.92 ? 1.50 : 0)));
+      this._wearPart("pistons", driveWear * (0.40 + overBoost * 0.075));
+      this._wearPart("exhaustManifold", driveWear * (0.45 + overBoost * 0.092));
+      this._wearPart("intercooler", driveWear * (0.30 + overBoost * 0.058));
       this._wearPart("flywheel", driveWear * 0.45);
       this._wearPart("gearboxGears", driveWear * 0.55);
       this._wearPart("transferCase", driveWear * (this.driveMode === "4L" ? 0.95 : 0.48));
       this._wearPart("driveshaft", driveWear * 0.50);
-      this._wearPart("wheelHubs", (this.speedKmh / 85) * 0.012 * dt);
+      this._wearPart("wheelHubs", (this.speedKmh / 85) * 0.0072 * dt);
 
       if (this.coolantTemp > 110) {
         const ohSev = (this.coolantTemp - 110) * dt;
@@ -432,10 +496,11 @@ KK.VehiclePhysics = class VehiclePhysics {
         this._wearPart("camshaft",        ohSev * 0.055);
         this._wearPart("sparkPlugs",      ohSev * 0.075);
         this._wearPart("waterPump",       ohSev * 0.065);
-        this._wearPart("fuelRail",        ohSev * 0.045);
-        this._wearPart("injectors",       ohSev * 0.050);
-        this._wearPart("turbo",           ohSev * 0.065);
-        this._wearPart("exhaustManifold", ohSev * 0.050);
+        this._wearPart("radiator",        ohSev * 0.045);
+        this._wearPart("fuelRails",       ohSev * 0.045);
+        this._wearPart("fuelInjectors",   ohSev * 0.050);
+        this._wearPart("intercooler",     ohSev * 0.055);
+        this._wearPart("exhaustManifold", ohSev * (hasTurbo || eng.stockTurbo ? 0.085 : 0.050));
       }
       if (this.egtTemp > 940) {
         this._wearPart("headGasket", (this.egtTemp - 935) * 0.008 * dt);
@@ -456,8 +521,8 @@ KK.VehiclePhysics = class VehiclePhysics {
       this.egtTemp += (45 - this.egtTemp) * dt * 0.32;
     }
 
-    const totalForce = new THREE.Vector3(0, -9.81 * mass, 0);
-    const totalTorque = new THREE.Vector3(0, 0, 0);
+    const totalForce = this._totalForce.set(0, -9.81 * mass, 0);
+    const totalTorque = this._totalTorque.set(0, 0, 0);
 
     if (this.cargoCount > 0 && !this.cargoStrapped) {
       this.cargoTilt += (Math.max(-0.45, Math.min(0.45, -latSpeed * 0.055)) - this.cargoTilt) * Math.min(1, dt * 6);
@@ -465,7 +530,7 @@ KK.VehiclePhysics = class VehiclePhysics {
 
     const is4WD = (this.driveMode === "4H" || this.driveMode === "4L" || spec.driveType === "6WD_FULL" || spec.driveType === "8WD_FULL" || spec.driveType === "AWD_FULL");
     let drivenCount = 0;
-    for (const w of this.wheels) { if (is4WD || w.def.axle !== "front") drivenCount++; }
+    for (let i = 0; i < this.wheels.length; i++) { if (is4WD || this.wheels[i].def.axle !== "front") drivenCount++; }
     const driveSign = this.gear === -1 ? -1 : 1;
 
     // Transmission & Drivetrain mechanical efficiency from installed Gearbox/TransferCase/Driveshaft/Clutch!
@@ -485,19 +550,22 @@ KK.VehiclePhysics = class VehiclePhysics {
     const arbPartMult = KK.getPartPerf(vs, "antiRollBar");
     const hubPartMult = KK.getPartPerf(vs, "wheelHubs");
     const brakePartMult = KK.getPartPerf(vs, "brakeSystem");
-    const shockPartIds = ["shockFL", "shockFR", "shockFL", "shockFR", "shockRL", "shockRR", "shockRL", "shockRR"];
+    const shockPartIds = this._shockPartIds;
 
     let maxWater = 0, topWaterY = -9999, maxPotholeImpact = 0, groundedWheels = 0;
     let onDirtySurface = false;
     let dominantSurface = "gravel";
     this.onBridgeId = null;
 
-    const wheelForcesY = new Float32Array(this.wheels.length);
+    if (!this._wheelForcesY || this._wheelForcesY.length !== this.wheels.length) {
+      this._wheelForcesY = new Float32Array(this.wheels.length);
+    }
+    const wheelForcesY = this._wheelForcesY;
     for (let i = 0; i < this.wheels.length; i++) {
       const w = this.wheels[i];
       w.prevCompression = w.compression;
-      const localMount = new THREE.Vector3(w.def.x, w.def.y, w.def.z);
-      const worldMount = localMount.clone().applyQuaternion(this.quat).add(this.pos);
+      const localMount = this._localMount.set(w.def.x, w.def.y, w.def.z);
+      const worldMount = this._worldMount.copy(localMount).applyQuaternion(this.quat).add(this.pos);
       const tInfo = world.getTerrainInfo(worldMount.x, worldMount.z, true, worldMount.y);
       w.surface = tInfo.surface; w.waterDepth = tInfo.waterDepth; w.mudDepth = tInfo.mudDepth;
       dominantSurface = tInfo.surface;
@@ -557,7 +625,7 @@ KK.VehiclePhysics = class VehiclePhysics {
               if (impactSeverity > 1.25) {
                 const prevGl2 = hlth.glass !== undefined ? hlth.glass : 100;
                 hlth.glass = Math.max(0, prevGl2 - impactSeverity * 18);
-                if (prevGl2 >= 55 && hlth.glass < 55) this.emit("toast", "💥 WINDSHIELD CRACKED FROM HARD LANDING!");
+                if (!this.spec.isTracked && prevGl2 >= 55 && hlth.glass < 55) this.emit("toast", "💥 WINDSHIELD CRACKED FROM HARD LANDING!");
               }
               const shockId = i === 0 ? "shockFL" : (i === 1 ? "shockFR" : (i === 2 ? "shockRL" : "shockRR"));
               const shockHp = (parts[shockId] ? parts[shockId].hp : 100);
@@ -601,21 +669,40 @@ KK.VehiclePhysics = class VehiclePhysics {
       if (wR.grounded) wheelForcesY[i + 1] = Math.max(0, wheelForcesY[i + 1] - arbForce);
     }
 
-    const groundedDriveCount = this.wheels.reduce((acc, ww, idx) => acc + ((ww.grounded && wheelForcesY[idx] > 0) ? 1 : 0), 0);
+    let groundedDriveCount = 0;
+    for (let i = 0; i < this.wheels.length; i++) {
+      if (this.wheels[i].grounded && wheelForcesY[i] > 0) groundedDriveCount++;
+    }
+    const cogShift = this._cogShift.set(
+      this.cargoTilt * 0.45,
+      spec.cogOffsetY + liftHeight * 0.65 + (this.cargoCount * 0.04),
+      0
+    ).applyQuaternion(this.quat);
+    const engineWheelOmega = (this.rpm / Math.max(1.0, totalRatio)) * 0.10471976; // rad/s
+    let drivenSlipSum = 0, drivenGroundedCnt = 0;
+
     for (let i = 0; i < this.wheels.length; i++) {
       const w = this.wheels[i], fN = wheelForcesY[i];
-      if (!w.grounded || fN <= 0) { w.spinAngle += (fwdSpeed / wheelRad) * dt; continue; }
+      const isDriven = (is4WD || w.def.axle !== "front") && drivenCount > 0;
+      if (!w.grounded || fN <= 0) {
+        if (isDriven && this.engineRunning && this.gear !== 0 && throttle > 0.08 && !launchHeld) {
+          w.spinAngle += driveSign * engineWheelOmega * dt;
+        } else {
+          w.spinAngle += (fwdSpeed / wheelRad) * dt;
+        }
+        continue;
+      }
 
-      const localMount = new THREE.Vector3(w.def.x, w.def.y + w.visualOffsetY, w.def.z);
-      const rWorld = localMount.clone().applyQuaternion(this.quat);
-      const patchVel = this.vel.clone().add(new THREE.Vector3().crossVectors(this.angVel, rWorld));
+      const localMount = this._localMount.set(w.def.x, w.def.y + w.visualOffsetY, w.def.z);
+      const rWorld = this._rWorld.copy(localMount).applyQuaternion(this.quat);
+      const patchVel = this._patchVel.crossVectors(this.angVel, rWorld).add(this.vel);
 
       const sideSign = w.def.x < 0 ? -1 : 1;
       const stScale = w.def.steerScale !== undefined ? w.def.steerScale : 1.0;
       const wSteer = (w.def.steer ? this.steerAngle * stScale : 0) + sideSign * ((tun.toeDeg * Math.PI) / 180) * (w.def.steer ? 1 : 0.25);
       const cosS = Math.cos(wSteer), sinS = Math.sin(wSteer);
-      const wFwd = forward.clone().multiplyScalar(cosS).add(right.clone().multiplyScalar(sinS)).normalize();
-      const wRight = right.clone().multiplyScalar(cosS).sub(forward.clone().multiplyScalar(sinS)).normalize();
+      const wFwd = this._wFwd.copy(forward).multiplyScalar(cosS).addScaledVector(right, sinS).normalize();
+      const wRight = this._wRight.copy(right).multiplyScalar(cosS).addScaledVector(forward, -sinS).normalize();
 
       const vLong = patchVel.dot(wFwd), vLat = patchVel.dot(wRight);
       const psi = w.def.axle === "front" ? tun.frontPsi : tun.rearPsi;
@@ -692,7 +779,6 @@ KK.VehiclePhysics = class VehiclePhysics {
       const longMu = mu * Math.max(0.75, 1.0 - camberAbs * 0.025);
       const latMu = mu * (1.0 + Math.min(3.5, camberAbs) * 0.022);
 
-      const isDriven = (is4WD || w.def.axle !== "front") && drivenCount > 0;
       let driveForce = 0;
       if (isDriven && this.engineRunning && this.gear !== 0) {
         const axleLocked = (w.def.axle === "front" && this.frontLock) || (w.def.axle !== "front" && this.rearLock) || spec.driveType === "AWD_FULL";
@@ -729,6 +815,27 @@ KK.VehiclePhysics = class VehiclePhysics {
       const stopClamp = Math.abs(vLong) * mass * (handbrake ? 14.0 : 6.5) * brakeFade;
       let fLong = effDrive - Math.sign(vLong) * Math.min(stopClamp, brakeF) - vLong * rollingDrag * (fN * 0.055);
       const maxLong = fN * longMu * (spec.isTracked ? (handbrake ? 2.1 : 1.85) : (handbrake ? 1.55 : 1.28));
+
+      // Lightweight wheelspin & torque-converter slip detection for mud roosting & natural turbo spool!
+      let wSlip = 0;
+      if (isDriven) {
+        drivenGroundedCnt++;
+        if (this.engineRunning && this.gear !== 0 && !launchHeld && !handbrake && throttle > 0.08 && brake < 0.2) {
+          const absDrive = Math.abs(effDrive);
+          let gripSlip = 0;
+          if (maxLong > 1.0 && absDrive > maxLong * 0.92) {
+            gripSlip = Math.min(1.0, (absDrive - maxLong * 0.92) / Math.max(maxLong * 0.65, 250));
+          }
+          let launchSlip = 0;
+          const isLowG = (this.gear === 1 || this.gear === -1 || this.driveMode === "4L");
+          if (isLowG && throttle > 0.35 && absSpd < 6.0) {
+            launchSlip = throttle * (1.0 - absSpd / 6.0) * (mu < 0.55 ? 0.55 : 0.26);
+          }
+          wSlip = Math.min(1.0, Math.max(gripSlip, launchSlip));
+        }
+        drivenSlipSum += wSlip;
+      }
+
       fLong = Math.max(-maxLong, Math.min(maxLong, fLong));
 
       const isPowerSlide = (isRear && throttle > 0.72 && Math.abs(this.steerAngle) > 0.16 && this.speedKmh > 28 && !spec.isTracked && (this.driveMode === "2H" || spec.agileSteer));
@@ -744,17 +851,59 @@ KK.VehiclePhysics = class VehiclePhysics {
         : (spec.driveType === "AWD_FULL" ? (1.13 * rearAeroGrip) : 1.04);
       const baseStiff = spec.isTracked ? 11.5 : ((w.surface === "race_tarmac" ? 9.0 : (w.surface === "asphalt" ? 7.6 : 5.2)) * (psi < 16 ? 0.80 : 1.0));
       const cornerStiff = baseStiff * frontBite;
-      let fLat = -vLat * fN * 0.17 * cornerStiff * hbDriftScale;
-      const maxLat = fN * latMu * (spec.isTracked ? 1.95 : 1.26) * frontBite * hbDriftScale;
-      fLat = Math.max(-maxLat, Math.min(maxLat, fLat));
 
-      const fWorld = up.clone().multiplyScalar(fN).add(wFwd.multiplyScalar(fLong)).add(wRight.multiplyScalar(fLat));
+      // Pacejka-style slip-angle lateral force curve + Euler-safe low-speed velocity clamp
+      const slipDenom = Math.max(Math.abs(vLong), 1.2);
+      const slipAngle = Math.atan2(vLat, slipDenom);
+      const pacejkaC = spec.isTracked ? 1.25 : 1.45;
+      const pacejkaB = Math.max(3.8, Math.min(13.5, cornerStiff * 0.92));
+      const maxLat = fN * latMu * (spec.isTracked ? 1.95 : 1.26) * frontBite * hbDriftScale;
+      const rawPacejkaLat = -maxLat * Math.sin(pacejkaC * Math.atan(pacejkaB * slipAngle));
+      const maxStopLat = (Math.abs(vLat) * (fN / 9.81) / Math.max(dt, 0.004)) * 0.65;
+      let fLat = Math.abs(rawPacejkaLat) > maxStopLat ? Math.sign(rawPacejkaLat) * maxStopLat : rawPacejkaLat;
+
+      // Combined Kamm friction circle clamp so braking+turning & trail-braking feel natural
+      if (maxLong > 0.01 && maxLat > 0.01) {
+        const combined = Math.hypot(fLong / maxLong, fLat / maxLat);
+        if (combined > 1.0) {
+          const invComb = 1.0 / combined;
+          fLong *= invComb;
+          fLat *= invComb;
+        }
+      }
+
+      const fWorld = this._fWorld.copy(up).multiplyScalar(fN)
+        .addScaledVector(wFwd, fLong)
+        .addScaledVector(wRight, fLat);
       totalForce.add(fWorld);
 
-      const cogShift = new THREE.Vector3(this.cargoTilt * 0.45, spec.cogOffsetY + liftHeight * 0.65 + (this.cargoCount * 0.04), 0).applyQuaternion(this.quat);
-      totalTorque.add(new THREE.Vector3().crossVectors(rWorld.clone().sub(cogShift), fWorld));
-      w.spinAngle += (vLong / wheelRad) * dt;
+      const leverArm = this._tmpV1.copy(rWorld).sub(cogShift);
+      const wheelTorque = this._tmpV2.crossVectors(leverArm, fWorld);
+      totalTorque.add(wheelTorque);
+
+      const rollOmega = vLong / wheelRad;
+      if (isDriven && wSlip > 0.02 && this.engineRunning && this.gear !== 0 && !launchHeld) {
+        const slipOmega = driveSign * Math.max(Math.abs(rollOmega) * (1.0 + wSlip * 0.75), engineWheelOmega);
+        w.spinAngle += (rollOmega + (slipOmega - rollOmega) * wSlip) * dt;
+      } else if (handbrake && isRear) {
+        w.spinAngle += rollOmega * 0.08 * dt;
+      } else {
+        w.spinAngle += rollOmega * dt;
+      }
     }
+
+    const rawSlip = (drivenGroundedCnt > 0 && this.engineRunning && this.gear !== 0 && !launchHeld && throttle > 0.08)
+      ? (drivenSlipSum / drivenGroundedCnt)
+      : 0;
+    this.wheelSlipRatio += (rawSlip - this.wheelSlipRatio) * Math.min(1, dt * (rawSlip > this.wheelSlipRatio ? 7.5 : 5.5));
+    if (this.wheelSlipRatio < 0.001) this.wheelSlipRatio = 0;
+
+    this.currentSurface = dominantSurface;
+    const latDrift = (groundedWheels > 0 && this.speedKmh > 14)
+      ? Math.min(1.0, Math.max(0, (Math.abs(latSpeed) - 1.4) / 6.5))
+      : 0;
+    const targetDrift = Math.min(1.0, Math.max(latDrift, this.wheelSlipRatio * 0.85));
+    this.driftIntensity += (targetDrift - this.driftIntensity) * Math.min(1, dt * 8.0);
 
     this.inWaterDepth = maxWater;
     const speedSq = this.vel.lengthSq();
@@ -762,7 +911,9 @@ KK.VehiclePhysics = class VehiclePhysics {
       const aeroCd = (spec.id === "uaz452" || spec.id === "kamaz" || spec.id === "humvee") ? 0.78 : ((spec.id === "wrx" || spec.id === "evo" || spec.id === "gtr_r35") ? 0.34 : 0.55);
       const airDrag = aeroCd * (spec.bodyWidth * spec.bodyHeight);
       const waterDrag = maxWater > 0.1 ? (maxWater * (spec.isTracked ? 185 : 480)) : 0;
-      totalForce.add(this.vel.clone().normalize().multiplyScalar(-(airDrag * speedSq + waterDrag * Math.sqrt(speedSq))));
+      const spd = Math.sqrt(speedSq);
+      const dragMag = -(airDrag * speedSq + waterDrag * spd);
+      totalForce.addScaledVector(this.vel, dragMag / spd);
     }
 
     // AMPHIBIOUS BUOYANCY & WATER-JET THRUST (BTR-80 8x8 floats & swims across Great Krasnaya River!)
@@ -774,8 +925,7 @@ KK.VehiclePhysics = class VehiclePhysics {
         const buoyF = Math.max(0, (submerge + 0.35) * mass * 22.0) - this.vel.y * mass * 3.2;
         totalForce.y += buoyF;
         // Self-righting hull stability in water
-        const targetUp = new THREE.Vector3(0, 1, 0);
-        const tiltAxis = new THREE.Vector3().crossVectors(up, targetUp);
+        const tiltAxis = this._tmpV1.crossVectors(up, this._upAxis);
         totalTorque.addScaledVector(tiltAxis, mass * 16.0);
         // Twin Rear Water-Jet Propulsion + Rudder Steering!
         if (this.engineRunning) {
@@ -804,13 +954,17 @@ KK.VehiclePhysics = class VehiclePhysics {
       let anchor = this.winch.anchorPos;
       if (this.winch.targetPeerId && remotePlayersMap && remotePlayersMap.has(this.winch.targetPeerId)) {
         const rp = remotePlayersMap.get(this.winch.targetPeerId);
-        anchor = new THREE.Vector3(rp.gx, rp.gy + 0.8, rp.gz);
-        this.winch.anchorPos = anchor;
+        if (anchor && typeof anchor.set === "function") {
+          anchor.set(rp.gx, rp.gy + 0.8, rp.gz);
+        } else {
+          anchor = new THREE.Vector3(rp.gx, rp.gy + 0.8, rp.gz);
+          this.winch.anchorPos = anchor;
+        }
       }
       if (anchor) {
-        const localAtt = this.winch.localAttach || new THREE.Vector3(0, 0.6, spec.bodyLen * 0.5);
-        const winchOrigin = localAtt.clone().applyQuaternion(this.quat).add(this.pos);
-        const diff = anchor.clone().sub(winchOrigin);
+        const localAtt = this.winch.localAttach || this._tmpV3.set(0, 0.6, spec.bodyLen * 0.5);
+        const winchOrigin = this._tmpV1.copy(localAtt).applyQuaternion(this.quat).add(this.pos);
+        const diff = this._tmpV2.copy(anchor).sub(winchOrigin);
         const dist = diff.length();
         const maxReach = upg.hdWinch ? 120 : 55;
         if (dist > maxReach + 12) {
@@ -822,7 +976,6 @@ KK.VehiclePhysics = class VehiclePhysics {
           if (isComradeWinch) {
             // SMART COMRADE RECOVERY: Reeling [T] pulls your COMRADE toward YOU!
             if (this.winch.reeling < 0 || dist > this.winch.length + 0.6) {
-              const pullDir = diff.clone().normalize();
               const pullForce = upg.hdWinch ? 18.5 : 12.0;
               this.emit("winch_pull_peer", {
                 targetPeerId: this.winch.targetPeerId,
@@ -832,24 +985,26 @@ KK.VehiclePhysics = class VehiclePhysics {
               if (!handbrake && this.speedKmh < 8) {
                 this.vel.x *= Math.max(0.5, 1.0 - dt * 5.0);
                 this.vel.z *= Math.max(0.5, 1.0 - dt * 5.0);
-              } else if (!handbrake && dist > this.winch.length) {
-                const gentleSelf = pullDir.multiplyScalar(Math.min(6500, (dist - this.winch.length) * 2400));
-                totalForce.add(gentleSelf);
+              } else if (!handbrake && dist > this.winch.length && dist > 0.001) {
+                const gentleMag = Math.min(6500, (dist - this.winch.length) * 2400);
+                totalForce.addScaledVector(diff, gentleMag / dist);
               }
             }
-          } else if (dist > this.winch.length) {
+          } else if (dist > this.winch.length && dist > 0.001) {
             const stretch = dist - this.winch.length;
             const pullStrength = upg.hdWinch ? 54000 : 26000;
             const fMag = Math.min(pullStrength, stretch * 14000 + (this.winch.reeling < 0 ? pullStrength * 0.45 : 0));
-            const fWinch = diff.normalize().multiplyScalar(fMag);
+            const fWinch = this._tmpV3.copy(diff).multiplyScalar(fMag / dist);
             totalForce.add(fWinch);
-            totalTorque.add(new THREE.Vector3().crossVectors(winchOrigin.clone().sub(this.pos), fWinch).multiplyScalar(0.82));
+            const wArm = this._tmpV1.sub(this.pos);
+            const wTrq = this._tmpV2.crossVectors(wArm, fWinch);
+            totalTorque.addScaledVector(wTrq, 0.82);
           }
         }
       }
     }
 
-    const prevVel = this.vel.clone();
+    const prevVel = this._prevVel.copy(this.vel);
     this.vel.addScaledVector(totalForce, dt / mass);
 
     // TRUE MECHANICAL HANDBRAKE STATIC HOLD (Stops coasting dead on hills & flats!)
@@ -872,9 +1027,9 @@ KK.VehiclePhysics = class VehiclePhysics {
       }
     }
 
-    const invQuat = this.quat.clone().invert();
-    const localTorque = totalTorque.clone().applyQuaternion(invQuat);
-    const worldAngAccel = new THREE.Vector3(localTorque.x / Ix, localTorque.y / Iy, localTorque.z / Iz).applyQuaternion(this.quat);
+    const invQuat = this._invQuat.copy(this.quat).invert();
+    const localTorque = this._tmpV1.copy(totalTorque).applyQuaternion(invQuat);
+    const worldAngAccel = this._tmpV2.set(localTorque.x / Ix, localTorque.y / Iy, localTorque.z / Iz).applyQuaternion(this.quat);
     // REAL TRACKED TANK NEUTRAL-PIVOT SKID-STEERING (Rotate cleanly in place or at low speed!)
     if (spec.isTracked && groundedWheels >= 4 && this.engineRunning && Math.abs(input.steer || 0) > 0.05) {
       const steerIn = input.steer;
@@ -883,7 +1038,8 @@ KK.VehiclePhysics = class VehiclePhysics {
       this.angVel.y += (targetYaw - this.angVel.y) * Math.min(1, dt * 5.2);
       // Spin opposite tracks in opposite directions during neutral pivot!
       if (Math.abs(fwdSpeed) < 2.2) {
-        for (const w of this.wheels) {
+        for (let i = 0; i < this.wheels.length; i++) {
+          const w = this.wheels[i];
           w.spinAngle += (w.def.x < 0 ? -steerIn : steerIn) * 3.8 * dt;
         }
       }
@@ -893,18 +1049,19 @@ KK.VehiclePhysics = class VehiclePhysics {
       const steerInput = input.steer || 0;
       const isStraight = Math.abs(steerInput) < 0.05 && !handbrake;
       if (isStraight) {
-        const gyroK = (spec.driveType === "AWD_FULL" ? 8.5 : (spec.agileSteer ? 5.8 : 4.2));
+        const gyroK = (spec.driveType === "AWD_FULL" ? 6.2 : (spec.agileSteer ? 4.4 : 3.4));
         this.angVel.y *= Math.exp(-gyroK * dt);
-        if (Math.abs(latSpeed) > 0.15 && Math.abs(latSpeed) < 8.0) {
-          const stabF = -latSpeed * mass * (spec.driveType === "AWD_FULL" ? 2.4 : 1.4);
+        if (Math.abs(latSpeed) > 0.15 && Math.abs(latSpeed) < 6.0) {
+          const stabF = -latSpeed * mass * (spec.driveType === "AWD_FULL" ? 1.5 : 0.9);
           this.vel.addScaledVector(right, (stabF / mass) * dt);
         }
       } else if (Math.abs(steerInput) >= 0.05) {
-        const tvGain = spec.driveType === "AWD_FULL" ? 1.45 : (spec.agileSteer ? 1.15 : 0.65);
+        // Gently dialed back yaw boost now that Pacejka slip-angle tires bite naturally
+        const tvGain = spec.driveType === "AWD_FULL" ? 0.95 : (spec.agileSteer ? 0.75 : 0.42);
         const dirSign = fwdSpeed >= 0 ? 1 : -1;
         const spdRamp = Math.min(1.0, Math.abs(fwdSpeed) / 14.0) / (1.0 + Math.abs(fwdSpeed) * 0.022);
         const targetYawBoost = this.steerAngle * dirSign * spdRamp * tvGain;
-        this.angVel.y += (targetYawBoost - this.angVel.y) * Math.min(1, dt * 2.4);
+        this.angVel.y += (targetYawBoost - this.angVel.y) * Math.min(1, dt * 1.65);
       }
     }
 
@@ -912,14 +1069,14 @@ KK.VehiclePhysics = class VehiclePhysics {
     this.lastGroundedWheels = groundedWheels;
     if (groundedWheels > 0) {
       vs.odometerM = (vs.odometerM || 0) + Math.abs(fwdSpeed) * dt;
-      // v16.9 GT-R R35 ATTESA E-TS PRO Active Yaw Torque Vectoring (CORRECT +dirSign turn direction!)
+      // v16.9 GT-R R35 ATTESA E-TS PRO Active Yaw Torque Vectoring (dialed back to complement natural tire grip)
       if (isGtrAttesa && Math.abs(this.steerAngle) > 0.02 && this.speedKmh > 20) {
         const dirSignA = fwdSpeed >= 0 ? 1 : -1;
         const steerNorm = Math.max(-1.0, Math.min(1.0, this.steerAngle / 0.32));
         const spdCurve = Math.min(1.0, (this.speedKmh - 18) / 45);
-        const targetAttesaYaw = steerNorm * dirSignA * (1.35 + Math.min(1.15, this.speedKmh / 145)) * spdCurve;
-        this.angVel.y += (targetAttesaYaw - this.angVel.y) * Math.min(1, dt * 6.5);
-        const apexPull = -steerNorm * Math.min(14.0, this.speedKmh * 0.065) * spdCurve;
+        const targetAttesaYaw = steerNorm * dirSignA * (1.05 + Math.min(0.85, this.speedKmh / 155)) * spdCurve;
+        this.angVel.y += (targetAttesaYaw - this.angVel.y) * Math.min(1, dt * 4.2);
+        const apexPull = -steerNorm * Math.min(8.5, this.speedKmh * 0.040) * spdCurve;
         this.vel.addScaledVector(right, apexPull * dt);
       }
       const rpDamp = Math.exp(-3.6 * dt);
@@ -936,8 +1093,9 @@ KK.VehiclePhysics = class VehiclePhysics {
 
     const angSpeed = this.angVel.length();
     if (angSpeed > 0.0001) {
-      const dq = new THREE.Quaternion().setFromAxisAngle(this.angVel.clone().divideScalar(angSpeed), angSpeed * dt);
-      this.quat.premultiply(dq).normalize();
+      const axis = this._tmpV1.copy(this.angVel).divideScalar(angSpeed);
+      this._dq.setFromAxisAngle(axis, angSpeed * dt);
+      this.quat.premultiply(this._dq).normalize();
     }
 
     // 0. FORTIFIED BASE WALL COLLISIONS (Hammond's Mesa Perimeter Blast Walls!)
@@ -1030,7 +1188,7 @@ KK.VehiclePhysics = class VehiclePhysics {
             if (impactSpd > 8.5) {
               const prevGl = hlth.glass !== undefined ? hlth.glass : 100;
               hlth.glass = Math.max(0, prevGl - hitDmg * 1.45);
-              if (prevGl >= 55 && hlth.glass < 55) this.emit("toast", "💥 WINDSHIELD CRACKED ON IMPACT!");
+              if (!this.spec.isTracked && prevGl >= 55 && hlth.glass < 55) this.emit("toast", "💥 WINDSHIELD CRACKED ON IMPACT!");
             }
             if (impactSpd > 10.5) {
               this._wearPart("shockFL", hitDmg * 0.55);
@@ -1120,9 +1278,11 @@ KK.VehiclePhysics = class VehiclePhysics {
     }
 
     // 1C. v15.0.1 SOLID BUILDING, HOUSE, SKYSCRAPER, PORT & REACTOR COLLISIONS!
-    if (world.buildingColliders && world.buildingColliders.length > 0) {
+    const bList = world.getNearbyBuildingColliders
+      ? world.getNearbyBuildingColliders(this.pos.x, this.pos.z)
+      : world.buildingColliders;
+    if (bList && bList.length > 0) {
       const bRad = Math.max(spec.bodyWidth, spec.bodyLen * 0.45) * 0.50;
-      const bList = world.buildingColliders;
       const tankArmB = spec.isSchreckensfurst ? 0.16 : (spec.isTracked ? 0.28 : 1.0);
       for (let bi = 0; bi < bList.length; bi++) {
         const b = bList[bi];
@@ -1174,9 +1334,10 @@ KK.VehiclePhysics = class VehiclePhysics {
       }
     }
 
-    // 2. MULTIPLAYER CAR-TO-CAR COLLISIONS (LAN RAMMING CHAOS!)
+    // 2. MULTIPLAYER CAR-TO-CAR & ARMORED VEHICLE RAMMING COLLISIONS!
     if (remotePlayersMap && remotePlayersMap.size > 0) {
       const myRad = Math.max(spec.bodyWidth, spec.bodyLen * 0.56) * 0.50;
+      const myTier = this.getArmorTier(spec);
       for (const rp of remotePlayersMap.values()) {
         if (!rp || rp.onFoot) continue;
         const rSpec = KK.VEHICLES[rp.vehicleId] || KK.VEHICLES.uaz452;
@@ -1185,56 +1346,333 @@ KK.VehiclePhysics = class VehiclePhysics {
         const dy = this.pos.y - rp.gy;
         const dz = this.pos.z - rp.gz;
         const sumR = myRad + otherRad;
-        if (Math.abs(dx) > sumR || Math.abs(dz) > sumR || Math.abs(dy) > 2.6) continue;
+        if (Math.abs(dx) > sumR || Math.abs(dz) > sumR || Math.abs(dy) > 2.8) continue;
         const d2 = dx * dx + dz * dz;
         if (d2 >= sumR * sumR || d2 < 0.001) continue;
 
         const d = Math.sqrt(d2);
         const nx = dx / d, nz = dz / d;
         const pen = sumR - d;
-        this.pos.x += nx * pen * 0.55;
-        this.pos.z += nz * pen * 0.55;
+        const otherTier = this.getArmorTier(rSpec);
+        const otherMass = rSpec.massKg || 2000;
+        const totalM = mass + otherMass;
+        const myShare = otherMass / totalM;
+        const otherShare = mass / totalM;
+        const isArmoredClash = (myTier >= 2 || otherTier >= 2);
+        const penShare = isArmoredClash ? Math.max(0.10, Math.min(0.92, myShare * 1.12)) : 0.55;
+        this.pos.x += nx * pen * penShare;
+        this.pos.z += nz * pen * penShare;
 
         const rvx = rp.vx || 0, rvz = rp.vz || 0;
         const relVx = this.vel.x - rvx;
         const relVz = this.vel.z - rvz;
         const relDotN = relVx * nx + relVz * nz;
+        const tx = -nz, tz = nx;
+        const relDotT = relVx * tx + relVz * tz;
+
+        // Continuous metallic grind sparks when armored hulls rub together at speed
+        if (isArmoredClash && Math.abs(relDotT) > 4.2 && this.lastImpactFx <= 0) {
+          this.lastImpactFx = 0.14;
+          const midX = (this.pos.x + rp.gx) * 0.5;
+          const midZ = (this.pos.z + rp.gz) * 0.5;
+          this.emit("rim_spark", { x: midX, y: this.pos.y + 0.85, z: midZ });
+          this.emit("rim_spark", { x: midX + tx * 0.35, y: this.pos.y + 0.65, z: midZ + tz * 0.35 });
+        }
 
         if (relDotN < 0) {
-          const otherMass = rSpec.massKg || 2000;
-          const totalM = mass + otherMass;
-          const myShare = otherMass / totalM;
-          const otherShare = mass / totalM;
           const impactMag = -relDotN;
-          const e = 1.48; // Bouncy chaotic multiplayer metal crunch!
-
-          this.vel.x += nx * impactMag * e * myShare;
-          this.vel.z += nz * impactMag * e * myShare;
-          this.vel.y += Math.min(4.5, impactMag * 0.14 * myShare);
-
           const sideSpin = (forward.x * nz - forward.z * nx);
-          this.angVel.y += sideSpin * Math.min(4.5, impactMag * 0.24);
+          const dotFwdN = forward.x * nx + forward.z * nz;
+          const rightDotN = right.x * nx + right.z * nz;
+          const sideHitFactor = 1.0 - Math.abs(dotFwdN);
+
+          let e = 1.38;
+          let localImpulseMult = 1.0;
+          let remoteShoveMult = 1.15;
+          let localHop = Math.min(4.5, impactMag * 0.14 * myShare);
+          let remoteHop = Math.min(6.5, impactMag * 0.22 * otherShare);
+          let localYawKick = sideSpin * Math.min(4.5, impactMag * 0.24);
+          let remoteYawKick = -sideSpin * Math.min(5.0, impactMag * 0.30);
+
+          if (myTier >= 2 && otherTier === 1) {
+            // Tank/APC plowing through a light civilian car: low restitution, minimal recoil, violent shove to lighter car!
+            e = 1.08;
+            localImpulseMult = (myTier === 3) ? 0.85 : 0.95;
+            remoteShoveMult = (myTier === 3) ? 1.55 : 1.35;
+            localHop = Math.min(myTier === 3 ? 0.55 : 1.1, impactMag * 0.03 * myShare);
+            remoteHop = Math.min(7.5, impactMag * 0.30 * otherShare);
+            localYawKick = sideSpin * Math.min(1.1, impactMag * 0.07 * Math.max(0.25, myShare * 2.0));
+            remoteYawKick = -sideSpin * Math.min(7.2, impactMag * 0.46 * Math.max(0.6, otherShare));
+          } else if (myTier === 1 && otherTier >= 2) {
+            // Light civilian car hit by or slamming into a Tank/APC: violent crunch & spin!
+            e = 1.08;
+            localImpulseMult = (otherTier === 3) ? 1.24 : 1.14;
+            remoteShoveMult = 0.90;
+            localHop = Math.min(6.2, impactMag * 0.25 * myShare);
+            remoteHop = Math.min(0.8, impactMag * 0.04 * otherShare);
+            localYawKick = sideSpin * Math.min(6.4, impactMag * 0.40);
+            remoteYawKick = -sideSpin * Math.min(1.4, impactMag * 0.10 * Math.max(0.2, otherShare));
+          } else if (myTier >= 2 && otherTier >= 2) {
+            // Tank vs Tank / Armored vs Armored: realistic heavy low-bounce metallic grind & mass-weighted momentum!
+            e = 1.12;
+            localImpulseMult = 1.0;
+            remoteShoveMult = 1.02;
+            localHop = Math.min(1.4, impactMag * 0.045 * myShare);
+            remoteHop = Math.min(1.4, impactMag * 0.045 * otherShare);
+            // Tangential metallic grind damping
+            const scrapeImp = Math.sign(relDotT) * Math.min(Math.abs(relDotT) * 0.28, impactMag * 0.22) * myShare;
+            this.vel.x -= tx * scrapeImp;
+            this.vel.z -= tz * scrapeImp;
+            const glanceYaw = (sideSpin * Math.min(2.6, impactMag * 0.16) + Math.max(-1.6, Math.min(1.6, relDotT * 0.08))) * Math.max(0.35, myShare * 1.45);
+            localYawKick = glanceYaw;
+            remoteYawKick = -sideSpin * Math.min(2.8, impactMag * 0.18) * Math.max(0.35, otherShare * 1.45);
+          }
+
+          this.vel.x += nx * impactMag * e * myShare * localImpulseMult;
+          this.vel.z += nz * impactMag * e * myShare * localImpulseMult;
+          this.vel.y += localHop;
+          this.angVel.y += localYawKick;
 
           if (impactMag > 2.2 && this.carHitCooldown <= 0) {
             this.carHitCooldown = 0.28;
             const bullShield = upg.bullbar ? 0.35 : 1.0;
-            const dmg = Math.min(20, impactMag * 0.9 * bullShield);
-            hlth.body = Math.max(0, hlth.body - dmg);
-            this._wearPart("radiator", dmg * 0.35);
-            this.damageHeadlights(dmg * 1.5, sideSpin);
+            const midX = (this.pos.x + rp.gx) * 0.5;
+            const midY = this.pos.y + 0.85;
+            const midZ = (this.pos.z + rp.gz) * 0.5;
+
+            if (myTier >= 2 && otherTier === 1) {
+              // Armored rig vs civilian car: tiny armor scratch (* 0.08 for Heavy MBT)
+              const scratchScale = (myTier === 3) ? 0.08 : 0.14;
+              const dmg = Math.min(8, impactMag * 0.9 * scratchScale * bullShield);
+              hlth.body = Math.max(0, hlth.body - dmg);
+              this._wearPart("radiator", dmg * 0.12);
+              if (!spec.isTracked && impactMag > 12.0) this.damageHeadlights(dmg * 0.8, sideSpin);
+            } else if (myTier === 1 && otherTier >= 2) {
+              // Light civilian car crunched by Tank/APC: heavy body, radiator, headlight & tire pinch damage!
+              const dmg = Math.min(44, impactMag * (otherTier === 3 ? 2.35 : 1.75) * bullShield);
+              hlth.body = Math.max(0, hlth.body - dmg);
+              this._wearPart("radiator", dmg * 0.55);
+              this._wearPart("intercooler", dmg * 0.35);
+              this.damageHeadlights(dmg * 2.0, sideSpin);
+              if (impactMag > 8.0) {
+                const prevGlR = hlth.glass !== undefined ? hlth.glass : 100;
+                hlth.glass = Math.max(0, prevGlR - dmg * 0.95);
+                if (!this.spec.isTracked && prevGlR >= 55 && hlth.glass < 55) this.emit("toast", "💥 WINDSHIELD SHATTERED BY ARMORED COLLISION!");
+              }
+              if (impactMag > 6.5 && this.wheels.length > 0) {
+                const isFrontImpact = dotFwdN < 0.15;
+                const isLeftSide = rightDotN >= 0;
+                let wIdx = isFrontImpact ? (isLeftSide ? 0 : 1) : (isLeftSide ? Math.max(0, this.wheels.length - 2) : this.wheels.length - 1);
+                if (wIdx >= this.wheels.length) wIdx = 0;
+                this._damageTire(wIdx, dmg * 1.45, "armor_ram");
+              }
+            } else if (myTier >= 2 && otherTier >= 2) {
+              // Tank vs Tank / Armored vs Armored: steel crunch + side/high-speed track stress!
+              const tierDmgMult = (myTier === 3 && otherTier === 2) ? 0.28 : ((myTier === 2 && otherTier === 3) ? 1.15 : 0.58);
+              const sturmBladeMult = (spec.isSchreckensfurst && upg.sturmKit && dotFwdN < -0.35) ? 0.45 : 1.0;
+              const eraRamMult = upg.t72Kontakt5 ? 0.78 : 1.0;
+              const dmg = Math.min(28, impactMag * 0.88 * tierDmgMult * sturmBladeMult * eraRamMult);
+              hlth.body = Math.max(0, hlth.body - dmg);
+              this._wearPart("radiator", dmg * 0.24);
+              this._wearPart("gearboxGears", dmg * 0.20);
+              if (!spec.isTracked) {
+                this.damageHeadlights(dmg * 0.85, sideSpin);
+                if (otherTier === 3 && impactMag > 8.5 && this.wheels.length > 0) {
+                  const isLeftSide = rightDotN >= 0;
+                  const wIdx = (dotFwdN < 0.15) ? (isLeftSide ? 0 : 1) : (isLeftSide ? Math.max(0, this.wheels.length - 2) : this.wheels.length - 1);
+                  this._damageTire(Math.min(this.wheels.length - 1, wIdx), dmg * 1.1, "armor_ram");
+                }
+              } else if (sideHitFactor > 0.35 || impactMag > 9.0) {
+                // Hard side-ram or high-speed armored collision wears exposed tank tracks!
+                const massRatio = Math.max(0.45, Math.min(2.2, otherMass / Math.max(1000, mass)));
+                const trackDmg = Math.min(34, (impactMag - 1.8) * (sideHitFactor > 0.35 ? 1.85 : 0.95) * massRatio * (spec.isSchreckensfurst ? 0.55 : 1.0));
+                if (trackDmg > 1.0) {
+                  const prevL = hlth.trackL !== undefined ? hlth.trackL : 100;
+                  const prevR = hlth.trackR !== undefined ? hlth.trackR : 100;
+                  if (rightDotN > 0.15) {
+                    hlth.trackL = Math.max(0, prevL - trackDmg);
+                    if (prevL >= 15 && hlth.trackL < 15) this.emit("toast", "💥 LEFT TRACK SNAPPED IN ARMORED RAM! Field Repair [X]!");
+                  } else if (rightDotN < -0.15) {
+                    hlth.trackR = Math.max(0, prevR - trackDmg);
+                    if (prevR >= 15 && hlth.trackR < 15) this.emit("toast", "💥 RIGHT TRACK SNAPPED IN ARMORED RAM! Field Repair [X]!");
+                  } else {
+                    hlth.trackL = Math.max(0, prevL - trackDmg * 0.55);
+                    hlth.trackR = Math.max(0, prevR - trackDmg * 0.55);
+                    if ((prevL >= 15 && hlth.trackL < 15) || (prevR >= 15 && hlth.trackR < 15)) {
+                      this.emit("toast", "💥 TRACK SNAPPED IN HIGH-SPEED ARMORED RAM! Field Repair [X]!");
+                    }
+                  }
+                }
+              }
+            } else {
+              // Civilian vs Civilian: classic multiplayer metal crunch!
+              const dmg = Math.min(20, impactMag * 0.9 * bullShield);
+              hlth.body = Math.max(0, hlth.body - dmg);
+              this._wearPart("radiator", dmg * 0.35);
+              this.damageHeadlights(dmg * 1.5, sideSpin);
+            }
 
             // Send opposing ram impulse straight to your friend's PC over LAN!
             this.emit("vehicle_ram", {
               targetPeerId: rp.peerId,
               callsign: rp.callsign,
-              dvx: +(-nx * impactMag * e * otherShare * 1.15).toFixed(2),
-              dvy: +Math.min(6.5, impactMag * 0.22 * otherShare).toFixed(2),
-              dvz: +(-nz * impactMag * e * otherShare * 1.15).toFixed(2),
-              spin: +(-sideSpin * Math.min(5.0, impactMag * 0.3)).toFixed(2)
+              dvx: +(-nx * impactMag * e * otherShare * remoteShoveMult).toFixed(2),
+              dvy: +remoteHop.toFixed(2),
+              dvz: +(-nz * impactMag * e * otherShare * remoteShoveMult).toFixed(2),
+              spin: +remoteYawKick.toFixed(2)
             });
-            this.emit("impact", Math.min(1.0, impactMag / 14));
-            this.emit("crash_burst", { x: (this.pos.x + rp.gx) * 0.5, y: this.pos.y + 0.8, z: (this.pos.z + rp.gz) * 0.5, strength: Math.min(1.3, impactMag / 10), surface: "rock" });
-            if (impactMag > 7.5) this.emit("toast", `CRASH!! You slammed into ${rp.callsign}!`);
+            this.emit("impact", Math.min(1.0, impactMag / (isArmoredClash ? 12 : 14)));
+            this.emit("crash_burst", { x: midX, y: midY, z: midZ, strength: Math.min(1.5, impactMag / (isArmoredClash ? 8.5 : 10)), surface: "rock" });
+            if (isArmoredClash) {
+              const sparkCnt = Math.min(6, Math.max(2, Math.round(impactMag * 0.45)));
+              for (let si = 0; si < sparkCnt; si++) {
+                this.emit("rim_spark", {
+                  x: midX + (Math.random() - 0.5) * 0.9,
+                  y: midY + (Math.random() - 0.3) * 0.6,
+                  z: midZ + (Math.random() - 0.5) * 0.9
+                });
+              }
+              this.emit("armor_ram", {
+                impactMag: +impactMag.toFixed(2),
+                myTier,
+                otherTier,
+                targetCallsign: rp.callsign
+              });
+            } else if (impactMag > 7.5) {
+              this.emit("toast", `CRASH!! You slammed into ${rp.callsign}!`);
+            }
+          }
+        }
+      }
+    }
+
+    // 2B. ZOLOTOY CITY ARTICULATED ELECTRIC TRAM PHYSICS COLLISION (36-Ton Steel Railcar!)
+    if (world.tramState && world.tramState.mesh) {
+      const tr = world.tramState;
+      const dx = this.pos.x - tr.gx;
+      const dz = this.pos.z - tr.gz;
+      if (Math.abs(dx) < 18.0 && Math.abs(dz) < 18.0 && Math.abs(this.pos.y - tr.gy) < 4.5) {
+        const yaw = tr.yaw || 0;
+        const tFwdX = Math.sin(yaw), tFwdZ = Math.cos(yaw);
+        const tRgtX = Math.cos(yaw), tRgtZ = -Math.sin(yaw);
+        const relX = dx * tRgtX + dz * tRgtZ;
+        const relZ = dx * tFwdX + dz * tFwdZ;
+        const vehRadT = Math.max(spec.bodyWidth, spec.bodyLen * 0.46) * 0.48;
+        const hx = (tr.halfWidth || 1.45) + vehRadT;
+        const hz = (tr.halfLen || 11.8) + vehRadT;
+        if (Math.abs(relX) < hx && Math.abs(relZ) < hz) {
+          const penX = hx - Math.abs(relX);
+          const penZ = hz - Math.abs(relZ);
+          let locNx = 0, locNz = 0, pen = 0;
+          if (penX < penZ) {
+            locNx = relX >= 0 ? 1 : -1;
+            pen = penX + 0.08;
+          } else {
+            locNz = relZ >= 0 ? 1 : -1;
+            pen = penZ + 0.08;
+          }
+          const nx = locNx * tRgtX + locNz * tFwdX;
+          const nz = locNx * tRgtZ + locNz * tFwdZ;
+          this.pos.x += nx * pen;
+          this.pos.z += nz * pen;
+
+          const tramSpd = (tr.curSpeed !== undefined) ? tr.curSpeed : (tr.speed || 0);
+          const tvx = tFwdX * tramSpd;
+          const tvz = tFwdZ * tramSpd;
+          const relVx = this.vel.x - tvx;
+          const relVz = this.vel.z - tvz;
+          const relDotN = relVx * nx + relVz * nz;
+          if (relDotN < 0) {
+            const tramMass = 36000;
+            const myShare = tramMass / (mass + tramMass);
+            const impactMag = -relDotN;
+            const myTier = this.getArmorTier(spec);
+            const eTram = (myTier >= 2) ? 1.12 : 1.18;
+            this.vel.x += nx * impactMag * eTram * myShare;
+            this.vel.z += nz * impactMag * eTram * myShare;
+            this.vel.y += Math.min(myTier >= 2 ? 1.2 : 3.6, impactMag * (myTier >= 2 ? 0.05 : 0.16) * myShare);
+            const sideSpinT = (forward.x * nz - forward.z * nx);
+            this.angVel.y += sideSpinT * Math.min(myTier >= 2 ? 2.2 : 4.8, impactMag * (myTier >= 2 ? 0.14 : 0.28) * myShare);
+
+            if (impactMag > 2.4 && this.tramHitCooldown <= 0) {
+              this.tramHitCooldown = 0.40;
+              const bullShield = upg.bullbar ? 0.40 : 1.0;
+              const armorScale = (myTier === 3) ? 0.25 : ((myTier === 2) ? 0.55 : 1.35);
+              const tDmg = Math.min(34, impactMag * 1.15 * armorScale * bullShield);
+              hlth.body = Math.max(0, hlth.body - tDmg);
+              this._wearPart("radiator", tDmg * 0.35);
+              if (!spec.isTracked) this.damageHeadlights(tDmg * 1.4, sideSpinT);
+              const hitX = this.pos.x - nx * vehRadT;
+              const hitZ = this.pos.z - nz * vehRadT;
+              this.emit("impact", Math.min(1.0, impactMag / 13));
+              this.emit("crash_burst", { x: hitX, y: this.pos.y + 0.85, z: hitZ, strength: Math.min(1.4, impactMag / 10), surface: "rock" });
+              for (let si = 0; si < 3; si++) {
+                this.emit("rim_spark", { x: hitX + (Math.random() - 0.5) * 0.6, y: this.pos.y + 0.8, z: hitZ + (Math.random() - 0.5) * 0.6 });
+              }
+              if (myTier >= 2) {
+                this.emit("armor_ram", { impactMag: +impactMag.toFixed(2), myTier, otherTier: 2, targetCallsign: "Zolotoy Electric Tram" });
+              } else if (impactMag > 5.0) {
+                this.emit("toast", "🚊 CRUNCH! Clear the rails — Zolotoy Electric Tram coming through!");
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 2C. 6-LANE SAVANNA MEGA-BRIDGE STEEL GUARDRAIL SAFETY CLAMP (Safe 250+ km/h Crossing!)
+    if (world.getMegaBridgeInfo) {
+      const mb = world.getMegaBridgeInfo(this.pos.x, this.pos.z);
+      if (mb && (mb.onDeck || mb.onApproach)) {
+        const halfW = mb.halfWidth || 16.0;
+        const maxLat = Math.max(2.0, halfW - spec.bodyWidth * 0.55);
+        if (Math.abs(mb.latOffset) > maxLat && this.pos.y >= mb.deckY - 2.0 && this.pos.y <= mb.deckY + 4.0) {
+          const rx = (mb.rightX !== undefined) ? mb.rightX : (-mb.dirZ || 0);
+          const rz = (mb.rightZ !== undefined) ? mb.rightZ : (mb.dirX || 0);
+          if (rx * rx + rz * rz > 0.01) {
+            const sideSign = mb.latOffset >= 0 ? 1 : -1;
+            const excess = Math.abs(mb.latOffset) - maxLat;
+            this.pos.x -= sideSign * rx * (excess + 0.04);
+            this.pos.z -= sideSign * rz * (excess + 0.04);
+
+            const vOut = (this.vel.x * rx + this.vel.z * rz) * sideSign;
+            if (vOut > 0) {
+              // Smooth low-bounce deflection off the steel outer guardrail
+              const deflect = vOut * 1.14;
+              this.vel.x -= sideSign * rx * deflect;
+              this.vel.z -= sideSign * rz * deflect;
+              // Gentle tangential rail scrape drag so 250+ km/h momentum survives a light brush
+              const railDrag = Math.max(0.92, 1.0 - Math.min(0.06, vOut * 0.008));
+              this.vel.x *= railDrag;
+              this.vel.z *= railDrag;
+            }
+
+            // Gently self-straighten nose parallel to the bridge span if grinding into the rail at speed
+            const dirX = mb.dirX || 0, dirZ = mb.dirZ || 0;
+            const alongSpd = Math.abs(this.vel.x * dirX + this.vel.z * dirZ);
+            if (alongSpd > 8.0 && (dirX * dirX + dirZ * dirZ) > 0.01) {
+              const travelSign = (forward.x * dirX + forward.z * dirZ) >= 0 ? 1 : -1;
+              const tDirX = dirX * travelSign;
+              const tDirZ = dirZ * travelSign;
+              const alignCrossY = forward.z * tDirX - forward.x * tDirZ;
+              this.angVel.y += Math.max(-2.2, Math.min(2.2, alignCrossY * 3.0)) * Math.min(1.0, dt * 10.0);
+            }
+
+            const sparkX = this.pos.x + sideSign * rx * (spec.bodyWidth * 0.48);
+            const sparkY = this.pos.y + 0.55;
+            const sparkZ = this.pos.z + sideSign * rz * (spec.bodyWidth * 0.48);
+            if (vOut > 4.5 && this.lastImpactFx <= 0) {
+              this.lastImpactFx = 0.22;
+              const railDmg = Math.min(10, (vOut - 3.0) * 0.52 * (spec.isTracked ? 0.22 : (upg.bullbar ? 0.45 : 1.0)));
+              hlth.body = Math.max(0, hlth.body - railDmg);
+              this.emit("impact", Math.min(0.85, vOut / 16));
+              this.emit("crash_burst", { x: sparkX, y: sparkY, z: sparkZ, strength: Math.min(0.9, vOut / 12), surface: "rock" });
+              for (let si = 0; si < 3; si++) {
+                this.emit("rim_spark", { x: sparkX, y: sparkY + (Math.random() - 0.3) * 0.35, z: sparkZ });
+              }
+            } else if (this.speedKmh > 45 && Math.random() < dt * 28) {
+              this.emit("rim_spark", { x: sparkX, y: sparkY, z: sparkZ });
+            }
           }
         }
       }
@@ -1247,8 +1685,8 @@ KK.VehiclePhysics = class VehiclePhysics {
     // MULTI-POINT ANTI-UNDERGROUND FLOOR GUARD (Center + Front Bumper + Rear Bumper!)
     // Guarantees the chassis can NEVER clip into steep mountains or bridge edges!
     const halfLenG = spec.bodyLen * 0.44;
-    const fPt = new THREE.Vector3(0, 0.22,  halfLenG).applyQuaternion(this.quat).add(this.pos);
-    const rPt = new THREE.Vector3(0, 0.22, -halfLenG).applyQuaternion(this.quat).add(this.pos);
+    const fPt = this._fPt.set(0, 0.22,  halfLenG).applyQuaternion(this.quat).add(this.pos);
+    const rPt = this._rPt.set(0, 0.22, -halfLenG).applyQuaternion(this.quat).add(this.pos);
     const centerTerrain = world.getTerrainInfo(this.pos.x, this.pos.z, true, this.pos.y);
     const frontTerrain  = world.getTerrainInfo(fPt.x, fPt.z, true, fPt.y);
     const rearTerrain   = world.getTerrainInfo(rPt.x, rPt.z, true, rPt.y);
@@ -1280,7 +1718,7 @@ KK.VehiclePhysics = class VehiclePhysics {
       }
     }
 
-    const deltaV = this.vel.clone().sub(prevVel).length() / dt;
+    const deltaV = this._tmpV1.copy(this.vel).sub(prevVel).length() / dt;
     const gForce = Math.max(0, (deltaV / 9.81) - 1.0);
     this.lastGForce = this.lastGForce * 0.85 + gForce * 0.15;
     if (gForce > this.peakGForce) this.peakGForce = gForce;

@@ -191,6 +191,28 @@ KK.ParticleSystem = class ParticleSystem {
     }
   }
 
+  // Zero-GC ocean wave / hurricane / sea-cryptid water splash & foam spray!
+  emitWaterSplash(gx, gy, gz, strength = 1.0) {
+    const s = Math.max(0.25, Math.min(4.0, Number(strength) || 1.0));
+    const maxCap = this.quality === "low" ? 4 : (this.quality === "high" ? 12 : 8);
+    const count = Math.min(maxCap, Math.max(2, Math.round(2 + s * 2.5)));
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = (1.4 + Math.random() * (2.6 + s * 2.4));
+      const foam = 0.78 + Math.random() * 0.20;
+      this.emitRGB(
+        gx + (Math.random() - 0.5) * (1.2 + s * 0.9),
+        gy + 0.15 + Math.random() * 0.45,
+        gz + (Math.random() - 0.5) * (1.2 + s * 0.9),
+        Math.cos(ang) * spd,
+        1.8 + Math.random() * (2.4 + s * 2.6),
+        Math.sin(ang) * spd,
+        foam * 0.88, foam * 0.96, Math.min(1.0, foam * 1.05),
+        0.48 + Math.random() * 0.36, -8.8, 1.35
+      );
+    }
+  }
+
   emitFrostOrSand(gx, gy, gz, isFrost, count = 8) {
     for (let i = 0; i < count; i++) {
       const ang = Math.random() * Math.PI * 2;

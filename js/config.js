@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v17.6.1";
-KK.VERSION_FULL = "v17.6.1 ONLINE";
+KK.VERSION = "v17.9";
+KK.VERSION_FULL = "v17.9 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -41,6 +41,23 @@ KK.ZOLOTOY_CITY = {
   blockPitch: 120,  // 7 avenues x 7 cross-streets = 36 city blocks
   roadWidth: 14.0,  // Wide smooth multi-lane asphalt avenues
   tramRadius: 240   // Working electric tram runs a 480m x 480m square loop along the main boulevard!
+};
+
+// Colossal 6-Lane Ocean Mega-Bridge (Mainland SW <-> Zolotoy Savanna NE, auto-snapped to shorelines!)
+KK.MEGA_BRIDGE = {
+  id: "savanna_mega_bridge",
+  name: "Krasno-Zolotoy 6-Lane Ocean Mega-Bridge",
+  fromIslandId: 0,
+  toIslandId: 2,
+  width: 32.0,                // 6 full marked lanes (3 each direction)
+  halfWidth: 16.0,
+  deckElevationAboveSea: 16.0,// Cleanly 16m above KK.SEA_LEVEL
+  approachLen: 260.0,         // Smooth graded coastal approach causeways on both shores
+  pylonSpacing: 600.0,        // Towering twin cable-stayed pylons every 600m
+  segLength: 120.0,           // Pooled streaming deck segment length
+  startX: -34800, startZ: 31200,
+  endX: -55200, endZ: 49500,
+  midX: -45000, midZ: 40350
 };
 
 // 9 OCEAN PORTS (Auto-snapped to exact ocean shoreline at boot + connected by coastal spur roads!)
@@ -138,7 +155,7 @@ KK.TOWNS = [
   { id: 19, name: "Savanna Marina Port", survivability: "HIGH", survScore: 92, survColor: "#ffd166", survNote: "Modern waterfront suburb & deep-water container port", biome: "savanna", x: -64800, z: 67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Sleek coastal marina suburb with paved boat ramps and highway access to Zolotoy City." },
   { id: 20, name: "Poligon-9 Gunnery Range", survivability: "LOW", survScore: 34, survColor: "#8ecae6", survNote: "Frozen tank proving ground • Target hulks & heavy ice runway", biome: "arctic", x: -65200, z: -67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Wide open arctic weapons testing range with target tank hulks, concrete blast walls & ice runway." },
   { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -74600, z: -74800, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" },
-  // v17.6.1 OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
+  // v17.9 OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
   { id: 22, name: "Kampung Nelayan (West Coast)", survivability: "MODERATE", survScore: 66, survColor: "#2de08b", survNote: "Crowded stilt fishing village • Flooded rutted dirt lanes", biome: "tropical", x: 61800, z: 62600, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense coastal stilt village packed with wooden boats, warungs & mud-choked lanes." },
   { id: 23, name: "Desa Lereng Api (Volcano Ridge)", survivability: "LOW", survScore: 44, survColor: "#ff9f1c", survNote: "High mountain switchback village on Gunung Api's slope", biome: "tropical", x: 73400, z: 57200, hasGarage: true, hasDock: true, isIsland: true, desc: "Steep terraced clove-farm village clinging to Gunung Api's winding volcanic hairpins." },
   { id: 24, name: "Bukit Bambu (Bamboo Pass)", survivability: "MODERATE", survScore: 58, survColor: "#ffd166", survNote: "Misty bamboo-forest highland pass • Broken washboard tracks", biome: "tropical", x: 75800, z: 64200, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense bamboo-grove crossroads linking the volcanic summit road to the southern lake." },
@@ -151,7 +168,7 @@ KK.ROAD_LINKS = [
   [3, 4], [3, 8], [4, 6], [4, 7],
   [5, 6], [6, 7],
   [0, 9], [2, 9], [5, 9],
-  // v17.6.1 Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
+  // v17.9 Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
   [10, 22], [22, 15], [15, 25], [25, 16], [16, 24], [24, 23], [23, 10], [15, 23], [15, 24],
   // Zolotoy Savanna (Modernized Pristine Highway Network!)
   [11, 17], [11, 18], [11, 19], [17, 19], [18, 19],
@@ -347,14 +364,14 @@ KK.RIVER_PATHS = [
 ];
 
 // Shallow Rocky Cobble Fords along the Great Krasnaya River!
-// Depth smoothly rises to ~0.60m-0.65m with firm gravel bed so regular 4x4s can cross without needing the BTR-80!
+// Genuinely shallow (0.44m-0.52m) wide hard-packed cobble shoals with gentle gravel ramps so stock 4x4s/Buhankas cross safely with ZERO hydrolock!
 KK.RIVER_FORDS = [
-  { id: "ford_hq_south",  name: "Kamenka South Cobble Ford",   x: -110,   z: 1280,  radius: 34, depth: 0.60 },
-  { id: "ford_hq_north",  name: "Kamenka North Gravel Shoal",  x: 920,    z: -1680, radius: 34, depth: 0.62 },
-  { id: "ford_mid_west",  name: "Rzhavsk Shallow Crossing",    x: -3350,  z: 5050,  radius: 36, depth: 0.65 },
-  { id: "ford_gorge_mid", name: "Southern Touge Stone Ford",   x: 1780,   z: 9815,  radius: 34, depth: 0.64 },
-  { id: "ford_taiga_east",name: "Cherny Creek Shallow Shoal",  x: 12380,  z: 4630,  radius: 34, depth: 0.62 },
-  { id: "ford_desert_sw", name: "Red Sands Oasis Ford",        x: -17710, z: 20330, radius: 38, depth: 0.60 }
+  { id: "ford_hq_south",  name: "Kamenka South Cobble Ford",   x: -110,   z: 1280,  radius: 46, depth: 0.44 },
+  { id: "ford_hq_north",  name: "Kamenka North Gravel Shoal",  x: 920,    z: -1680, radius: 46, depth: 0.48 },
+  { id: "ford_mid_west",  name: "Rzhavsk Shallow Crossing",    x: -3350,  z: 5050,  radius: 48, depth: 0.52 },
+  { id: "ford_gorge_mid", name: "Southern Touge Stone Ford",   x: 1780,   z: 9815,  radius: 44, depth: 0.50 },
+  { id: "ford_taiga_east",name: "Cherny Creek Shallow Shoal",  x: 12380,  z: 4630,  radius: 46, depth: 0.46 },
+  { id: "ford_desert_sw", name: "Red Sands Oasis Ford",        x: -17710, z: 20330, radius: 52, depth: 0.44 }
 ];
 
 KK.MUD_ZONES = [

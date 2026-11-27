@@ -19,6 +19,7 @@ KK.BoatManager = class BoatManager {
     this.activeBoat = null;
     this.remoteBoats = new Map();
     this.wavePhase = 0;
+    this.chopPhase = 0;
 
     // Reusable scratch math objects (zero per-frame GC allocations!)
     this._tmpQ = new THREE.Quaternion();
@@ -898,12 +899,71 @@ KK.BoatManager = class BoatManager {
       isBeached: false,
       rampAnim: 1.0,
       cushionAnim: 0.0,
+      shockRoll: 0.0,
+      shockPitch: 0.0,
       deckVehicles: []
     };
     this.world.toLocal(boat.gx, boat.gy, boat.gz, boat.mesh.position);
     boat.mesh.rotation.set(0, boat.yaw, 0);
     this.spawnedBoats.push(boat);
     return boat;
+  }
+
+  spawnBoatAtPosition(boatId, gx, gz, yaw = 0, anchored = false) {
+    const spec = KK.BOATS[boatId];
+    if (!spec) return null;
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    let boat = this.spawnedBoats.find((b) => b.id === boatId);
+    if (boat) {
+      boat.gx = gx; boat.gy = seaL; boat.gz = gz;
+      boat.yaw = yaw; boat.pitch = 0; boat.roll = 0;
+      boat.vx = 0; boat.vz = 0; boat.speedKmh = 0;
+      boat.shockRoll = 0; boat.shockPitch = 0;
+      boat.anchored = !!anchored;
+      boat.deckLocked = true;
+      boat.rampAnim = 0.0;
+      boat.cushionAnim = anchored ? 0.0 : 1.0;
+      this.world.toLocal(boat.gx, boat.gy, boat.gz, boat.mesh.position);
+      boat.mesh.rotation.set(0, boat.yaw, 0);
+      return boat;
+    }
+    const built = this._buildBoatMesh(boatId);
+    this.scene.add(built.grp);
+    boat = {
+      id: boatId, spec,
+      mesh: built.grp, fans: built.fans, radars: built.radars, helmWheel: built.helmWheel, helmLever: built.helmLever, skirtMesh: built.skirtMesh,
+      rampPivot: built.rampPivot, rampRestRotX: built.rampRestRotX, rampOpenRotX: built.rampOpenRotX,
+      navLightsGroup: built.navLightsGroup, spotCone: built.spotCone, spotMountLocal: built.spotMountLocal,
+      bayChains: built.bayChains,
+      gx, gy: seaL, gz, yaw, pitch: 0, roll: 0,
+      vx: 0, vz: 0, speedKmh: 0, throttleCmd: 0, boostCmd: false,
+      anchored: !!anchored,
+      deckLocked: true,
+      unlockWarnUntil: 0,
+      navLightsOn: true,
+      spotLightOn: true,
+      waterDepth: 28.0,
+      isBeached: false,
+      rampAnim: 0.0,
+      cushionAnim: anchored ? 0.0 : 1.0,
+      shockRoll: 0.0,
+      shockPitch: 0.0,
+      deckVehicles: []
+    };
+    this.world.toLocal(boat.gx, boat.gy, boat.gz, boat.mesh.position);
+    boat.mesh.rotation.set(0, boat.yaw, 0);
+    this.spawnedBoats.push(boat);
+    return boat;
+  }
+
+  // Called by ocean_cryptids.js or main.js when Yamato salvos, Megalodon lunges, or Kraken tentacles slam near a boat!
+  applyWaveShock(boat, pushX = 0, pushZ = 0, rollKick = 0, pitchKick = 0) {
+    if (!boat) return;
+    const massScale = boat.id === "zubr" ? 0.36 : (boat.id === "serna" ? 0.56 : (boat.id === "patrol" ? 0.92 : 1.25));
+    boat.vx = (boat.vx || 0) + pushX * massScale;
+    boat.vz = (boat.vz || 0) + pushZ * massScale;
+    boat.shockRoll = Math.max(-0.52, Math.min(0.52, (boat.shockRoll || 0) + rollKick * massScale));
+    boat.shockPitch = Math.max(-0.38, Math.min(0.38, (boat.shockPitch || 0) + pitchKick * massScale));
   }
 
   getPayloadKg(boat, remotePlayersMap = null) {
@@ -1223,8 +1283,25 @@ KK.BoatManager = class BoatManager {
     if (ui) ui.toast(`BRIDGE SEARCHLIGHT [K]: ${boat.spotLightOn ? "ON" : "OFF"}`);
   }
 
-  update(dt, input, vehicle, particles, audio, ui = null, remotePlayersMap = null, localPeerId = null) {
-    this.wavePhase += dt * 2.1;
+  update(dt, input, vehicle, particles, audio, ui = null, remotePlayersMap = null, localPeerId = null, seaState = null) {
+    const hEff = (seaState && seaState.hurricaneEffect !== undefined)
+      ? seaState.hurricaneEffect
+      : ((seaState && (seaState.waveBoost !== undefined || seaState.windX !== undefined || seaState.inEye !== undefined || seaState.intensity !== undefined)) ? seaState : null);
+    const weather = (seaState && seaState.weather) || "clear";
+    const seaDread = (seaState && typeof seaState.seaDread === "number") ? seaState.seaDread : 0;
+
+    const hActive = !!(hEff && hEff.active);
+    const hInt = hActive ? Math.max(0, Math.min(1, hEff.intensity || 0)) : 0;
+    const hWave = hActive ? Math.max(0, hEff.waveBoost !== undefined ? hEff.waveBoost : hInt) : 0;
+    const inEye = !!(hActive && hEff.inEye);
+    const windX = (hActive && !inEye) ? (hEff.windX || 0) : 0;
+    const windZ = (hActive && !inEye) ? (hEff.windZ || 0) : 0;
+
+    const baseWeatherRough = weather === "hurricane" ? 0.92 : (weather === "storm" ? 0.56 : (weather === "rain" ? 0.18 : 0.0));
+    const roughness = inEye ? 0.08 : Math.min(1.65, Math.max(baseWeatherRough, hWave * 1.38) + seaDread * 0.35);
+
+    this.wavePhase += dt * (2.1 + roughness * 2.15);
+    this.chopPhase = (this.chopPhase || 0) + dt * (3.3 + roughness * 3.05);
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
     let spotUsed = false;
 
@@ -1275,17 +1352,31 @@ KK.BoatManager = class BoatManager {
         b.vz += nFwdZ * throttle * accel * dt;
       }
 
+      // Cyclonic hurricane wind drift & crosswind yaw buffeting!
+      if (!b.isBeached && (windX !== 0 || windZ !== 0)) {
+        const hullWindMult = sp.id === "zubr" ? 0.20 : (sp.id === "serna" ? 0.16 : (sp.id === "patrol" ? 0.30 : 0.40));
+        const anchorMult = b.anchored ? 0.25 : 1.0;
+        b.vx += windX * hullWindMult * anchorMult * dt;
+        b.vz += windZ * hullWindMult * anchorMult * dt;
+        if (!b.anchored && hInt > 0.2) {
+          const rX = Math.cos(b.yaw), rZ = -Math.sin(b.yaw);
+          const crossW = windX * rX + windZ * rZ;
+          b.yaw += Math.max(-0.50, Math.min(0.50, crossW * 0.0085)) * dt * (sp.id === "zubr" ? 0.55 : 0.85);
+        }
+      }
+
       const drag = Math.exp(-dt * (sp.amphibious ? 0.62 : 0.90));
       b.vx *= drag; b.vz *= drag;
       if (!sp.amphibious) {
         const rightX = Math.cos(b.yaw), rightZ = -Math.sin(b.yaw);
         const latV = b.vx * rightX + b.vz * rightZ;
-        const latKill = Math.min(1, dt * 3.8);
+        const latKill = Math.min(1, dt * (hInt > 0.25 && !inEye ? 2.6 : 3.8));
         b.vx -= rightX * latV * latKill;
         b.vz -= rightZ * latV * latKill;
       }
       const spd = Math.hypot(b.vx, b.vz);
-      if (spd > maxMs) { b.vx *= maxMs / spd; b.vz *= maxMs / spd; }
+      const effMaxMs = maxMs + (hInt > 0.1 && !inEye ? 7.5 * hInt : 0);
+      if (spd > effMaxMs) { b.vx *= effMaxMs / spd; b.vz *= effMaxMs / spd; }
 
       const nextX = b.gx + b.vx * dt;
       const nextZ = b.gz + b.vz * dt;
@@ -1299,18 +1390,24 @@ KK.BoatManager = class BoatManager {
         b.skirtMesh.scale.y = 0.38 + b.cushionAnim * 0.62;
       }
 
+      const hullWaveDamp = sp.id === "zubr" ? 0.65 : (sp.id === "serna" ? 0.78 : (sp.id === "patrol" ? 1.05 : 1.28));
+      const primaryAmp = (sp.id === "strela" ? 0.24 : 0.16) * (1.0 + roughness * 4.6 * hullWaveDamp);
+      const rogueSwell = b.isBeached ? 0.0 : (
+        Math.sin(this.wavePhase + b.gx * 0.032 + b.gz * 0.018) * primaryAmp +
+        Math.sin(this.chopPhase * 0.85 - b.gx * 0.055 + b.gz * 0.048) * (primaryAmp * 0.42 * Math.min(1.0, roughness))
+      );
+
       const trimSink = loadRatio * (sp.amphibious ? 0.35 : 0.42);
       if (sp.amphibious) {
         const maxSlopeH = seaL + 22.0;
         if (tiNext.height <= maxSlopeH) { b.gx = nextX; b.gz = nextZ; }
         else { b.vx *= -0.22; b.vz *= -0.22; }
-        const waveAmp = b.isBeached ? 0.0 : (0.16 * b.cushionAnim);
         const cushionLift = -0.85 * (1.0 - b.cushionAnim);
-        b.gy = Math.max(seaL, tiNext.height) + 0.30 + cushionLift - trimSink + Math.sin(this.wavePhase + b.gx * 0.03) * waveAmp;
+        b.gy = Math.max(seaL, tiNext.height) + 0.30 + cushionLift - trimSink + rogueSwell * 0.78 * b.cushionAnim;
       } else {
         if (tiNext.height < seaL + 0.45) { b.gx = nextX; b.gz = nextZ; }
         else { b.vx *= -0.15; b.vz *= -0.15; }
-        b.gy = seaL - trimSink + Math.sin(this.wavePhase + b.gx * 0.04) * (sp.id === "strela" ? 0.24 : 0.16);
+        b.gy = seaL - trimSink + rogueSwell;
       }
 
       const lim = KK.HALF_WORLD - 400;
@@ -1322,11 +1419,27 @@ KK.BoatManager = class BoatManager {
       b.rampAnim += (targetRamp - b.rampAnim) * Math.min(1, dt * 3.4);
       if (b.rampPivot) b.rampPivot.rotation.x = b.rampRestRotX + (b.rampOpenRotX - b.rampRestRotX) * b.rampAnim;
 
+      // Decay wave-shock kicks smoothly
+      const shockDecay = Math.exp(-dt * 2.8);
+      b.shockRoll = (b.shockRoll || 0) * shockDecay;
+      b.shockPitch = (b.shockPitch || 0) * shockDecay;
+
       const bowLift = Math.min(0.11, (b.speedKmh / 145) * 0.09);
-      const wavePitch = b.isBeached ? 0 : (Math.sin(this.wavePhase * 1.15 + b.gz * 0.025) * 0.025 - bowLift);
+      const wavePitchAmp = 0.025 + roughness * 0.088 * hullWaveDamp;
+      const waveRollAmp = roughness * 0.145 * hullWaveDamp;
+      const crossWindRoll = (!b.isBeached && (windX !== 0 || windZ !== 0))
+        ? Math.max(-0.22, Math.min(0.22, (windX * Math.cos(b.yaw) - windZ * Math.sin(b.yaw)) * 0.0065 * hullWaveDamp))
+        : 0;
+      const wavePitch = b.isBeached ? 0 : (
+        Math.sin(this.wavePhase * 1.15 + b.gz * 0.025) * wavePitchAmp +
+        Math.cos(this.chopPhase * 0.72 + b.gx * 0.038) * wavePitchAmp * 0.42 - bowLift
+      );
       const bankRoll = steer * Math.min(0.18, (b.speedKmh / 95) * 0.15) * (sp.id === "strela" ? 1.35 : 0.45);
-      b.pitch += (wavePitch - b.pitch) * Math.min(1, dt * 8);
-      b.roll  += (bankRoll  - b.roll)  * Math.min(1, dt * 8);
+      const stormRoll = b.isBeached ? 0 : (Math.sin(this.chopPhase * 0.92 + b.gx * 0.035) * waveRollAmp + crossWindRoll);
+      const targetPitch = Math.max(-0.38, Math.min(0.38, wavePitch + b.shockPitch));
+      const targetRoll = Math.max(-0.48, Math.min(0.48, bankRoll + stormRoll + b.shockRoll));
+      b.pitch += (targetPitch - b.pitch) * Math.min(1, dt * 8);
+      b.roll  += (targetRoll  - b.roll)  * Math.min(1, dt * 8);
 
       this.world.toLocal(b.gx, b.gy, b.gz, b.mesh.position);
       b.mesh.rotation.set(b.pitch, b.yaw, b.roll, "YXZ");
@@ -1367,8 +1480,17 @@ KK.BoatManager = class BoatManager {
       if (b.helmWheel) b.helmWheel.rotation.z += (-steer * 2.2 - b.helmWheel.rotation.z) * Math.min(1, dt * 8);
       if (b.helmLever) b.helmLever.rotation.x += (throttle * 0.65 - b.helmLever.rotation.x) * Math.min(1, dt * 8);
 
-      if (isPiloted && b.speedKmh > 12 && !b.isBeached && particles && Math.random() < 0.55) {
-        particles.emitWaterSplash(b.gx - nFwdX * (sp.len * 0.44), b.gy + 0.3, b.gz - nFwdZ * (sp.len * 0.44), Math.min(2.2, b.speedKmh / 48));
+      if (isPiloted && !b.isBeached && particles) {
+        if (b.speedKmh > 12 && Math.random() < Math.min(0.92, 0.55 + roughness * 0.30)) {
+          particles.emitWaterSplash(b.gx - nFwdX * (sp.len * 0.44), b.gy + 0.3, b.gz - nFwdZ * (sp.len * 0.44), Math.min(3.2, (b.speedKmh / 48) * (1.0 + roughness * 0.55)));
+        }
+        if (roughness > 0.35 && Math.random() < Math.min(0.90, roughness * 0.58)) {
+          const sideSign = Math.random() < 0.5 ? -1 : 1;
+          const rX = Math.cos(b.yaw), rZ = -Math.sin(b.yaw);
+          const bowDist = sp.len * (0.28 + Math.random() * 0.22);
+          const sideDist = sp.width * (0.35 + Math.random() * 0.25) * sideSign;
+          particles.emitWaterSplash(b.gx + nFwdX * bowDist + rX * sideDist, b.gy + 0.6 + roughness * 0.5, b.gz + nFwdZ * bowDist + rZ * sideDist, 1.1 + roughness * 1.4);
+        }
       }
 
       const localEntry = this.getLocalMountedEntry(b);

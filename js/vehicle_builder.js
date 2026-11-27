@@ -171,16 +171,218 @@ KK.VehicleBuilder = {
     return this._mudSplotchTex;
   },
 
+  // v17.6.1 UNIFIED PER-VEHICLE ENGINE, DRIVETRAIN, BAY, SMOKE & THERMAL LAYOUT
+  // Guarantees every X-ray mesh, engine bay part, smoke emitter & thermal pad
+  // sits accurately inside the vehicle's actual hull envelope (zero protruding parts!).
+  _getEngineLayout(vehicleId, spec, hoodPivot) {
+    const bodyLen   = spec.bodyLen   || 4.4;
+    const bodyWidth = spec.bodyWidth || 1.85;
+    const bodyH     = spec.bodyHeight || 1.65;
+    const halfLen   = bodyLen * 0.5;
+    const maxFrontZ = halfLen - 0.20;
+    const minRearZ  = -halfLen + 0.25;
+    const frontWz   = (spec.wheels && spec.wheels.length > 0) ? spec.wheels[0].z : (halfLen * 0.62);
+    const rearWz    = (spec.wheels && spec.wheels.length > 0) ? spec.wheels[spec.wheels.length - 1].z : (-halfLen * 0.62);
+    const wheelY    = (spec.wheels && spec.wheels.length > 0 && typeof spec.wheels[0].y === "number") ? spec.wheels[0].y : 0.25;
+
+    const isKomodo   = (vehicleId === "komodo_std" || vehicleId === "komodo_recon" || vehicleId === "komodo_turret");
+    const isRear911  = (vehicleId === "porsche_dakar");
+    const isBtr80    = (vehicleId === "btr80");
+    const isRearEng  = isRear911 || isBtr80 || !!spec.rearEngine;
+    const isCabOver  = (vehicleId === "uaz452" || vehicleId === "delica" || vehicleId === "toyota_coaster" || vehicleId === "kamaz");
+
+    let engZ = 0, engY = 0.66, engW = 0.66, engH = 0.50, engL = 0.78;
+    let radZ = halfLen - 0.30, radY = 0.68, radW = Math.min(bodyWidth * 0.54, bodyWidth - 0.32), radH = 0.42;
+    let icZ  = halfLen - 0.20, icY  = 0.48, icW  = Math.min(bodyWidth * 0.46, bodyWidth - 0.38), icH  = 0.20;
+    let gbZ  = 0, gbL = 0.64, tfZ = -0.50, tfL = 0.42;
+    let dsZ  = -0.40, dsLen = 1.0, dsY = Math.max(0.34, wheelY + 0.11);
+    let axleY = Math.max(0.30, wheelY + 0.06);
+    let suspBaseY = Math.max(0.54, wheelY + 0.31);
+    let smkZ = halfLen * 0.56, smkY = 1.05;
+
+    if (spec.isTracked) {
+      smkZ = spec.isSchreckensfurst ? (halfLen * 0.64) : (spec.isShilka ? -2.10 : (-halfLen * 0.60));
+      smkY = spec.isShilka ? 1.54 : 1.62;
+      return {
+        isTracked: true, isRearEng, isCabOver: false, isKomodo: false,
+        halfLen, maxFrontZ, minRearZ, frontWz, rearWz, smkZ, smkY
+      };
+    }
+
+    if (isKomodo) {
+      // Pindad Komodo: Front armored sloped hood bay (cowlZ = 1.24 .. noseZ = halfLen - 0.10)
+      engW = 0.78; engH = 0.58; engL = 0.92;
+      engZ = 1.84; engY = 1.12;
+      radW = Math.min(1.12, bodyWidth * 0.48); radH = 0.36;
+      radZ = Math.min(2.48, halfLen - 0.32); radY = 1.14;
+      icW  = Math.min(0.96, bodyWidth * 0.42); icH = 0.20;
+      icZ  = Math.min(halfLen - 0.19, radZ + 0.09); icY = 0.96;
+      gbZ  = 0.92; tfZ = 0.16;
+      dsY  = 0.64; axleY = 0.58; suspBaseY = 0.86;
+      smkZ = 1.92; smkY = 1.50;
+    } else if (isRear911) {
+      // Porsche 911 Dakar: Rear-mounted Flat-6 behind rear axle + front radiator in nose
+      engW = 0.72; engH = 0.44; engL = 0.72;
+      engZ = -1.52; engY = 0.62;
+      radW = Math.min(1.02, bodyWidth * 0.54); radH = 0.34;
+      radZ = 1.86; radY = 0.56;
+      icW  = Math.min(0.86, bodyWidth * 0.46); icH = 0.18;
+      icZ  = 1.95; icY = 0.42;
+      gbZ  = -0.82; gbL = 0.58; tfZ = -0.24; tfL = 0.38;
+      dsY  = 0.34; axleY = 0.28; suspBaseY = 0.52;
+      smkZ = -1.58; smkY = 1.02;
+    } else if (isBtr80) {
+      // BTR-80 8x8 Amphibious APC: Rear KamAZ-7403 V8 under rear louvres (-2.85..-1.45)
+      engW = 0.94; engH = 0.58; engL = 0.98;
+      engZ = -2.24; engY = 1.10;
+      radW = 1.38; radH = 0.34;
+      radZ = -2.96; radY = 1.32;
+      icW  = 1.12; icH = 0.22;
+      icZ  = -2.80; icY = 0.98;
+      gbZ  = -1.24; gbL = 0.68; tfZ = -0.46; tfL = 0.48;
+      dsY  = 0.64; axleY = 0.52; suspBaseY = 0.82;
+      smkZ = -2.32; smkY = 1.98;
+    } else if (vehicleId === "maz537") {
+      // MAZ-537 8x8: Massive 38.8L D12A V12 inside armored box BEHIND cab (z = -0.22..+1.92)
+      engW = 1.12; engH = 0.76; engL = 1.24;
+      engZ = 0.88; engY = 1.56;
+      radW = 1.56; radH = 0.52;
+      radZ = 1.70; radY = 1.80;
+      icW  = 1.32; icH = 0.26;
+      icZ  = 1.58; icY = 1.40;
+      gbZ  = -0.18; gbL = 0.72; tfZ = -0.96; tfL = 0.52;
+      dsY  = 0.72; axleY = 0.56; suspBaseY = 0.90;
+      smkZ = 0.88; smkY = 2.66;
+    } else if (vehicleId === "bm21") {
+      // BM-21 Grad (Ural-4320 6x6): Long-nose truck hood (z = 2.42..3.52, y = 1.08..1.94)
+      engW = 0.82; engH = 0.56; engL = 0.90;
+      engZ = 2.86; engY = 1.42;
+      radW = 1.18; radH = 0.46;
+      radZ = 3.34; radY = 1.46;
+      icW  = 1.04; icH = 0.22;
+      icZ  = 3.41; icY = 1.22;
+      gbZ  = 1.92; gbL = 0.68; tfZ = 1.18; tfL = 0.48;
+      dsY  = 0.62; axleY = 0.52; suspBaseY = 0.86;
+      smkZ = 2.90; smkY = 1.98;
+    } else if (vehicleId === "lambo_tractor") {
+      // Lamborghini R8.270 Tractor: Tall narrow front nose (z = -0.10..+2.46, y = 0.92..2.18, w = 1.28)
+      engW = 0.70; engH = 0.54; engL = 1.02;
+      engZ = 1.14; engY = 1.42;
+      radW = 0.90; radH = 0.48;
+      radZ = 2.12; radY = 1.40;
+      icW  = 0.80; icH = 0.22;
+      icZ  = 2.24; icY = 1.16;
+      gbZ  = 0.14; gbL = 0.68; tfZ = -0.56; tfL = 0.46;
+      dsY  = 0.84; axleY = 0.62; suspBaseY = 0.96;
+      smkZ = 1.24; smkY = 2.02;
+    } else if (vehicleId === "uaz452") {
+      // UAZ-452 "Bukhanka" Cab-Over Van: Engine doghouse strictly BETWEEN front seats (seatZ=1.12, frontWz=1.24)!
+      engW = 0.54; engH = 0.46; engL = 0.74;
+      engZ = 0.72; engY = 0.62;
+      radW = Math.min(0.96, bodyWidth * 0.50); radH = 0.40;
+      radZ = Math.min(halfLen - 0.30, 1.88); radY = 0.74;
+      icW  = Math.min(0.82, bodyWidth * 0.42); icH = 0.18;
+      icZ  = Math.min(halfLen - 0.20, radZ + 0.09); icY = 0.54;
+      gbZ  = -0.02; gbL = 0.58; tfZ = -0.56; tfL = 0.40;
+      dsY  = 0.36; axleY = 0.30; suspBaseY = 0.56;
+      smkZ = 1.65; smkY = 1.06;
+    } else if (vehicleId === "delica") {
+      // Mitsubishi Delica L300 Cab-Over Van: 4D56T engine tucked UNDER/BETWEEN front seats (seatZ=1.08, frontWz=1.26)
+      engW = 0.52; engH = 0.44; engL = 0.72;
+      engZ = 0.76; engY = 0.58;
+      radW = Math.min(0.88, bodyWidth * 0.50); radH = 0.38;
+      radZ = Math.min(halfLen - 0.30, 1.84); radY = 0.68;
+      icW  = Math.min(0.76, bodyWidth * 0.42); icH = 0.18;
+      icZ  = Math.min(halfLen - 0.20, radZ + 0.09); icY = 0.49;
+      gbZ  = 0.04; gbL = 0.56; tfZ = -0.48; tfL = 0.38;
+      dsY  = 0.35; axleY = 0.30; suspBaseY = 0.56;
+      smkZ = 1.62; smkY = 1.02;
+    } else if (vehicleId === "toyota_coaster") {
+      // Toyota Coaster Cab-Over Bus: 4.2L I6 beside/between front seats over front axle (frontWz=1.95, seatZ=2.42)
+      engW = 0.64; engH = 0.50; engL = 0.88;
+      engZ = 2.16; engY = 0.74;
+      radW = Math.min(1.08, bodyWidth * 0.52); radH = 0.44;
+      radZ = Math.min(halfLen - 0.34, 3.14); radY = 0.86;
+      icW  = Math.min(0.92, bodyWidth * 0.44); icH = 0.20;
+      icZ  = Math.min(halfLen - 0.22, radZ + 0.10); icY = 0.62;
+      gbZ  = 1.24; gbL = 0.68; tfZ = 0.56; tfL = 0.44;
+      dsY  = 0.42; axleY = 0.34; suspBaseY = 0.62;
+      smkZ = 2.95; smkY = 1.38;
+    } else if (vehicleId === "kamaz") {
+      // KamAZ-4310 6x6 Cab-Over Truck: 10.8L V8 directly UNDER cab (cab z = 1.18..3.40, frontWz = 2.35)
+      engW = 0.84; engH = 0.58; engL = 0.96;
+      engZ = 2.16; engY = 0.96;
+      radW = 1.24; radH = 0.48;
+      radZ = 3.10; radY = 1.14;
+      icW  = 1.08; icH = 0.22;
+      icZ  = 3.20; icY = 0.88;
+      gbZ  = 1.18; gbL = 0.70; tfZ = 0.44; tfL = 0.46;
+      dsY  = 0.54; axleY = 0.44; suspBaseY = 0.76;
+      smkZ = 2.95; smkY = 1.48;
+    } else {
+      // Standard Front-Engine Cars, SUVs & Pickups (WRX, Evo, GT-R, Hilux, Fortuner, LC79, Range Rover,
+      // Jimny, Humvee, Patrol Y61, Dacia Sandero, Jeep Wrangler, Mega Cruiser):
+      // Fit engine strictly between firewall (hoodPivot.z) and radiator (halfLen - 0.32)!
+      const cowlZ   = (hoodPivot && hoodPivot.position.z > 0.2) ? hoodPivot.position.z : (halfLen * 0.38);
+      radZ          = halfLen - 0.32;
+      const radBack = radZ - 0.09;
+      const baySpan = Math.max(0.68, radBack - cowlZ);
+      engL          = Math.max(0.56, Math.min(0.84, baySpan * 0.76));
+      engW          = Math.min(0.70, bodyWidth * 0.38);
+      engH          = Math.min(0.52, Math.max(0.42, (hoodPivot && hoodPivot.position.y > 0.5 ? hoodPivot.position.y : 1.0) * 0.46));
+      engZ          = Math.min(radBack - engL * 0.5 - 0.04, cowlZ + baySpan * 0.48);
+      engY          = (hoodPivot && hoodPivot.position.y > 0.5) ? Math.max(0.56, Math.min(0.86, hoodPivot.position.y - 0.30)) : 0.66;
+      radY          = engY + 0.02;
+      icZ           = Math.min(halfLen - 0.20, radZ + 0.11);
+      icY           = Math.max(0.40, radY - 0.20);
+      gbL           = Math.min(0.66, Math.max(0.52, bodyLen * 0.135));
+      tfL           = Math.min(0.44, Math.max(0.34, bodyLen * 0.09));
+      gbZ           = engZ - engL * 0.5 - gbL * 0.5 - 0.04;
+      tfZ           = gbZ - gbL * 0.5 - tfL * 0.5 - 0.04;
+      smkZ          = engZ + 0.08;
+      smkY          = Math.max(0.96, (hoodPivot && hoodPivot.position.y > 0.5 ? hoodPivot.position.y : 1.02) + 0.04);
+    }
+
+    // Hard hull-envelope safety clamps (Guarantees ZERO protruding X-ray or bay meshes on ANY vehicle!)
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    engW = Math.min(engW, bodyWidth - 0.26);
+    radW = Math.min(radW, bodyWidth - 0.26);
+    icW  = Math.min(icW,  bodyWidth - 0.32);
+    engZ = clamp(engZ, minRearZ + engL * 0.5, maxFrontZ - engL * 0.5);
+    radZ = clamp(radZ, minRearZ + 0.08, maxFrontZ - 0.06);
+    icZ  = clamp(icZ,  -halfLen + 0.16, halfLen - 0.18);
+    gbZ  = clamp(gbZ,  minRearZ + gbL * 0.5, maxFrontZ - gbL * 0.5);
+    tfZ  = clamp(tfZ,  minRearZ + tfL * 0.5, maxFrontZ - tfL * 0.5);
+
+    // Driveshaft connects transfer case cleanly to driven axle without sticking past either axle!
+    const targetAxleZ = isRearEng ? frontWz : rearWz;
+    const tfEdgeZ = (targetAxleZ < tfZ) ? (tfZ - tfL * 0.45) : (tfZ + tfL * 0.45);
+    const minAx = Math.min(frontWz, rearWz), maxAx = Math.max(frontWz, rearWz);
+    const dsStart = clamp(tfEdgeZ, minAx, maxAx);
+    const dsEnd   = clamp(targetAxleZ, minAx, maxAx);
+    dsZ   = (dsStart + dsEnd) * 0.5;
+    dsLen = Math.max(0.28, Math.abs(dsEnd - dsStart));
+
+    return {
+      isTracked: false, isRearEng, isRear911, isBtr80, isCabOver, isKomodo,
+      halfLen, maxFrontZ, minRearZ, frontWz, rearWz,
+      engZ, engY, engW, engH, engL,
+      radZ, radY, radW, radH,
+      icZ, icY, icW, icH,
+      gbZ, gbL, tfZ, tfL,
+      dsZ, dsLen, dsY, axleY, suspBaseY,
+      smkZ, smkY
+    };
+  },
+
   // v15.6 MODULAR HOOD-CULLED ENGINE BAY (0 Draw Calls While Hood Is Closed!)
-  _buildEngineBay(vehicleId, vState, spec, hoodPivot) {
+  _buildEngineBay(vehicleId, vState, spec, hoodPivot, engLayout = null) {
     if (spec && (spec.isTracked || spec.id === "btr80" || spec.id === "komodo_std" || spec.id === "komodo_recon" || spec.id === "komodo_turret")) {
       return null;
     }
+    const L = engLayout || this._getEngineLayout(vehicleId, spec, hoodPivot);
     const bay = new THREE.Group();
-    const hz = hoodPivot.position.z || (spec.bodyLen * 0.25);
-    const hy = Math.max(0.50, (hoodPivot.position.y || 0.92) - 0.26);
-    const isRearEng = (vehicleId === "porsche_dakar");
-    bay.position.set(0, hy, isRearEng ? -1.45 : (hz + 0.42));
+    bay.position.set(0, L.engY, L.engZ);
 
     const engId = (vState && vState.engineId) || "i4_stock";
     const isV = engId.includes("v6") || engId.includes("v8") || engId.includes("vr38") || engId.includes("v12") || vehicleId === "gtr_r35";
@@ -194,39 +396,53 @@ KK.VehicleBuilder = {
     const matBat   = new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.8 });
     const matRedP  = new THREE.MeshStandardMaterial({ color: 0xd62828, roughness: 0.4 });
 
-    const block = new THREE.Mesh(new THREE.BoxGeometry(isV ? 0.56 : 0.36, 0.34, 0.58), matBlock);
+    const blkW = Math.min(isV ? 0.54 : 0.36, L.engW * 0.84);
+    const blkH = Math.min(0.34, L.engH * 0.72);
+    const blkL = Math.min(0.58, L.engL * 0.80);
+
+    const block = new THREE.Mesh(new THREE.BoxGeometry(blkW, blkH, blkL), matBlock);
     bay.add(block);
     if (isV) {
-      for (const sx of [-0.22, 0.22]) {
-        const vc = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.54), matCover);
-        vc.position.set(sx, 0.21, 0); vc.rotation.z = sx > 0 ? -0.35 : 0.35; bay.add(vc);
+      const bankOff = blkW * 0.38;
+      for (const sx of [-bankOff, bankOff]) {
+        const vc = new THREE.Mesh(new THREE.BoxGeometry(blkW * 0.32, 0.11, blkL * 0.92), matCover);
+        vc.position.set(sx, blkH * 0.58, 0); vc.rotation.z = sx > 0 ? -0.35 : 0.35; bay.add(vc);
       }
-      const plenum = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.48), matPipe);
-      plenum.position.set(0, 0.26, 0); bay.add(plenum);
+      const plenum = new THREE.Mesh(new THREE.BoxGeometry(blkW * 0.48, 0.12, blkL * 0.82), matPipe);
+      plenum.position.set(0, blkH * 0.70, 0); bay.add(plenum);
     } else {
-      const vc = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.11, 0.56), matCover);
-      vc.position.set(0, 0.22, 0); bay.add(vc);
-      const intake = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.44), matPipe);
-      intake.position.set(0.22, 0.16, 0); bay.add(intake);
+      const vc = new THREE.Mesh(new THREE.BoxGeometry(blkW * 0.72, 0.10, blkL * 0.94), matCover);
+      vc.position.set(0, blkH * 0.62, 0); bay.add(vc);
+      const intake = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.11, blkL * 0.76), matPipe);
+      intake.position.set(blkW * 0.58, blkH * 0.45, 0); bay.add(intake);
     }
     if (isTurbo) {
-      const snail = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.042, 7, 12), matPipe);
-      snail.position.set(-0.28, 0.14, 0.12); snail.rotation.y = Math.PI / 2; bay.add(snail);
-      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.48, 8), matPipe);
-      pipe.rotation.z = Math.PI / 2; pipe.position.set(0, 0.26, 0.24); bay.add(pipe);
+      const snail = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.036, 7, 12), matPipe);
+      snail.position.set(-blkW * 0.54, blkH * 0.38, blkL * 0.20); snail.rotation.y = Math.PI / 2; bay.add(snail);
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, blkW * 0.88, 8), matPipe);
+      pipe.rotation.z = Math.PI / 2; pipe.position.set(0, blkH * 0.70, blkL * 0.38); bay.add(pipe);
     }
-    const rad = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.36, 0.08), matRad);
-    rad.position.set(0, 0.06, isRearEng ? -0.38 : 0.44); bay.add(rad);
-    const strut = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.04, 0.05), matRedP);
-    strut.position.set(0, 0.30, -0.08); bay.add(strut);
-    const bat = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.18), matBat);
-    bat.position.set(0.46, 0.08, -0.14); bay.add(bat);
+
+    // Place radiator & cooling fan at the exact hull-clamped radZ/radY from _getEngineLayout!
+    const radLocalZ = L.radZ - L.engZ;
+    const radLocalY = L.radY - L.engY;
+    const radW = Math.min(0.92, L.radW * 0.92);
+    const radH = Math.min(0.36, L.radH * 0.88);
+    const rad = new THREE.Mesh(new THREE.BoxGeometry(radW, radH, 0.08), matRad);
+    rad.position.set(0, radLocalY, radLocalZ); bay.add(rad);
+
+    if (!L.isCabOver && vehicleId !== "maz537" && vehicleId !== "lambo_tractor" && vehicleId !== "bm21") {
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(Math.min(1.12, (spec.bodyWidth || 1.8) * 0.60), 0.04, 0.05), matRedP);
+      strut.position.set(0, blkH * 0.82, -blkL * 0.14); bay.add(strut);
+    }
+    const bat = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.16, 0.16), matBat);
+    bat.position.set(Math.min(0.44, (spec.bodyWidth || 1.8) * 0.24), 0.06, -blkL * 0.22); bay.add(bat);
 
     const fan = new THREE.Group();
-    fan.position.set(0, 0.06, isRearEng ? -0.32 : 0.37);
+    fan.position.set(0, radLocalY, radLocalZ + (radLocalZ >= 0 ? -0.07 : 0.07));
     const matFan = new THREE.MeshStandardMaterial({ color: 0x20252b, roughness: 0.7 });
     for (let fb = 0; fb < 4; fb++) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 0.015), matFan);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.045, 0.015), matFan);
       blade.rotation.z = (fb / 4) * Math.PI;
       fan.add(blade);
     }
@@ -493,7 +709,7 @@ KK.VehicleBuilder = {
     const chassis = new THREE.Group();
     root.add(chassis);
     const cockpitCfg = KK.CockpitBuilder ? KK.CockpitBuilder.getConfig(vehicleId) : null;
-    let cockpit = null, btrTurretPivot = null, btrGunGroup = null, btrMuzzleFlash = null, btrMuzzleTip = null, tankTurretPivot = null, tankGunPitch = null, tankBarrelSlide = null, tankMainFlash = null, tankCoaxFlash = null, trackSys = null, tankDriverHoodMesh = null, tankUpgVisuals = null, tankXrayAnim = null, gradTurretPivot = null, gradPodPitch = null, gradFlashMesh = null, shilkaTurretPivot = null, shilkaGunPitch = null, shilkaBarrels = null, shilkaRadarDish = null, shilkaFlashes = null, p140SturmGroup = null, p140ApsFlash = null, p140XrayAnim = null, p140RwsPivot = null, p140RwsGunPitch = null, p140RwsMuzzleTip = null, matMainBarrelHot = null, matAutoBarrelHot = null;
+    let cockpit = null, btrTurretPivot = null, btrGunGroup = null, btrMuzzleFlash = null, btrMuzzleTip = null, tankTurretPivot = null, tankGunPitch = null, tankBarrelSlide = null, tankMainFlash = null, tankCoaxFlash = null, trackSys = null, tankDriverHoodMesh = null, tankUpgVisuals = null, tankXrayAnim = null, gradTurretPivot = null, gradPodPitch = null, gradFlashMesh = null, shilkaTurretPivot = null, shilkaGunPitch = null, shilkaBarrels = null, shilkaRadarDish = null, shilkaFlashes = null, shilkaXrayAnim = null, p140SturmGroup = null, p140ApsFlash = null, p140XrayAnim = null, p140RwsPivot = null, p140RwsGunPitch = null, p140RwsMuzzleTip = null, matMainBarrelHot = null, matAutoBarrelHot = null;
 
     const basePaintHex = (vState && vState.paintColor) ? vState.paintColor : spec.color;
     const basePaintColor = new THREE.Color(basePaintHex);
@@ -534,12 +750,8 @@ KK.VehicleBuilder = {
 
     this._addUndercarriage(chassis, spec, matMetal);
 
-    if (!spec.isTracked) {
-      const engineBlock = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.46, 0.72), matEngineBlk);
-      engineBlock.position.set(0, 0.56, spec.bodyLen * 0.28); chassis.add(engineBlock);
-      const valveCover = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.10, 0.58), matSpring);
-      valveCover.position.set(0, 0.82, spec.bodyLen * 0.28); chassis.add(valveCover);
-    }
+    // Static engineBlock & valveCover are placed right after hoodPivot/body using _getEngineLayout()
+    // so cab-overs, rear-engine cars, tractors, and trucks align 100% with their actual engine bay!
 
     const hoodPivot = new THREE.Group(); chassis.add(hoodPivot);
 
@@ -2044,9 +2256,9 @@ KK.VehicleBuilder = {
       }
 
       const lunaBox = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.23, 0.25, 12), matArmorDk);
-      lunaBox.rotation.x = Math.PI / 2; lunaBox.position.set(0.70, 0.46, 1.66); tankTurretPivot.add(lunaBox);
+      // v17.9 Removed T-72 Luna IR spotlight
       const lunaFace = new THREE.Mesh(new THREE.CircleGeometry(0.19, 12), matIRLens);
-      lunaFace.position.set(0.70, 0.46, 1.80); tankTurretPivot.add(lunaFace);
+      // v17.9 Removed T-72 Luna IR lens
       const sightDog = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.30, 0.46), matArmorDk);
       sightDog.position.set(-0.58, 0.94, 0.66); tankTurretPivot.add(sightDog);
 
@@ -4108,7 +4320,23 @@ KK.VehicleBuilder = {
     // Shows live health-colored Engine, Pistons, Radiator, Intercooler,
     // Gearbox, Clutch, Transfer Case, Driveshaft & Tie-Rod Rack!
     // ========================================================================
-    const engineBay = this._buildEngineBay(vehicleId, vState, spec, hoodPivot);
+    const engLayout = this._getEngineLayout(vehicleId, spec, hoodPivot);
+    if (!spec.isTracked) {
+      const engineBlock = new THREE.Mesh(
+        new THREE.BoxGeometry(engLayout.engW * 0.86, engLayout.engH * 0.80, engLayout.engL * 0.84),
+        matEngineBlk
+      );
+      engineBlock.position.set(0, engLayout.engY, engLayout.engZ);
+      chassis.add(engineBlock);
+      const valveCover = new THREE.Mesh(
+        new THREE.BoxGeometry(engLayout.engW * 0.64, 0.08, engLayout.engL * 0.70),
+        matSpring
+      );
+      valveCover.position.set(0, engLayout.engY + engLayout.engH * 0.42, engLayout.engZ);
+      chassis.add(valveCover);
+    }
+
+    const engineBay = this._buildEngineBay(vehicleId, vState, spec, hoodPivot, engLayout);
     if (engineBay) chassis.add(engineBay);
     // v16.2.1 exhaustTips initialized earlier before flameMeshes!
 
@@ -4213,6 +4441,76 @@ KK.VehicleBuilder = {
       const ramRod = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.25), matRam);
       ramRod.position.set(0, 0.46, -1.95); ramRod.renderOrder = 12; turX.add(ramRod);
       p140XrayAnim = { turX, breechX, rackShells, ramShell, ramRod };
+    } else if (spec.isShilka) {
+      // AUTHENTIC ZSU-23-4 "SHILKA" X-RAY: GM-575 Rear V-6R Engine + DG4M-1 Radar APU + Live Quad-23mm Turret & 1RL33 Gun Dish!
+      addXPart("engine",      new THREE.BoxGeometry(1.22, 0.56, 1.04), 0, 0.98, -1.78);
+      addXPart("radiator",    new THREE.BoxGeometry(1.52, 0.14, 0.86), 0, 1.34, -2.26);
+      addXPart("intercooler", new THREE.CylinderGeometry(0.24, 0.24, 0.44, 12), 0.62, 1.02, -1.60, Math.PI / 2);
+      addXPart("gearbox",     new THREE.BoxGeometry(1.46, 0.36, 0.46), 0, 0.94, -2.62);
+      addXPart("transfer",    new THREE.BoxGeometry(2.12, 0.28, 0.32), 0, 0.90, -2.88);
+      addXPart("driveshaft",  new THREE.CylinderGeometry(0.08, 0.08, 0.60, 8), 0, 0.94, -2.20, Math.PI / 2);
+
+      const drvSeatX = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.44, 0.44), new THREE.MeshBasicMaterial({ color: 0x90e0ef, transparent: true, opacity: 0.72, depthTest: false }));
+      drvSeatX.position.set(-0.42, 0.98, 1.78); drvSeatX.renderOrder = 10; xrayGroup.add(drvSeatX);
+      const apuX = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.40, 0.76), new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.62, depthTest: false }));
+      apuX.position.set(0.52, 0.98, 1.62); apuX.renderOrder = 10; xrayGroup.add(apuX);
+      const fuelX = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.42, 0.88), new THREE.MeshBasicMaterial({ color: 0x3a86ff, transparent: true, opacity: 0.68, depthTest: false }));
+      fuelX.position.set(0.62, 0.96, -0.92); fuelX.renderOrder = 10; xrayGroup.add(fuelX);
+
+      const torsionMat = makeXrayMat();
+      xrayParts.tieRods = torsionMat;
+      for (let k = 0; k < 6; k++) {
+        const tz = spec.wheels[k * 2].z;
+        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.044, 2.46, 6), torsionMat);
+        bar.rotation.z = Math.PI / 2; bar.position.set(0, 0.70, tz); bar.renderOrder = 10;
+        xrayGroup.add(bar);
+      }
+
+      const matTurX  = new THREE.MeshBasicMaterial({ color: 0x2de08b, transparent: true, opacity: 0.92, depthTest: false });
+      const matAmmoX = new THREE.MeshBasicMaterial({ color: 0xffbe0b, transparent: true, opacity: 0.88, depthTest: false });
+      const matRadX  = new THREE.MeshBasicMaterial({ color: 0x00f5ff, transparent: true, opacity: 0.86, depthTest: false });
+
+      const turX = new THREE.Group();
+      turX.position.set(0, 1.48, -0.05);
+      xrayGroup.add(turX);
+
+      const tRing = new THREE.Mesh(new THREE.TorusGeometry(0.96, 0.045, 8, 22), matRadX);
+      tRing.rotation.x = Math.PI / 2; tRing.position.y = 0.04; tRing.renderOrder = 11; turX.add(tRing);
+
+      const ammoBoxesX = [];
+      for (const sx of [-1, 1]) {
+        const boxX = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.84), matAmmoX);
+        boxX.position.set(sx * 0.84, 0.34, -0.18); boxX.renderOrder = 11; turX.add(boxX);
+        ammoBoxesX.push(boxX);
+      }
+      const radarCabX = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.44, 0.56), matRadX);
+      radarCabX.position.set(0, 0.38, -0.78); radarCabX.renderOrder = 11; turX.add(radarCabX);
+
+      const radarX = new THREE.Group();
+      radarX.position.set(0, 1.56, -0.78);
+      const dishCoreX = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.36, 0.14, 14), matRadX);
+      dishCoreX.rotation.x = Math.PI / 2; dishCoreX.renderOrder = 11; radarX.add(dishCoreX);
+      const feedX = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.50, 8), matRadX);
+      feedX.rotation.x = Math.PI / 2; feedX.position.z = 0.28; feedX.renderOrder = 11; radarX.add(feedX);
+      turX.add(radarX);
+
+      const gunX = new THREE.Group();
+      gunX.position.set(0, 0.42, 1.12);
+      turX.add(gunX);
+
+      const barrelsX = [];
+      const bOffsetsX = [[-0.34, 0.12], [0.34, 0.12], [-0.34, -0.12], [0.34, -0.12]];
+      for (const [bx, by] of bOffsetsX) {
+        const bGrpX = new THREE.Group();
+        bGrpX.position.set(bx, by, 0);
+        const breech = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.56), matTurX);
+        breech.position.z = -0.12; breech.renderOrder = 12; bGrpX.add(breech);
+        const brl = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.048, 2.38, 7), matTurX);
+        brl.rotation.x = Math.PI / 2; brl.position.z = 1.32; brl.renderOrder = 11; bGrpX.add(brl);
+        gunX.add(bGrpX);
+        barrelsX.push(bGrpX);
+      }
+      shilkaXrayAnim = { turX, gunX, radarX, barrelsX, ammoBoxesX };
     } else if (spec.isTracked) {
       // AUTHENTIC T-72B X-RAY INTERNALS + LIVE ANIMATED AZ-184 CAROUSEL AUTOLOADER!
       addXPart("engine",      new THREE.BoxGeometry(1.42, 0.68, 1.15), 0, 1.02, -1.78);
@@ -4294,58 +4592,17 @@ KK.VehicleBuilder = {
 
       tankXrayAnim = { carouselRotor, carouselShells, turretXray, breechX, hoistGrp, liftProj, liftChg, rammerRod, spentStub, spinAngle: 0 };
     } else {
-      // v15.6 ACCURATE X-RAY ENGINE & DRIVETRAIN POSITIONS (Matches Actual Engine Bays!)
-      const isKomodo = (vehicleId === "komodo_std" || vehicleId === "komodo_recon" || vehicleId === "komodo_turret");
-      const isRear911 = (vehicleId === "porsche_dakar" || !!spec.rearEngine);
-      const isCabOver = (vehicleId === "toyota_coaster" || vehicleId === "kamaz" || vehicleId === "uaz_buhanka");
-      let engZ, engY = 0.66, radZ = halfLen * 0.86, radY = 0.68, gbZ, tfZ, dsZ = -0.10, dsLen = spec.bodyLen * 0.52;
-
-      if (isKomodo) {
-        // Pindad Komodo: Front armored sloped hood engine bay (cowlZ = 1.24 .. front = +2.85)!
-        engZ = 1.88; engY = 1.12;
-        radZ = 2.52; radY = 1.16;
-        gbZ  = 0.92; tfZ  = 0.15;
-        dsZ  = -0.85; dsLen = 2.05;
-      } else if (isRear911) {
-        // Porsche 911 Dakar: Rear-mounted Flat-6 behind rear axle + front radiator!
-        engZ = -1.52; engY = 0.68;
-        radZ =  1.88; radY = 0.58;
-        gbZ  = -0.78; tfZ  = -0.18;
-        dsZ  =  0.55; dsLen = 1.55;
-      } else if (spec.id === "btr80") {
-        engZ = -2.25; engY = 0.95;
-        radZ = -2.95; radY = 1.15;
-        gbZ  = -1.25; tfZ  = -0.45;
-        dsZ  =  0.20; dsLen = 3.6;
-      } else if (spec.id === "maz537") {
-        engZ = 0.95; engY = 1.25;
-        radZ = 2.45; radY = 1.35;
-        gbZ  = -0.15; tfZ  = -0.95;
-        dsZ  = -1.20; dsLen = 4.2;
-      } else if (isCabOver) {
-        engZ = halfLen * 0.54; engY = 0.72;
-        radZ = halfLen * 0.86; radY = 0.78;
-        gbZ  = engZ - 0.88; tfZ = engZ - 1.55;
-      } else {
-        // Standard Front-Engine Cars & Trucks: Anchor directly inside the actual hood bay!
-        engZ = (hoodPivot && hoodPivot.position.z > 0.2) ? (hoodPivot.position.z + 0.42) : (halfLen * 0.60);
-        engY = (hoodPivot && hoodPivot.position.y > 0.5) ? Math.max(0.56, hoodPivot.position.y - 0.28) : 0.66;
-        radZ = Math.min(halfLen * 0.88, engZ + 0.52);
-        radY = engY + 0.02;
-        gbZ  = engZ - 0.82;
-        tfZ  = engZ - 1.45;
-      }
-
-      addXPart("engine",      new THREE.BoxGeometry(isKomodo ? 0.78 : 0.68, isKomodo ? 0.62 : 0.54, isKomodo ? 0.96 : 0.84), 0, engY, engZ);
-      addXPart("radiator",    new THREE.BoxGeometry(spec.bodyWidth * 0.54, 0.44, 0.14), 0, radY, radZ);
-      addXPart("intercooler", new THREE.BoxGeometry(spec.bodyWidth * 0.46, 0.22, 0.12), 0, radY - 0.22, radZ + (isRear911 ? 0.06 : 0.08));
-      addXPart("gearbox",     new THREE.BoxGeometry(0.46, 0.36, 0.68), 0, engY - 0.12, gbZ);
-      addXPart("transfer",    new THREE.BoxGeometry(0.44, 0.32, 0.44), 0, engY - 0.18, tfZ);
-      addXPart("driveshaft",  new THREE.CylinderGeometry(0.07, 0.07, dsLen, 8), 0, isKomodo ? 0.64 : 0.36, dsZ, Math.PI / 2);
-      addXPart("tieRods",     new THREE.BoxGeometry(spec.bodyWidth * 0.84, 0.09, 0.09), 0, isKomodo ? 0.58 : 0.30, spec.wheels[0].z);
-      addXPart("crankshaft",  new THREE.CylinderGeometry(0.08, 0.08, 0.78, 8), 0, engY - 0.14, engZ, Math.PI / 2);
-      const rearWz = spec.wheels[spec.wheels.length - 1].z;
-      addXPart("rearAxle",    new THREE.CylinderGeometry(0.055, 0.055, spec.bodyWidth * 0.86, 8), 0, isKomodo ? 0.58 : 0.32, rearWz, 0, Math.PI / 2);
+      // v17.6.1 UNIFIED HULL-CLAMPED X-RAY ENGINE & DRIVETRAIN POSITIONS (All 25 Wheeled Vehicles!)
+      const L = engLayout;
+      addXPart("engine",      new THREE.BoxGeometry(L.engW, L.engH, L.engL), 0, L.engY, L.engZ);
+      addXPart("radiator",    new THREE.BoxGeometry(L.radW, L.radH, 0.14),   0, L.radY, L.radZ);
+      addXPart("intercooler", new THREE.BoxGeometry(L.icW,  L.icH,  0.12),   0, L.icY,  L.icZ);
+      addXPart("gearbox",     new THREE.BoxGeometry(Math.min(0.48, L.engW * 0.72), Math.min(0.36, L.engH * 0.68), L.gbL), 0, Math.max(0.36, L.engY - 0.12), L.gbZ);
+      addXPart("transfer",    new THREE.BoxGeometry(Math.min(0.46, L.engW * 0.68), Math.min(0.32, L.engH * 0.60), L.tfL), 0, Math.max(0.34, L.engY - 0.16), L.tfZ);
+      addXPart("driveshaft",  new THREE.CylinderGeometry(0.065, 0.065, L.dsLen, 8), 0, L.dsY, L.dsZ, Math.PI / 2);
+      addXPart("tieRods",     new THREE.BoxGeometry(spec.bodyWidth * 0.84, 0.09, 0.09), 0, L.axleY, L.frontWz);
+      addXPart("crankshaft",  new THREE.CylinderGeometry(0.075, 0.075, Math.max(0.46, L.engL * 0.88), 8), 0, L.engY - 0.12, L.engZ, Math.PI / 2);
+      addXPart("rearAxle",    new THREE.CylinderGeometry(0.055, 0.055, spec.bodyWidth * 0.86, 8), 0, L.axleY + 0.02, L.rearWz, 0, Math.PI / 2);
       const xraySuspList = [];
       const xrayBrakeList = [];
       for (let wi = 0; wi < spec.wheels.length; wi++) {
@@ -4353,7 +4610,7 @@ KK.VehicleBuilder = {
         const cornerKey = (wd.z >= 0) ? (wd.x < 0 ? "shockFL" : "shockFR") : (wd.x < 0 ? "shockRL" : "shockRR");
         const sMat = makeXrayMat();
         const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.58, 6), sMat);
-        const baseY = isKomodo ? 0.86 : 0.56;
+        const baseY = L.suspBaseY;
         sk.position.set(wd.x * 0.82, baseY, wd.z);
         sk.renderOrder = 10;
         xrayGroup.add(sk);
@@ -4372,10 +4629,10 @@ KK.VehicleBuilder = {
       xrayParts._brakeList = xrayBrakeList;
     }
 
-    // v15.9 Tracked Tank X-Ray: Left & Right Destroyable Track Runs!
+    // v15.9 Tracked Tank X-Ray: Left & Right Destroyable Track Runs (aligned to actual roadwheel track X!)
     if (spec.isTracked) {
       const trkLen = (spec.bodyLen || 6.4) * 0.88;
-      const trkX = (spec.bodyWidth || 3.2) * 0.44;
+      const trkX = (spec.wheels && spec.wheels.length > 0) ? Math.abs(spec.wheels[0].x) : ((spec.bodyWidth || 3.2) * 0.44);
       addXPart("trackL", new THREE.BoxGeometry(0.54, 0.72, trkLen), -trkX, 0.48, 0);
       addXPart("trackR", new THREE.BoxGeometry(0.54, 0.72, trkLen),  trkX, 0.48, 0);
     }
@@ -4383,9 +4640,7 @@ KK.VehicleBuilder = {
     const shellMaterials = [matPaint, matTrim, matGalv, matMetal, matCarbon, ...(chassis.userData.extraShellMats || [])];
 
     const smokeGroup = new THREE.Group();
-    const smkZ = spec.rearEngine ? (-halfLen * 0.64) : (halfLen * 0.65);
-    const smkY = spec.isTracked ? 1.62 : 1.05;
-    smokeGroup.position.set(0, smkY, smkZ); chassis.add(smokeGroup);
+    smokeGroup.position.set(0, engLayout.smkY, engLayout.smkZ); chassis.add(smokeGroup);
     const smokePuffs = [];
     for (let i = 0; i < 6; i++) {
       const puff = new THREE.Mesh(
@@ -4427,34 +4682,78 @@ KK.VehicleBuilder = {
         thSideExh.position.set(sx * 1.96, 1.52, 2.35);
         thermalGroup.add(thSideExh);
       }
-    } else if (spec.rearEngine) {
-      const deckW = spec.isTracked ? 2.15 : 1.72;
-      const deckL = spec.isTracked ? 2.10 : 1.85;
-      const deckY = spec.isTracked ? (spec.id === "t72" ? 1.66 : 1.54) : 1.68;
+    } else if (spec.isShilka) {
+      // ZSU-23-4 Shilka rear GM-575 engine deck + side exhaust (strictly inside 6.54m x 3.12m hull!)
+      const thDeck = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.18, 1.44), matThEng);
+      thDeck.position.set(0, 1.46, -2.06);
+      thermalGroup.add(thDeck);
+      const thExh = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.32, 1.10), matThExh);
+      thExh.position.set(-1.14, 1.24, -2.32);
+      thermalGroup.add(thExh);
+    } else if (spec.isTracked) {
+      // T-72B & Pindad Harimau rear engine deck + side exhaust
+      const deckW = spec.isHarimau ? 2.02 : 2.15;
+      const deckL = spec.isHarimau ? 1.92 : 2.10;
+      const deckY = spec.isHarimau ? 1.54 : 1.62;
       const deckZ = -halfLen * 0.54;
-      const thDeck = new THREE.Mesh(new THREE.BoxGeometry(deckW, 0.24, deckL), matThEng);
+      const thDeck = new THREE.Mesh(new THREE.BoxGeometry(deckW, 0.22, deckL), matThEng);
       thDeck.position.set(0, deckY, deckZ);
       thermalGroup.add(thDeck);
-
-      const thExh = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.42, 1.35), matThExh);
-      thExh.position.set(-spec.bodyWidth * 0.44, deckY - 0.34, deckZ - 0.35);
+      const thExh = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 1.30), matThExh);
+      thExh.position.set(-spec.bodyWidth * 0.42, deckY - 0.34, deckZ - 0.35);
       thermalGroup.add(thExh);
+    } else if (engLayout.isRear911) {
+      // Porsche 911 Dakar: Rear Flat-6 decklid glow + rear exhaust tips + front nose radiator
+      const thRear = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.24, 0.88), matThEng);
+      thRear.position.set(0, 0.88, -1.56);
+      thermalGroup.add(thRear);
+      const thFrontRad = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.28, 0.16), matThEng);
+      thFrontRad.position.set(0, 0.56, Math.min(halfLen - 0.16, engLayout.radZ + 0.10));
+      thermalGroup.add(thFrontRad);
+      const thExh = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.18, 0.24), matThExh);
+      thExh.position.set(0, 0.40, -halfLen + 0.16);
+      thermalGroup.add(thExh);
+    } else if (engLayout.isBtr80) {
+      // BTR-80: Rear armored engine louvres + twin rear-quarter exhaust pipes
+      const thDeck = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.22, 1.65), matThEng);
+      thDeck.position.set(0, 1.88, -2.20);
+      thermalGroup.add(thDeck);
+      for (const sx of [-1, 1]) {
+        const thExh = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 1.45), matThExh);
+        thExh.position.set(sx * (spec.bodyWidth * 0.44), 1.66, -2.55);
+        thermalGroup.add(thExh);
+      }
+    } else if (vehicleId === "maz537") {
+      // MAZ-537: Behind-cab 38.8L V12 engine bay box + twin vertical stacks
+      const thBay = new THREE.Mesh(new THREE.BoxGeometry(2.36, 0.58, 1.84), matThEng);
+      thBay.position.set(0, 1.96, 0.85);
+      thermalGroup.add(thBay);
+      for (const sx of [-1.26, 1.26]) {
+        const thStk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 1.85, 8), matThExh);
+        thStk.position.set(sx, 2.25, -0.32);
+        thermalGroup.add(thStk);
+      }
     } else {
-      const hoodW = Math.min(1.85, spec.bodyWidth * 0.72);
-      const hoodL = Math.min(2.1, spec.bodyLen * 0.34);
-      const hoodY = Math.max(0.92, spec.bodyHeight * 0.56);
-      const hoodZ = halfLen * 0.56;
-      const thHood = new THREE.Mesh(new THREE.BoxGeometry(hoodW, 0.44, hoodL), matThEng);
+      // Cab-overs (UAZ-452, Delica, Coaster, KamAZ) & Front-engine cars/trucks/Komodo/BM-21/Tractor:
+      // Anchor strictly to engLayout.engZ/radZ and clamp inside [-halfLen + 0.12, halfLen - 0.12]!
+      const hoodW = Math.min(1.70, Math.max(engLayout.engW * 1.25, spec.bodyWidth * 0.56));
+      const hoodL = Math.min(1.65, engLayout.engL * 1.25);
+      const hoodZ = Math.max(-halfLen + hoodL * 0.5 + 0.14, Math.min(halfLen - hoodL * 0.5 - 0.14, engLayout.engZ));
+      const hoodY = engLayout.isCabOver ? (engLayout.engY + 0.10) : (engLayout.engY + 0.16);
+      const thHood = new THREE.Mesh(new THREE.BoxGeometry(hoodW, 0.36, hoodL), matThEng);
       thHood.position.set(0, hoodY, hoodZ);
       thermalGroup.add(thHood);
 
-      const thGrille = new THREE.Mesh(new THREE.BoxGeometry(hoodW * 0.92, 0.46, 0.24), matThEng);
-      thGrille.position.set(0, hoodY - 0.14, halfLen * 0.94);
+      const grZ = Math.min(halfLen - 0.14, engLayout.radZ + 0.12);
+      const thGrille = new THREE.Mesh(new THREE.BoxGeometry(Math.min(hoodW * 0.92, engLayout.radW * 1.05), 0.36, 0.18), matThEng);
+      thGrille.position.set(0, engLayout.radY, grZ);
       thermalGroup.add(thGrille);
 
-      const thExh = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.20, 0.75, 8), matThExh);
+      const exhZ = (vehicleId === "kamaz") ? -0.40 : (-halfLen + 0.38);
+      const exhX = (vehicleId === "kamaz") ? (-spec.bodyWidth * 0.44) : (spec.bodyWidth * 0.28);
+      const thExh = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.62, 8), matThExh);
       thExh.rotation.x = Math.PI / 2;
-      thExh.position.set(spec.bodyWidth * 0.30, 0.52, -halfLen * 0.92);
+      thExh.position.set(exhX, 0.48, exhZ);
       thermalGroup.add(thExh);
     }
 
@@ -4650,6 +4949,36 @@ KK.VehicleBuilder = {
         }
       },
 
+      setArmorViewerMode(active, profile) {
+        const colorForMm = (mm) => {
+          if (mm >= 800) return 0xa855f7;
+          if (mm >= 450) return 0xef4444;
+          if (mm >= 180) return 0xf97316;
+          if (mm >= 60)  return 0xfacc15;
+          return 0x22c55e;
+        };
+        const p = profile || { front: 24, turret: 24, sideFront: 16, sideRear: 12, rear: 12, roof: 10, belly: 10 };
+        root.traverse((obj) => {
+          if (!obj.isMesh || !obj.material) return;
+          if (active) {
+            if (!obj.userData._origArmorMat) obj.userData._origArmorMat = obj.material;
+            const pos = obj.position;
+            let mm = p.front;
+            if (pos.y > 1.45) mm = p.turret;
+            else if (pos.y < 0.35) mm = p.belly;
+            else if (Math.abs(pos.x) > 1.15) mm = (pos.z >= 0) ? p.sideFront : p.sideRear;
+            else if (pos.z < -1.5) mm = p.rear;
+            else mm = p.front;
+            obj.material = new THREE.MeshStandardMaterial({
+              color: colorForMm(mm), roughness: 0.45, metalness: 0.25
+            });
+          } else if (obj.userData._origArmorMat) {
+            obj.material = obj.userData._origArmorMat;
+            delete obj.userData._origArmorMat;
+          }
+        });
+      },
+
       updateVisuals(dt, state) {
         const chassisLiftY = (state.rideHeight || 0) - 0.34;
         chassis.position.y = chassisLiftY;
@@ -4784,9 +5113,26 @@ KK.VehicleBuilder = {
         }
         if (tankTurretPivot) {
           if (typeof state.turretYaw === "number") tankTurretPivot.rotation.y = state.turretYaw;
+          if (state.turretPopY !== undefined && tankTurretPivot) {
+            if (tankTurretPivot.userData._baseY === undefined) tankTurretPivot.userData._baseY = tankTurretPivot.position.y;
+            tankTurretPivot.position.y = tankTurretPivot.userData._baseY + (state.turretPopY || 0);
+            tankTurretPivot.rotation.x = state.turretPopPitch || 0;
+            tankTurretPivot.rotation.z = state.turretPopRoll || 0;
+          }
           if (p140RwsPivot && typeof state.rwsYaw === "number") p140RwsPivot.rotation.y = state.rwsYaw - (state.turretYaw || 0);
           if (p140RwsGunPitch && typeof state.rwsPitch === "number") p140RwsGunPitch.rotation.x = -Math.max(-0.175, Math.min(0.96, state.rwsPitch));
-          if (tankGunPitch && typeof state.gunPitch === "number") tankGunPitch.rotation.x = -Math.max(-0.12, Math.min(0.32, state.gunPitch));
+          let effGunRotX = (typeof state.gunPitch === "number") ? -Math.max(-0.12, Math.min(0.32, state.gunPitch)) : 0;
+          // v17.8.4 Smoothly level T-72 / 140A4 main gun during autoloader cycle (0->0.22 level, 0.22->0.86 hold level for rammer, 0.86->1.0 rise back!)
+          const isAutoTank = !!(tankXrayAnim || p140XrayAnim);
+          if (isAutoTank && (state.t72ReloadTimer || 0) > 0) {
+            const rT = state.t72ReloadTotal || 6.5;
+            const rF = Math.max(0, Math.min(1, 1.0 - (state.t72ReloadTimer / rT)));
+            let levelBlend = 1.0;
+            if (rF < 0.22) levelBlend = rF / 0.22;
+            else if (rF > 0.86) levelBlend = Math.max(0, (1.0 - rF) / 0.14);
+            effGunRotX = effGunRotX * (1.0 - levelBlend);
+          }
+          if (tankGunPitch) tankGunPitch.rotation.x = effGunRotX;
           if (tankBarrelSlide) tankBarrelSlide.position.z = -(state.barrelRecoil || 0) * 0.68;
           if (tankMainFlash) tankMainFlash.visible = (state.tankFlashTimer || 0) > 0;
           if (tankCoaxFlash) tankCoaxFlash.visible = (state.coaxFlashTimer || 0) > 0;
@@ -4805,6 +5151,7 @@ KK.VehicleBuilder = {
           }
 
           tankXrayAnim.breechX.position.z = 0.65 - (state.barrelRecoil || 0) * 0.52;
+          if (tankGunPitch) tankXrayAnim.breechX.rotation.x = tankGunPitch.rotation.x;
 
           if (rRem > 0) {
             if (frac < 0.20) {
@@ -4853,13 +5200,33 @@ KK.VehicleBuilder = {
           }
         }
 
+        if (shilkaXrayAnim && state.xrayActive) {
+          shilkaXrayAnim.turX.rotation.y = typeof state.turretYaw === "number" ? state.turretYaw : 0;
+          shilkaXrayAnim.gunX.rotation.x = -Math.max(-0.14, Math.min(0.85, state.gunPitch || 0));
+          if (shilkaRadarDish) shilkaXrayAnim.radarX.rotation.y = shilkaRadarDish.rotation.y;
+          const hasAmmo = (state.shilkaAmmo === undefined || state.shilkaAmmo > 0);
+          for (let ab = 0; ab < shilkaXrayAnim.ammoBoxesX.length; ab++) shilkaXrayAnim.ammoBoxesX[ab].visible = hasAmmo;
+          if (shilkaBarrels) {
+            for (let b = 0; b < shilkaXrayAnim.barrelsX.length; b++) {
+              shilkaXrayAnim.barrelsX[b].position.z = shilkaBarrels[b] ? shilkaBarrels[b].position.z : 0;
+            }
+          }
+        }
+
         if (p140SturmGroup && state.t72Upgrades) p140SturmGroup.visible = !!state.t72Upgrades.sturmKit && !(state.stowedUpgrades && state.stowedUpgrades.sturmKit);
         if (p140ApsFlash) p140ApsFlash.visible = (state.apsFlashTimer || 0) > 0;
         if (p140XrayAnim && state.xrayActive) {
           p140XrayAnim.turX.rotation.y = typeof state.turretYaw === "number" ? state.turretYaw : 0;
           p140XrayAnim.breechX.position.z = 0.85 - (state.barrelRecoil || 0) * 0.58;
+          if (tankGunPitch) p140XrayAnim.breechX.rotation.x = tankGunPitch.rotation.x;
           const totalS = state.t72TotalShells !== undefined ? state.t72TotalShells : 40;
-          for (let s = 0; s < p140XrayAnim.rackShells.length; s++) p140XrayAnim.rackShells[s].visible = (s < totalS);
+          const rackLOn = (state.ammoRackLIntact !== false);
+          const rackROn = (state.ammoRackRIntact !== false);
+          for (let s = 0; s < p140XrayAnim.rackShells.length; s++) {
+            const shM = p140XrayAnim.rackShells[s];
+            const isLeftRack = (shM.position.x < 0);
+            shM.visible = (s < totalS) && (isLeftRack ? rackLOn : rackROn);
+          }
           const rRem = state.t72ReloadTimer || 0, rTot = state.t72ReloadTotal || 4.8;
           if (rRem > 0) {
             const frac = Math.max(0, Math.min(1, 1.0 - rRem / rTot));
