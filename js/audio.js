@@ -476,9 +476,19 @@ KK.AudioEngine = class AudioEngine {
     this.shStatGain.gain.setTargetAtTime(Math.min(0.26, statTarget), t, 0.08);
   }
 
+  // v18.0.1 White-noise buffer helper for all cannon, autocannon, clang, whistle & cook-off synths!
+  _noiseBuffer(dur = 0.5) {
+    if (!this.ctx) return null;
+    const len = Math.max(256, Math.floor(this.ctx.sampleRate * Math.max(0.05, dur)));
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
   // v18.0 TERRIFYING SATURATED MG / AUTOCANNON SYNTH (12.7mm / 14.5mm / 30mm / 40mm)
   playKPVTShot(caliberMm = 14.5) {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.master || this.muted) return;
     const out = this.weaponBus || this.master;
     const now = this.ctx.currentTime;
     const cal = Math.max(12, Math.min(45, caliberMm || 14.5));
@@ -523,7 +533,7 @@ KK.AudioEngine = class AudioEngine {
 
   // v18.0 APOCALYPTIC REALISTIC "KRAK-THOOM!" TANK CANNON BLAST (Caliber-scaled 105mm / 125mm / 140mm / 155mm!)
   playTank125mmBlast(caliberMm = 125) {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.master || this.muted) return;
     const out = this.weaponBus || this.master;
     const now = this.ctx.currentTime;
     const cal = Math.max(90, Math.min(160, caliberMm || 125));
@@ -838,7 +848,7 @@ KK.AudioEngine = class AudioEngine {
 
   // v17.8.4 CALIBER-SCALED METALLIC ARMOR CLANG / RICOCHET WHINE!
   playArmorClang(caliberMm = 125, isRicochet = false) {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.master || this.muted) return;
     const now = this.ctx.currentTime;
     const cal = Math.max(12, Math.min(155, caliberMm || 125));
     const scale = Math.pow(cal / 75.0, 0.45);
@@ -870,7 +880,7 @@ KK.AudioEngine = class AudioEngine {
 
   // v17.9 LASER WARNING RECEIVER (LWR) SHRILL BEEP!
   playLwrBeep() {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.master || this.muted) return;
     const now = this.ctx.currentTime;
     for (let k = 0; k < 2; k++) {
       const osc = this.ctx.createOscillator(); osc.type = "square";
@@ -885,7 +895,7 @@ KK.AudioEngine = class AudioEngine {
 
   // v17.9 2-SECOND CONCUSSION EAR-RINGING (NO SCREEN FLASH — 100% EPILEPSY-SAFE!)
   playConcussionMuffle() {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.master || this.muted) return;
     const now = this.ctx.currentTime;
     // Real 2-second muffled-hearing lowpass sweep on masterLP (zero screen flash — epilepsy-safe!)
     if (this.masterLP) {
@@ -907,7 +917,7 @@ KK.AudioEngine = class AudioEngine {
 
   // v17.9 SUBTLE TURRET TRAVERSE HYDRAULIC/ELECTRIC WHINE (GRINDS IF RING DAMAGED!)
   playTurretWhineTick(damaged = false) {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.master || this.muted) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     osc.type = damaged ? "sawtooth" : "sine";
@@ -922,7 +932,7 @@ KK.AudioEngine = class AudioEngine {
 
   // v17.9 BLOW-OUT PANEL / AMMO COOK-OFF VERTICAL FLAME JET ROAR (3.5s)
   playCookoffJet() {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.master || this.muted) return;
     const now = this.ctx.currentTime;
     const buf = this._noiseBuffer(3.2);
     const src = this.ctx.createBufferSource(); src.buffer = buf;
@@ -937,7 +947,7 @@ KK.AudioEngine = class AudioEngine {
 
   // v17.8.4 INCOMING ARTILLERY / TANK SHELL DOPPLER WHISTLE!
   playShellWhistle(caliberMm = 125) {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.master || this.muted) return;
     const now = this.ctx.currentTime;
     const cal = Math.max(75, Math.min(460, caliberMm || 125));
     const dur = Math.min(0.95, 0.48 + (cal / 460) * 0.38);

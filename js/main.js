@@ -303,6 +303,17 @@ KK.Game = class Game {
       onLwrPing: (msg) => {
         this._handleIncomingLwrPing(msg);
       },
+      onCarBump: (msg) => {
+        if (!msg) return;
+        if (this.onFoot && !this.ridingWithPeerId) {
+          this._footKnock = { vx: msg.vx || 0, vy: Math.max(3.5, msg.vy || 5.0), vz: msg.vz || 0, yOff: 0.12 };
+          if (this.audio) this.audio.playImpact(0.75);
+          if (this.ui) this.ui.toast(`💥 ${msg.callsign || "A friend"} sent you flying!`, true);
+        } else if (!this.onFoot && this.vehicle && this.vehicle.applyExternalImpulse) {
+          this.vehicle.applyExternalImpulse(msg.vx || 0, msg.vy || 1.5, msg.vz || 0, msg.torque || 2.0);
+          if (this.audio) this.audio.playImpact(0.65);
+        }
+      },
       onHazardEvent: (msg) => {
         if (this.hazards) this.hazards.handleHazardEvent(msg, this.vehicle, this.ui, this.audio);
       },
@@ -390,7 +401,7 @@ KK.Game = class Game {
         if (d < 420) {
           if (cal >= 35 && this.audio.play40mmAutoKanone) this.audio.play40mmAutoKanone();
           else if (cal >= 20 && this.audio.playShilka23mm) this.audio.playShilka23mm();
-          else this.audio.playKPVTShot();
+          else this.audio.playKPVTShot(cal);
         }
         const shellKind = cal >= 35 ? "auto40" : (cal >= 28 ? "auto30" : (cal >= 20 ? "auto23" : "mg"));
         const ox = msg.ox !== undefined ? msg.ox : msg.x0;
@@ -525,12 +536,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v18.0 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v18.0.2 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v18.0 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v18.0.2 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -1130,7 +1141,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        // v18.0 Garage is strictly [F] only — [G] is exclusively military/flare!
+        // v18.0.2 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -1382,7 +1393,7 @@ KK.Game = class Game {
     }
   }
 
-  // v18.0 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v18.0.2 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1406,7 +1417,7 @@ KK.Game = class Game {
     }
   }
 
-  // v18.0 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v18.0.2 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -2040,7 +2051,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v18.0 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v18.0.2 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -3196,7 +3207,7 @@ KK.Game = class Game {
     return { tipWorld, evacWorld, dirWorld };
   }
 
-  // v18.0 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
+  // v18.0.2 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
   _onArmorHitAck(msg) {
     if (!msg) return;
     const victim = msg.victimCallsign || "Target";
@@ -3235,10 +3246,10 @@ KK.Game = class Game {
   }
 
   // ==========================================================================
-  // v18.0 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
+  // v18.0.2 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
   // ==========================================================================
   // ==========================================================================
-  // v18.0 TANK COMBAT CORE: STATE RESET, EXACT RAY-vs-OBB HITBOXES & LWR/FCS
+  // v18.0.2 TANK COMBAT CORE: STATE RESET, EXACT RAY-vs-OBB HITBOXES & LWR/FCS
   // ==========================================================================
   _resetTankCombatState(resetAmmoRacks = true) {
     if (this.armorViewerActive) this.toggleArmorViewer();
@@ -3542,7 +3553,7 @@ KK.Game = class Game {
       zoneNormalL.set(0, 0.12, -0.99).normalize();
     }
 
-    // 3. v18.0 EXACT QUATERNION LOCAL HIT COORDINATES + GROUND-SPLASH BELLY FIX + PROPER ROOF/BELLY NORMALS!
+    // 3. v18.0.2 EXACT QUATERNION LOCAL HIT COORDINATES + GROUND-SPLASH BELLY FIX + PROPER ROOF/BELLY NORMALS!
     const prof = this._getArmorProfile(spec, vs);
     const hitLocalPt = new THREE.Vector3(hx - vx, hy - this.vehicle.pos.y, hz - vz).applyQuaternion(invQuat);
     const hitLocalZ = hitLocalPt.z;
@@ -3608,7 +3619,7 @@ KK.Game = class Game {
     const hlth = vs.health;
 
     // 5. AUTO-RICOCHET & HEAVY MBT NON-PENETRATION (with exposed track/optic chip for autocannons!)
-    // v18.0 STRICT PENETRATION CHECK: AP, HE, HESH & Autocannons MUST beat effective armor to penetrate!
+    // v18.0.2 STRICT PENETRATION CHECK: AP, HE, HESH & Autocannons MUST beat effective armor to penetrate!
     const apObliqueBounce = isAp && (impactAngleDeg > 72 || effPenMm < effArmorMm);
     const heNonPen = (isHe && !isTherm && isArmored) && (effPenMm < effArmorMm * 0.92);
     const autoBounce = isAuto && (effPenMm < effArmorMm * 0.92);
@@ -3686,7 +3697,7 @@ KK.Game = class Game {
       if (this.audio.playArmorClang) this.audio.playArmorClang(caliberMm, false);
       if (caliberMm >= 90 && this.audio.playConcussionMuffle) this.audio.playConcussionMuffle();
     }
-    // v18.0 LOCATION-ACCURATE DAMAGEABLE MODULES & AMMO STOWAGE COOK-OFFS!
+    // v18.0.2 LOCATION-ACCURATE DAMAGEABLE MODULES & AMMO STOWAGE COOK-OFFS!
     let cookoffKind = null;
     if (isArmored && caliberMm >= 20) {
       if (zone === "TURRET" || zone === "ROOF") {
@@ -3964,16 +3975,7 @@ KK.Game = class Game {
     const isAp140 = (sh === "ap140");
     for (let s = 6; s < effMax140; s += (isAp140 ? 4 : 6)) {
       const rx = mz.tipWorld.x + aimDir.x * s, ry = mz.tipWorld.y + aimDir.y * s, rz = mz.tipWorld.z + aimDir.z * s;
-      // Direct hit check on LAN friend vehicles/tanks (crucial for pinpoint APFSDS!)
-      let hitPeer = false;
-      if (this.network && this.network.remotePlayers) {
-        for (const rp of this.network.remotePlayers.values()) {
-          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.4 && Math.abs((rp.gy || 0) + 1.2 - ry) < 2.8) {
-            endPt.set(rx, ry, rz); hitPeer = true; break;
-          }
-        }
-      }
-      if (hitPeer) break;
+      // Exact Ray-vs-OBB already capped loop at effMax140
       let cHit = this.cryptids.applyCannonHit(rx, ry, rz, sh, this.audio, 140); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 65);
       if (cHit.hit) { endPt.set(rx, ry, rz); break; }
       if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network).hit) { endPt.set(rx, ry, rz); break; }
@@ -4041,15 +4043,7 @@ KK.Game = class Game {
     let endPt = obb40 ? new THREE.Vector3(obb40.x, obb40.y, obb40.z) : muzzleG.clone().addScaledVector(aimDir, 360);
     for (let s = 6; s < lim40; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
-      let hitP = false;
-      if (this.network && this.network.remotePlayers) {
-        for (const rp of this.network.remotePlayers.values()) {
-          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.2 && Math.abs((rp.gy || 0) + 1.2 - ry) < 2.6) {
-            endPt.set(rx, ry, rz); hitP = true; break;
-          }
-        }
-      }
-      if (hitP) break;
+      // Exact Ray-vs-OBB already capped loop at lim40
       let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 40); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 28);
       if (cHit.hit) { endPt.set(rx, ry, rz); this.particles.emitCrashBurst(rx, ry, rz, 1.1, "rock", this.weather.weather); break; }
       if (this.skinwalker && this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network).hit) { endPt.set(rx, ry, rz); break; }
@@ -4126,7 +4120,7 @@ KK.Game = class Game {
       const rx = muzzleG.x + aimDir.x * s;
       const ry = muzzleG.y + aimDir.y * s;
       const rz = muzzleG.z + aimDir.z * s;
-      let hitP = false; if (this.network && this.network.remotePlayers) { for (const rp of this.network.remotePlayers.values()) { if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.4 && Math.abs((rp.gy || 0) + 1.2 - ry) < 2.8) { endPt.set(rx, ry, rz); hitP = true; break; } } } if (hitP) break;
+      // Exact Ray-vs-OBB already capped loop at effMaxT
       let cHit = this.cryptids.applyCannonHit(rx, ry, rz, shell, this.audio, tankCalNow); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 52);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
@@ -4211,15 +4205,7 @@ KK.Game = class Game {
     let hitRes = { hit: false };
     for (let s = 6; s < limCx; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
-      let hitP = false;
-      if (this.network && this.network.remotePlayers) {
-        for (const rp of this.network.remotePlayers.values()) {
-          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.0 && Math.abs((rp.gy || 0) + 1.1 - ry) < 2.5) {
-            endPt.set(rx, ry, rz); hitP = true; break;
-          }
-        }
-      }
-      if (hitP) break;
+      // Exact Ray-vs-OBB already capped loop
       let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, !!(vs.upgrades && vs.upgrades.t72AcousticJammer)); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 14);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
@@ -4280,15 +4266,7 @@ KK.Game = class Game {
       const rx = muzzleLocal.x + aimDir.x * s;
       const ry = muzzleLocal.y + aimDir.y * s;
       const rz = muzzleLocal.z + aimDir.z * s;
-      let hitP = false;
-      if (this.network && this.network.remotePlayers) {
-        for (const rp of this.network.remotePlayers.values()) {
-          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.0 && Math.abs((rp.gy || 0) + 1.1 - ry) < 2.5) {
-            endPt.set(rx, ry, rz); hitP = true; break;
-          }
-        }
-      }
-      if (hitP) break;
+      // Exact Ray-vs-OBB already capped loop
       if (this.aiEntities && this.aiEntities.hitAnimalAt) {
         const aHit = this.aiEntities.hitAnimalAt(rx, ry, rz, 3.6, 85, "gunfire");
         if (aHit) {
@@ -4315,8 +4293,9 @@ KK.Game = class Game {
       }
     }
 
+    const btrCalAudio = isKomodo30 ? 30 : (isKomodoMg ? 12.7 : 14.5);
     this._spawnTracerBeam(muzzleLocal.x, muzzleLocal.y, muzzleLocal.z, endPt.x, endPt.y, endPt.z);
-    this.audio.playKPVTShot();
+    this.audio.playKPVTShot(btrCalAudio);
     this.cameraShake = Math.max(this.cameraShake, 0.14);
     const mzBtr = this._getActiveMuzzleTransform();
     this.vehicle.applyRecoilTorque(mzBtr.dirWorld, 0.35, 0.18, 0.32);
@@ -4454,7 +4433,7 @@ KK.Game = class Game {
     }
   }
 
-  // v18.0.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v18.0.2.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -4636,15 +4615,7 @@ KK.Game = class Game {
     let hitRes = { hit: false };
     for (let s = 6; s < limSh; s += 5) {
       const rx = muzzleG.x + aimDir.x * s, ry = muzzleG.y + aimDir.y * s, rz = muzzleG.z + aimDir.z * s;
-      let hitP = false;
-      if (this.network && this.network.remotePlayers) {
-        for (const rp of this.network.remotePlayers.values()) {
-          if (Math.hypot((rp.gx || 0) - rx, (rp.gz || 0) - rz) < 3.0 && Math.abs((rp.gy || 0) + 1.1 - ry) < 2.5) {
-            endPt.set(rx, ry, rz); hitP = true; break;
-          }
-        }
-      }
-      if (hitP) break;
+      // Exact Ray-vs-OBB already capped loop
       let cHit = this.cryptids.applyBulletHit(rx, ry, rz, this.audio, true, 23); if (!cHit.hit) cHit = this._hitOceanCryptids(rx, ry, rz, 18);
       if (!cHit.hit && this.skinwalker) this.skinwalker.applyHit(rx, ry, rz, this.audio, this.network);
       if (this.gasStations && this.gasStations.checkProjectileHit(rx, ry, rz, 4.2, this, false)) { endPt.set(rx, ry, rz); break; }
@@ -4730,7 +4701,7 @@ KK.Game = class Game {
     if (this.weather && this.weather.setEnvironment) {
       this.weather.setEnvironment(this.weather.timeOfDay, "hurricane", this.weather.timeScale);
       if (this.network && this.network.isHost) {
-        this.network.broadcastEnv(this.weather.timeOfDay, "hurricane", this.weather.timeScale, true);
+        this.network.send({ type: "env_control", timeOfDay: this.weather.timeOfDay, weather: "hurricane", timeScale: this.weather.timeScale });
       }
     }
     if (this.audio && this.audio.playSeaDreadPulse) {
@@ -5586,7 +5557,7 @@ KK.Game = class Game {
           const camRight = this._tmpCamRight.set(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v18.0 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v18.0.2 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -5610,7 +5581,20 @@ KK.Game = class Game {
           this.playerFoot.yaw = Math.atan2(dir.x, dir.z); this.playerFoot.walkPhase += dt * spd * 2.2;
         }
         const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
-        this.playerFoot.y = Math.max(seaL - 0.35, this.world.getTerrainInfo(this.playerFoot.x, this.playerFoot.z, true).height);
+        if (this._footKnock) {
+          const fk = this._footKnock;
+          this.playerFoot.x += fk.vx * dt;
+          this.playerFoot.z += fk.vz * dt;
+          fk.yOff += fk.vy * dt;
+          fk.vy -= 22.0 * dt;
+          const damp = Math.exp(-3.2 * dt);
+          fk.vx *= damp; fk.vz *= damp;
+          if (fk.yOff <= 0) {
+            fk.yOff = 0; fk.vy = 0;
+            if (Math.hypot(fk.vx, fk.vz) < 0.25) this._footKnock = null;
+          }
+        }
+        this.playerFoot.y = Math.max(seaL - 0.35, this.world.getTerrainInfo(this.playerFoot.x, this.playerFoot.z, true).height) + (this._footKnock ? this._footKnock.yOff : 0);
       }
       if (this.playerFoot.repairingTimer > 0) this.playerFoot.repairingTimer -= dt;
       this.localAvatar.userData.animate(this.playerFoot.walkPhase, isMoving, !!this.playerFoot.carryingCrate, this.playerFoot.repairingTimer > 0);
@@ -5726,7 +5710,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = this.vehicle.vState.burnedOut ? 1.0 : Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (38 - engHp) / 38);
-    // v18.0 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
+    // v18.0.2 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const gpZone = (KK.SMOOTH_TARMAC_ZONES || []).find((z) => z.isGpCircuit);
@@ -5767,7 +5751,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v18.0 Auto-save persistent vehicle odometer every 10s when driving!
+    // v18.0.2 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -5775,7 +5759,7 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
-    // v18.0 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
+    // v18.0.2 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
     if (this.armorViewerActive) this._updateArmorViewerTooltip();
     if (this.lwrAlertTimer > 0) {
       this.lwrAlertTimer = Math.max(0, this.lwrAlertTimer - dt);
@@ -5804,7 +5788,7 @@ KK.Game = class Game {
       );
     }
     if (this.vehicle && this.vehicle.spec && this.vehicle.spec.isTracked && !this.onFoot) {
-      const curYaw = this.turretYaw || 0;
+      const curYaw = this.btrTurretYaw || 0;
       const yawRate = Math.abs(curYaw - this._lastTurretYawForWhine) / Math.max(0.01, dt);
       this._lastTurretYawForWhine = curYaw;
       if (this._turretWhineCd > 0) this._turretWhineCd -= dt;
@@ -5813,7 +5797,7 @@ KK.Game = class Game {
         this._turretWhineCd = 0.095;
       }
     }
-    // v18.0 Animate On-Foot Player Actions [1-5] on localAvatar!
+    // v18.0.2 Animate On-Foot Player Actions [1-5] on localAvatar!
     if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
       this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
       const tE = performance.now() * 0.012;
@@ -5839,7 +5823,7 @@ KK.Game = class Game {
         if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
       }
     }
-    // v18.0 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    // v18.0.2 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
     if (this.network && this.network.remotePlayers) {
       const nowMs = performance.now();
       for (const [pid, rp] of this.network.remotePlayers.entries()) {
@@ -5867,7 +5851,7 @@ KK.Game = class Game {
     let hasLocalPassenger = false;
     if (this.network && this.network.remotePlayers) {
       for (const r of this.network.remotePlayers.values()) {
-        if (this.network.myPeerId && r.ridingWithPeerId && r.ridingWithPeerId === this.network.myPeerId) { hasLocalPassenger = true; break; }
+        if (this.network.peerId && r.ridingWithPeerId && r.ridingWithPeerId === this.network.peerId) { hasLocalPassenger = true; break; }
       }
     }
     this.vehicleRig.updateVisuals(dt, {
@@ -6538,7 +6522,7 @@ KK.Game = class Game {
         ctx2.drawImage(this.canvas, 0, 0);
 
         // Stamp clean version watermark in bottom-right corner of every screenshot!
-        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v18.0"}`;
+        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v18.0.2"}`;
         const fontSize = Math.max(14, Math.round(outCv.height * 0.020));
         ctx2.font = `bold ${fontSize}px monospace`;
         const padX = Math.round(fontSize * 0.72);
@@ -6564,11 +6548,11 @@ KK.Game = class Game {
         const a = document.createElement("a");
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         a.href = dataUrl;
-        a.download = `krasno_kamenka_${KK.VERSION || "v18.0"}_${ts}.png`;
+        a.download = `krasno_kamenka_${KK.VERSION || "v18.0.2"}_${ts}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v18.0"})!`);
+        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v18.0.2"})!`);
       } catch (err) {
         this.ui.toast("Screenshot failed: " + err.message, true);
       }

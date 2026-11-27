@@ -4682,21 +4682,25 @@ KK.VehicleBuilder = {
       const ringX = new THREE.Mesh(new THREE.TorusGeometry(ringRad, 0.085, 8, 22), ringMat);
       ringX.rotation.x = Math.PI / 2; ringX.position.set(0, ringY, ringZ); ringX.renderOrder = 12; xrayGroup.add(ringX);
 
+      const modTurX = new THREE.Group();
+      modTurX.position.set(0, ringY, ringZ);
+      xrayGroup.add(modTurX);
+
       const lwsX = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.30), lwsMat);
-      lwsX.position.set(-0.56, ringY + 0.95, ringZ + 0.22); lwsX.renderOrder = 12; xrayGroup.add(lwsX);
+      lwsX.position.set(-0.56, 0.95, 0.22); lwsX.renderOrder = 12; modTurX.add(lwsX);
 
       const secPivotX = new THREE.Group();
-      secPivotX.position.set(spec.isSchreckensfurst ? 0.62 : 0.45, ringY + 0.98, ringZ + 0.18);
+      secPivotX.position.set(spec.isSchreckensfurst ? 0.62 : 0.45, 0.98, 0.18);
       const secBarX = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.055, spec.isSchreckensfurst ? 2.25 : 1.35, 8), secMat);
       secBarX.rotation.x = Math.PI / 2; secBarX.position.set(0, 0, spec.isSchreckensfurst ? 1.12 : 0.68);
-      secBarX.renderOrder = 12; secPivotX.add(secBarX); xrayGroup.add(secPivotX);
+      secBarX.renderOrder = 12; secPivotX.add(secBarX); modTurX.add(secPivotX);
 
       let lightAmmoBoxX = null;
       if (!spec.isTracked) {
         lightAmmoBoxX = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.56), ammoMat);
-        lightAmmoBoxX.position.set(0, ringY - 0.18, ringZ - 0.12); lightAmmoBoxX.renderOrder = 12; xrayGroup.add(lightAmmoBoxX);
+        lightAmmoBoxX.position.set(0, -0.18, -0.12); lightAmmoBoxX.renderOrder = 12; modTurX.add(lightAmmoBoxX);
       }
-      combatXrayMods = { ringMat, lwsMat, secMat, secPivotX, lightAmmoBoxX };
+      combatXrayMods = { ringMat, lwsMat, secMat, modTurX, secPivotX, lightAmmoBoxX };
     }
 
     const shellMaterials = [matPaint, matTrim, matGalv, matMetal, matCarbon, ...(chassis.userData.extraShellMats || [])];
@@ -5147,12 +5151,12 @@ KK.VehicleBuilder = {
           sm.opacity = isXray ? 0.22 : 1.0;
           sm.depthWrite = !isXray;
         }
+        const hColor = (pct) => {
+          if (pct > 68) return 0x00ff88;
+          if (pct > 36) return 0xffd166;
+          return 0xff2a4a;
+        };
         if (isXray && state.xrayHealth) {
-          const hColor = (pct) => {
-            if (pct > 68) return 0x00ff88;
-            if (pct > 36) return 0xffd166;
-            return 0xff2a4a;
-          };
           const xh = state.xrayHealth;
           if (xrayParts.engine)      xrayParts.engine.color.setHex(hColor(xh.engine));
           if (xrayParts.radiator)    xrayParts.radiator.color.setHex(hColor(xh.radiator));
@@ -5313,8 +5317,11 @@ KK.VehicleBuilder = {
           combatXrayMods.ringMat.color.setHex(hColor(mods.turretRing !== undefined ? mods.turretRing : 100));
           combatXrayMods.lwsMat.color.setHex(hColor(mods.lwsSensor !== undefined ? mods.lwsSensor : 100));
           combatXrayMods.secMat.color.setHex(hColor(mods.secBarrel !== undefined ? mods.secBarrel : 100));
+          const tYawMod = typeof state.turretYaw === "number" ? state.turretYaw : 0;
+          if (combatXrayMods.modTurX) combatXrayMods.modTurX.rotation.y = tYawMod;
           if (combatXrayMods.secPivotX) {
-            combatXrayMods.secPivotX.rotation.y = typeof state.rwsYaw === "number" ? state.rwsYaw : (state.turretYaw || 0);
+            const rYawMod = typeof state.rwsYaw === "number" ? state.rwsYaw : tYawMod;
+            combatXrayMods.secPivotX.rotation.y = rYawMod - tYawMod;
             combatXrayMods.secPivotX.rotation.x = -(state.rwsPitch || state.gunPitch || 0);
           }
           if (tankXrayAnim && tankXrayAnim.breechX && tankXrayAnim.breechX.material) {

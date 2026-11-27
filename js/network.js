@@ -1047,6 +1047,9 @@ KK.LanNetwork = class LanNetwork {
       case "lwr_ping":
         if (msg.targetPeerId === this.peerId && this.cb.onLwrPing) this.cb.onLwrPing(msg);
         break;
+      case "car_bump":
+        if (msg.targetPeerId === this.peerId && this.cb.onCarBump) this.cb.onCarBump(msg);
+        break;
       case "fence_break":
         if (this.cb.onFenceBreak) this.cb.onFenceBreak(msg);
         break;
@@ -1158,6 +1161,19 @@ KK.LanNetwork = class LanNetwork {
       entry.cargoCount = pkt.cc || 0; entry.cargoType = pkt.ct || "standard";
       entry.rideHeight = pkt.rh || 0; entry.camberDeg = pkt.cb || 0; entry.lastSeen = performance.now();
     }
+  }
+
+  sendCarBump(targetPeerId, vx = 0, vy = 4, vz = 0, torque = 2.0) {
+    if (!targetPeerId || this.mode === "offline") return;
+    this.send({
+      type: "car_bump",
+      targetPeerId,
+      vx: +(Number(vx) || 0).toFixed(2),
+      vy: +(Number(vy) || 0).toFixed(2),
+      vz: +(Number(vz) || 0).toFixed(2),
+      torque: +(Number(torque) || 0).toFixed(2),
+      callsign: this.callsign || "DRIVER"
+    });
   }
 
   broadcastPlayerState(dt, vehicle, playerFoot, onFoot, trailer, wipersOn = false, repairing = false, turretYaw = 0, carriedByPeerId = null, force = false, barrelHeat = 0, rwsYaw = 0, rwsPitch = 0, gunPitch = 0, autoBarrelHeat = 0, activeBoat = null, boatMount = null, combatSync = null) {
