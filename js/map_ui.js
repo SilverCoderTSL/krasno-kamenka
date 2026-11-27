@@ -36,6 +36,7 @@ KK.MapController = class MapController {
     this._secretSeqTime = 0;
     this.secretRevealUntil = 0;
     this._secretAnimInterval = null;
+    this._liveMapInterval = null;
     this._bindEvents();
   }
 
@@ -199,7 +200,7 @@ KK.MapController = class MapController {
       const my = (e.clientY - rect.top) * (cv.height / rect.height);
       this._updateHoverItem(mx, my);
       if (this.hoverItem) {
-        this.game.setWaypoint(this.hoverItem.x, this.hoverItem.z, this.hoverItem.name);
+        this.game.setWaypoint(this.hoverItem.x, this.hoverItem.z, this.hoverItem.name, this.hoverItem.isPatrol ? this.hoverItem.mechaId : null);
       } else {
         const [wx, wz] = this._toWorld(mx, my, cv.width, cv.height);
         this.game.setWaypoint(wx, wz, "Custom GPS Pin");
@@ -264,6 +265,31 @@ KK.MapController = class MapController {
     this.panZ = this.game.vehicle.pos.z;
     if (this.zoom < 1.2) this.zoom = 2.4;
     this.renderSidebar();
+    this.render();
+    // v18.1.2 Live 8Hz map refresh while [M] is open so EINHEIT-03 & players move smoothly in real time!
+    if (this._liveMapInterval) clearInterval(this._liveMapInterval);
+    this._liveMapInterval = setInterval(() => {
+      if (this.ui.activeModal !== "map") {
+        clearInterval(this._liveMapInterval);
+        this._liveMapInterval = null;
+        return;
+      }
+      if (!this.dragging) this.render();
+    }, 125);
+  }
+
+  focusLiveMecha(mechaId) {
+    const sm = this.game.savannaMechas;
+    const m = sm && sm.mechas ? sm.mechas.find((x) => x.id === mechaId) : null;
+    if (m) this.focusOn(m.gx, m.gz, 6.5);
+  }
+
+  trackLiveMecha(mechaId) {
+    const sm = this.game.savannaMechas;
+    const m = sm && sm.mechas ? sm.mechas.find((x) => x.id === mechaId) : null;
+    if (!m) return;
+    const lbl = m.isPatrol ? "EINHEIT-03 (Live Mecha)" : (m.id === "einheit_01" ? "EINHEIT-01 (Dormant Mecha)" : "EINHEIT-02 (Dormant Mecha)");
+    this.game.setWaypoint(m.gx, m.gz, lbl, m.isPatrol ? m.id : null);
     this.render();
   }
 
@@ -357,6 +383,17 @@ KK.MapController = class MapController {
           color: "#00f5ff", icon: "🏁", zone: tz
         });
       }
+      if (this.game.world && this.game.world.gpGaragePos) {
+        const gpG = this.game.world.gpGaragePos;
+        list.push({
+          type: "gp_garage", priority: 103,
+          x: gpG.x, z: gpG.z,
+          name: "GP Paddock Garage & Wash",
+          sub: "Zolotoy GP Circuit Pit Lane • Swap, Tune, Repair & Pressure-Wash Cars On-Site",
+          color: "#ffd166", icon: "🔧",
+          pinX: gpG.x, pinZ: gpG.z
+        });
+      }
       for (const bz of (KK.BAD_ROAD_ZONES || [])) {
         list.push({ type: "badroad", priority: 82, x: bz.x, z: bz.z, name: bz.name.split("(")[0].trim(), sub: bz.desc, color: "#ff5c77", icon: "⚠", r: bz.radius });
       }
@@ -391,7 +428,32 @@ KK.MapController = class MapController {
         list.push({ type: "ford", priority: 45, x: fd.x, z: fd.z, name: fd.name, sub: "Shallow 0.6m Rocky Cobble Crossing", color: "#48cae4", icon: "≈" });
       }
     }
-    for (const rp of this.game.network.remotePlayers.values()) {
+    // v18.1.2 3 Colossal Zolotoy Savanna Stahlhelm Mechas (2 Dormant Statues + 1 Live Patrol EINHEIT-03!)
+    if ((this.layers.zones || this.layers.landmarks) && this.game.savannaMechas && Array.isArray(this.game.savannaMechas.mechas)) {
+      for (const m of this.game.savannaMechas.mechas) {
+        if (m.isPatrol) {
+          list.push({
+            type: "mecha_patrol", priority: 107,
+            x: m.gx, z: m.gz, yaw: m.yaw || 0,
+            mechaId: m.id, isPatrol: true,
+            name: "EINHEIT-03 (Active Mecha)",
+            sub: "68m Coastal Defense Mecha • Live Patrol • Fires Rockets at Megalodon & Kraken",
+            color: "#ffa61a", icon: "🤖"
+          });
+        } else {
+          const is01 = (m.id === "einheit_01");
+          list.push({
+            type: "mecha_dormant", priority: 97,
+            x: m.gx, z: m.gz, yaw: m.yaw || 0,
+            mechaId: m.id, isPatrol: false,
+            name: is01 ? "EINHEIT-01 (Dormant Mecha)" : "EINHEIT-02 (Dormant Mecha)",
+            sub: "68m Deactivated Stahlhelm Mecha Monument • Zolotoy Savanna Lore Site",
+            color: "#cbd5e1", icon: "🗿"
+          });
+        }
+      }
+    }
+        for (const rp of this.game.network.remotePlayers.values()) {
       list.push({ type: "friend", priority: 110, x: rp.gx, z: rp.gz, name: rp.callsign, sub: `LAN Driver • ${(KK.VEHICLES[rp.vehicleId] || {}).name || rp.vehicleId}`, color: "#ffd166", icon: "👤" });
     }
     return list;
@@ -433,15 +495,21 @@ KK.MapController = class MapController {
       const px = it.pinX !== undefined ? it.pinX : it.x;
       const pz = it.pinZ !== undefined ? it.pinZ : it.z;
       const safeName = it.name.split("'").join("");
-      const focusZ = it.type === "megabridge" ? 3.2 : (it.type === "town" ? 8 : 11);
-      const prefix = (it.type === "megabridge" || it.type === "tarmac" || it.icon === "🏙") ? (it.icon + " ") : "";
+      const focusZ = it.type === "megabridge" ? 3.2 : (it.type === "mecha_patrol" || it.type === "mecha_dormant" ? 6.5 : (it.type === "gp_garage" ? 12 : (it.type === "town" ? 8 : 11)));
+      const prefix = (it.type === "megabridge" || it.type === "tarmac" || it.type === "gp_garage" || it.type === "mecha_patrol" || it.type === "mecha_dormant" || it.icon === "🏙") ? (it.icon + " ") : "";
+      const rowClick = (it.type === "mecha_patrol" || it.type === "mecha_dormant")
+        ? `window.__GAME__.ui.mapCtrl.focusLiveMecha('${it.mechaId}')`
+        : `window.__GAME__.ui.mapCtrl.focusOn(${it.x}, ${it.z}, ${focusZ})`;
+      const gpsClick = (it.type === "mecha_patrol" || it.type === "mecha_dormant")
+        ? `event.stopPropagation(); window.__GAME__.ui.mapCtrl.trackLiveMecha('${it.mechaId}');`
+        : `event.stopPropagation(); window.__GAME__.setWaypoint(${px}, ${pz}, '${safeName}'); window.__GAME__.ui.mapCtrl.render();`;
       return `
-        <div class="map-poi-row" onclick="window.__GAME__.ui.mapCtrl.focusOn(${it.x}, ${it.z}, ${focusZ})">
+        <div class="map-poi-row" onclick="${rowClick}">
           <div style="min-width:0;">
             <div class="map-poi-name" style="color:${it.color};">${prefix}${it.name}</div>
             <div class="small muted">${dKm} km away</div>
           </div>
-          <button class="btn small primary" style="padding:3px 7px;" onclick="event.stopPropagation(); window.__GAME__.setWaypoint(${px}, ${pz}, '${safeName}'); window.__GAME__.ui.mapCtrl.render();">GPS</button>
+          <button class="btn small primary" style="padding:3px 7px;" onclick="${gpsClick}">GPS</button>
         </div>`;
     }).join("") || `<div class="small muted" style="padding:10px;">No matching locations.</div>`;
   }
@@ -668,7 +736,32 @@ KK.MapController = class MapController {
       }
     }
 
+    // v18.1.2 Draw EINHEIT-03 dashed amber coastal patrol loop around Zolotoy Savanna!
+    if ((this.layers.zones || this.layers.landmarks) && this.game.savannaMechas && Array.isArray(this.game.savannaMechas.mechas)) {
+      const patrolM = this.game.savannaMechas.mechas.find((m) => m.isPatrol && m.patrolWaypoints && m.patrolWaypoints.length >= 3);
+      if (patrolM) {
+        ctx.save();
+        ctx.beginPath();
+        for (let wi = 0; wi < patrolM.patrolWaypoints.length; wi++) {
+          const [wx, wz] = patrolM.patrolWaypoints[wi];
+          const [ppx, ppy] = this._toPx(wx, wz, W, H);
+          if (wi === 0) ctx.moveTo(ppx, ppy); else ctx.lineTo(ppx, ppy);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = "rgba(255, 166, 26, 0.42)";
+        ctx.lineWidth = Math.max(1.4, Math.min(2.6, this.zoom * 0.45));
+        ctx.setLineDash([6, 6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+
+    const prevHoverName = this.hoverItem ? this.hoverItem.name : null;
     this._pois = this._collectAllPOIs();
+    if (prevHoverName) {
+      this.hoverItem = this._pois.find((it) => it.name === prevHoverName) || null;
+    }
     const sortedPois = this._pois.slice().sort((a, b) => b.priority - a.priority);
     const placedLabels = [];
     const canPlaceLabel = (x, y, w, h) => {
@@ -696,6 +789,66 @@ KK.MapController = class MapController {
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+      } else if (item.type === "mecha_patrol") {
+        // Pulsing amber radar ring + heading arrow + Stahlhelm silhouette with glowing visor!
+        const pulseM = (performance.now() % 1400) / 1400;
+        ctx.strokeStyle = "#ffa61a";
+        ctx.globalAlpha = (1 - pulseM) * 0.85;
+        ctx.lineWidth = 2.0;
+        ctx.beginPath(); ctx.arc(px, py, 7 + pulseM * 18, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1.0;
+
+        // Live heading chevron showing patrol direction
+        const hAng = item.yaw || 0;
+        const hxDir = Math.sin(hAng), hyDir = Math.cos(hAng);
+        ctx.save();
+        ctx.translate(px + hxDir * 11, py + hyDir * 11);
+        ctx.rotate(Math.atan2(hyDir, hxDir));
+        ctx.fillStyle = "#ffa61a";
+        ctx.beginPath(); ctx.moveTo(5.5, 0); ctx.lineTo(-3.5, -3.5); ctx.lineTo(-1.5, 0); ctx.lineTo(-3.5, 3.5); ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // Stahlhelm badge + glowing amber visor slit
+        const rM = isHov ? 9.0 : 7.2;
+        ctx.fillStyle = "#1e2428";
+        ctx.strokeStyle = "#ffa61a";
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.arc(px, py - 1, rM * 0.85, Math.PI, 0);
+        ctx.lineTo(px + rM * 1.12, py + rM * 0.45);
+        ctx.lineTo(px - rM * 1.12, py + rM * 0.45);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#ffbe0b";
+        ctx.fillRect(px - rM * 0.56, py - 0.8, rM * 1.12, 2.6);
+      } else if (item.type === "mecha_dormant") {
+        // Dormant steel-grey Stahlhelm monument icon
+        const rD = isHov ? 8.2 : 6.4;
+        ctx.fillStyle = "#334155";
+        ctx.strokeStyle = "#cbd5e1";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(px, py - 1, rD * 0.85, Math.PI, 0);
+        ctx.lineTo(px + rD * 1.08, py + rD * 0.42);
+        ctx.lineTo(px - rD * 1.08, py + rD * 0.42);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(px - rD * 0.52, py - 0.6, rD * 1.04, 2.2);
+      } else if (item.type === "gp_garage") {
+        // Bright gold/cyan GP Circuit Paddock Garage & Car Wash badge!
+        const szG = isHov ? 8.0 : 6.4;
+        ctx.fillStyle = "#ffd166";
+        ctx.strokeStyle = "#00f5ff";
+        ctx.lineWidth = 2.0;
+        ctx.fillRect(px - szG, py - szG, szG * 2, szG * 2);
+        ctx.strokeRect(px - szG, py - szG, szG * 2, szG * 2);
+        ctx.fillStyle = "#0b1118";
+        ctx.font = "900 9.5px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("G", px, py + 3.5);
+        ctx.textAlign = "left";
       } else if (item.type === "bridge") {
         const sz = isHov ? 6.5 : 4.5;
         ctx.fillRect(px - sz, py - sz, sz * 2, sz * 2);
@@ -708,6 +861,9 @@ KK.MapController = class MapController {
       }
 
       const showLabel = isHov || item.type === "town" || item.type === "friend"
+        || (item.type === "mecha_patrol" && this.zoom >= 1.05)
+        || (item.type === "mecha_dormant" && this.zoom >= 1.45)
+        || (item.type === "gp_garage" && this.zoom >= 1.8)
         || (item.type === "tarmac" && this.zoom >= 1.4)
         || (item.type === "zone" && this.zoom >= 1.8)
         || (item.type === "landmark" && this.zoom >= 2.2)
