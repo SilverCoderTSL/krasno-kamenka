@@ -390,6 +390,92 @@ KK.World = class World {
         }
       }
     }
+
+    // ========================================================================
+    // v17.2 COMPLEX BRANCHING ROAD NETWORK: RING ROADS, T-JUNCTIONS,
+    // FOREST LOGGING SPURS, LANDMARK ACCESS ROADS & MOUNTAIN SWITCHBACK FORKS!
+    // ========================================================================
+    const addSmoothRoad = (ctrlPts, opts = {}) => {
+      if (!ctrlPts || ctrlPts.length < 2) return;
+      const subsPerSpan = opts.subs || 6;
+      const w = opts.width || 6.4;
+      const isMountain = !!opts.isMountain;
+      const isDirtSpur = !!opts.isDirtSpur;
+      const isModernHwy = !!opts.isModernHwy;
+
+      const sampled = [];
+      for (let i = 0; i < ctrlPts.length - 1; i++) {
+        const p0 = ctrlPts[Math.max(0, i - 1)];
+        const p1 = ctrlPts[i];
+        const p2 = ctrlPts[i + 1];
+        const p3 = ctrlPts[Math.min(ctrlPts.length - 1, i + 2)];
+        for (let s = 0; s < subsPerSpan; s++) {
+          const t = s / subsPerSpan;
+          const t2 = t * t, t3 = t2 * t;
+          const x = 0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+          const z = 0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+          sampled.push([x, z]);
+        }
+      }
+      sampled.push(ctrlPts[ctrlPts.length - 1]);
+
+      for (let i = 0; i < sampled.length - 1; i++) {
+        const a = sampled[i], b = sampled[i + 1];
+        this.roadSegments.push({
+          x0: a[0], z0: a[1], x1: b[0], z1: b[1],
+          minX: Math.min(a[0], b[0]) - 40, maxX: Math.max(a[0], b[0]) + 40,
+          minZ: Math.min(a[1], b[1]) - 40, maxZ: Math.max(a[1], b[1]) + 40,
+          isMountain, isDirtSpur, isModernHwy, isTropikaHell: false, width: w
+        });
+      }
+    };
+
+    // 1. KAMENKA VALLEY ORBITAL RING ROAD (Connects HQ East, South, West & North arteries via T-junctions!)
+    addSmoothRoad([
+      [ 1350,   180], [ 2450,  1600], [ 1200,  3600], [ -1200,  4100],
+      [-3400,  2600], [-3900,   200], [-2800, -2400], [  -400, -3200],
+      [ 1800, -2100], [ 1350,   180]
+    ], { width: 7.6, subs: 5 });
+
+    // 2. WEST VALLEY BRANCH -> JAMES MAY'S PUB & CLARKSON'S FARM LOOP
+    if (KK.JAMES_MAY_BAR) {
+      addSmoothRoad([
+        [0, 0], [-620, 120], [KK.JAMES_MAY_BAR.x, KK.JAMES_MAY_BAR.z], [-2450, 920], [-3400, 2600]
+      ], { width: 6.2, subs: 5 });
+    }
+    if (KK.CLARKSON_FARM) {
+      addSmoothRoad([
+        [1350, 180], [1850, -680], [KK.CLARKSON_FARM.x, KK.CLARKSON_FARM.z], [1800, -2100]
+      ], { width: 5.4, isDirtSpur: true, subs: 5 });
+    }
+
+    // 3. BLACK TIMBER TAIGA BRANCHING LOGGING SPURS (T-forks off East Highway!)
+    addSmoothRoad([
+      [6200, 1150], [7400, -1400], [10800, -2900], [14600, -1100], [17200, 2100]
+    ], { width: 5.0, isDirtSpur: true, subs: 5 });
+    addSmoothRoad([
+      [10800, -2900], [12900, -6400], [16800, -8200]
+    ], { width: 4.8, isDirtSpur: true, subs: 4 });
+
+    // 4. SOUTHERN DESERT CANYON BYPASS & HAMMOND'S MESA SPUR
+    addSmoothRoad([
+      [1200, 3600], [2800, 9200], [5400, 14800], [3100, 19800], [6200, 25800]
+    ], { width: 6.4, subs: 6 });
+    if (KK.HAMMOND_MESA) {
+      addSmoothRoad([
+        [5400, 14800], [KK.HAMMOND_MESA.x, KK.HAMMOND_MESA.z]
+      ], { width: 5.2, isDirtSpur: true, subs: 4 });
+    }
+
+    // 5. VOLCANIC CALDERA RIM & WESTERN RUST BASIN CROSS-LINK
+    addSmoothRoad([
+      [-3900, 200], [-4350, 1320], [-6800, 4200], [-9200, 8800], [-11800, 14200]
+    ], { width: 5.8, isDirtSpur: true, subs: 5 });
+
+    // 6. NORTHERN ALPINE SWITCHBACK FORK (Connects Klyuchi <-> Severny via high mountain ridge!)
+    addSmoothRoad([
+      [-12500, -14200], [-6200, -17800], [-1200, -15400], [4800, -19600], [11200, -23400]
+    ], { width: 5.6, isMountain: true, subs: 6 });
   }
 
   _buildRiverNetwork() {

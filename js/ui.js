@@ -312,14 +312,20 @@ KK.UIManager = class UIManager {
         let [wx, wy] = worldToRadar(game.waypoint.x, game.waypoint.z);
         const dCenter = Math.hypot(wx - cx, wy - cy);
         if (dCenter > R - 6) { wx = cx + ((wx - cx) / dCenter) * (R - 6); wy = cy + ((wy - cy) / dCenter) * (R - 6); }
-        rctx.fillStyle = "#00f5d4"; rctx.beginPath(); rctx.arc(wx, wy, 4.5, 0, Math.PI * 2); rctx.fill();
+        const flOn = (game.radarFlashTimer > 0) && (Math.floor(game.radarFlashTimer * 5) % 2 === 0);
+        rctx.fillStyle = flOn ? "#ffffff" : "#ffbe0b";
+        rctx.beginPath(); rctx.arc(wx, wy, flOn ? 7.0 : 5.2, 0, Math.PI * 2); rctx.fill();
+        rctx.strokeStyle = "#ffbe0b"; rctx.lineWidth = flOn ? 2.5 : 1.2; rctx.stroke();
       }
       const [nx, ny] = worldToRadar(px, pz - radarRange * 0.88);
       rctx.fillStyle = "#ff5c77"; rctx.font = "bold 10px monospace"; rctx.textAlign = "center"; rctx.fillText("N", nx, ny + 3);
       rctx.fillStyle = "#ffffff"; rctx.beginPath();
       rctx.moveTo(cx, cy - 6); rctx.lineTo(cx + 4.5, cy + 5); rctx.lineTo(cx, cy + 2.5); rctx.lineTo(cx - 4.5, cy + 5); rctx.closePath(); rctx.fill();
       rctx.restore();
-      rctx.strokeStyle = "rgba(0, 229, 255, 0.45)"; rctx.lineWidth = 2; rctx.beginPath(); rctx.arc(cx, cy, R, 0, Math.PI * 2); rctx.stroke();
+      const ringFlash = (game.radarFlashTimer > 0) && (Math.floor(game.radarFlashTimer * 5) % 2 === 0);
+      rctx.strokeStyle = ringFlash ? "#ffbe0b" : "rgba(0, 229, 255, 0.45)";
+      rctx.lineWidth = ringFlash ? 4.5 : 2;
+      rctx.beginPath(); rctx.arc(cx, cy, R, 0, Math.PI * 2); rctx.stroke();
     }
   }
 
@@ -840,7 +846,10 @@ KK.UIManager = class UIManager {
       </div>
     </div>
     <h4>SOLO &amp; SHARED DISPATCH CONTRACTS</h4><div class="fleet-grid">`;
-    for (const c of this.availableContracts) {
+    const cList = (g && !g.tutorialComplete)
+      ? this.availableContracts.filter((ct) => ct.id === "starter_bridge")
+      : this.availableContracts;
+    for (const c of cList) {
       const tFrom = KK.TOWNS[c.fromTown], tTo = c.toBar ? { name: "James May's Pub", x: KK.JAMES_MAY_BAR.dockX, z: KK.JAMES_MAY_BAR.dockZ } : KK.TOWNS[c.toTown], cDef = KK.CARGO_TYPES[c.cargoType];
       const distKm = (Math.hypot(tTo.x - tFrom.x, tTo.z - tFrom.z) / 1000).toFixed(1);
       html += `<div class="card"><div class="card-head"><strong>${c.title}</strong><span class="badge">$${c.reward.toLocaleString()}</span></div>

@@ -129,6 +129,18 @@ KK.Game = class Game {
     this.timedWork = null;
     this.wipersOn = false;
     this.gpLapStartMs = 0;
+    this.tutorialComplete = false;
+    this.tutorialStep = 0;
+    this.radarFlashTimer = 0;
+    this._tutQueue = [];
+    this._tutFullText = "";
+    this._tutCharIdx = 0;
+    this._tutTypeAccum = 0;
+    this._tutOnDone = null;
+    this._tutStarted = false;
+    this._tutDmgTriggered = false;
+    this._tutTipShown = false;
+    this._tutArrow = this._createTutorialArrow();
     this._odoSaveAccum = 0;
     this._lastSavedOdoM = 0;
     window.addEventListener("beforeunload", () => { try { this._saveProgress(false); } catch (_) {} });
@@ -433,8 +445,134 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v17.0.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v17.2 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
+  }
+
+  // ==========================================================================
+  // v17.2 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // ==========================================================================
+  _createTutorialArrow() {
+    const grp = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffbe0b });
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 3.2, 8), mat);
+    shaft.position.y = 3.2; grp.add(shaft);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(1.35, 2.4, 8), mat);
+    head.rotation.x = Math.PI; head.position.y = 0.8; grp.add(head);
+    grp.visible = false;
+    this.scene.add(grp);
+    return grp;
+  }
+
+  showTutorialDialog(lines, onDone = null) {
+    this._tutQueue = Array.isArray(lines) ? lines.slice() : [String(lines)];
+    this._tutOnDone = onDone;
+    this._nextTutorialLine();
+  }
+
+  _nextTutorialLine() {
+    const box = document.getElementById("tutorial-box");
+    const txt = document.getElementById("tutorial-text");
+    if (!box || !txt) return;
+    if (!this._tutQueue.length) {
+      box.classList.add("hidden");
+      const cb = this._tutOnDone; this._tutOnDone = null;
+      if (cb) cb();
+      return;
+    }
+    this._tutFullText = this._tutQueue.shift();
+    this._tutCharIdx = 0;
+    this._tutTypeAccum = 0;
+    txt.textContent = "";
+    box.classList.remove("hidden");
+  }
+
+  advanceTutorialDialog() {
+    const txt = document.getElementById("tutorial-text");
+    if (!txt) return;
+    if (this._tutCharIdx < this._tutFullText.length) {
+      this._tutCharIdx = this._tutFullText.length;
+      txt.textContent = this._tutFullText;
+    } else {
+      this._nextTutorialLine();
+    }
+  }
+
+  skipTutorial() {
+    this.tutorialComplete = true;
+    this.tutorialStep = 99;
+    this._tutQueue = [];
+    if (this.vehicle) this.vehicle.tutorialSensitiveDmg = false;
+    const box = document.getElementById("tutorial-box");
+    if (box) box.classList.add("hidden");
+    if (this._tutArrow) this._tutArrow.visible = false;
+    this._saveProgress(true);
+    this.ui.toast("Tutorial skipped — all towns, contracts & dealerships unlocked!");
+  }
+
+  _updateTutorial(dt) {
+    if (this.radarFlashTimer > 0) this.radarFlashTimer = Math.max(0, this.radarFlashTimer - dt);
+    const box = document.getElementById("tutorial-box");
+    if (box && !box.classList.contains("hidden") && this._tutCharIdx < this._tutFullText.length) {
+      this._tutTypeAccum += dt * 48;
+      const nextIdx = Math.min(this._tutFullText.length, Math.floor(this._tutTypeAccum));
+      if (nextIdx > this._tutCharIdx) {
+        this._tutCharIdx = nextIdx;
+        const txt = document.getElementById("tutorial-text");
+        if (txt) txt.textContent = this._tutFullText.slice(0, this._tutCharIdx);
+      }
+    }
+    if (this.tutorialComplete) {
+      if (this._tutArrow) this._tutArrow.visible = false;
+      return;
+    }
+    if (!this._tutStarted && (!this.startMenu || !this.startMenu.isOpen)) {
+      this._tutStarted = true;
+      this.tutorialStep = 1;
+      if (this.vehicle) this.vehicle.tutorialSensitiveDmg = true;
+      this.showTutorialDialog([
+        "* Welcome to Krasno-Kamenka Oblast, rookie! I'm the guy who coded this place, so if a bridge eats your axle, legally it's a 'feature.'",
+        "* First things first: press [I] to crank the ignition, [WASD] to drive, and [C] to swap cameras.",
+        "* See that HQ Warehouse with the obnoxiously large bouncing arrow? Pull up and hit [F] — your main interact key — to grab your first job."
+      ]);
+    }
+    if (this.tutorialStep === 2 && !this._tutTipShown && this.vehicle && Math.hypot(this.vehicle.pos.x, this.vehicle.pos.z) > 120) {
+      this._tutTipShown = true;
+      this.showTutorialDialog([
+        "* Couple of road rules out here: mud will happily swallow stock tires, and old wooden bridges WILL snap if you're too heavy or too fast.",
+        "* Drive smart, watch your temp gauge, and try not to kiss any boulders."
+      ]);
+    }
+    if (this.tutorialStep === 2 && !this._tutDmgTriggered && this.vehicle && this.vehicle.pos.x > 650) {
+      this._triggerTutorialHoodStep();
+    }
+    if (this._tutArrow) {
+      let ax = null, az = null;
+      if (this.tutorialStep === 1) { ax = -18; az = -16; }
+      else if (this.tutorialStep === 2 || this.tutorialStep === 3) { ax = 1350; az = 180; }
+      else if (this.tutorialStep === 4) { ax = 1325; az = 165; }
+      if (ax !== null) {
+        const gy = this.world.getTerrainInfo(ax, az, false).height;
+        const bob = Math.sin(performance.now() * 0.006) * 1.4;
+        this.world.toLocal(ax, gy + 8.5 + bob, az, this._tutArrow.position);
+        this._tutArrow.rotation.y += dt * 2.2;
+        this._tutArrow.visible = true;
+      } else {
+        this._tutArrow.visible = false;
+      }
+    }
+  }
+
+  _triggerTutorialHoodStep() {
+    if (this._tutDmgTriggered || this.tutorialComplete) return;
+    this._tutDmgTriggered = true;
+    this.tutorialStep = 3;
+    if (this.vehicle) this.vehicle.tutorialSensitiveDmg = false;
+    this.showTutorialDialog([
+      "* Ouch! Hear that? Your engine bay actually simulates individual parts — radiator, shocks, pistons, the works.",
+      "* Pull over, hit [F] to hop out, walk to the FRONT of your rig, and press [F] to pop the hood and patch it up.",
+      "* (Pro tip: hold [X] anytime to see your car's live X-Ray skeleton. Pretty cool, right?)"
+    ]);
   }
 
   _exportSavePayload() {
@@ -445,13 +583,16 @@ KK.Game = class Game {
       stats: this.stats,
       claimedLandmarks: this.claimedLandmarks,
       ownedTrailers: this.ownedTrailers,
-      ownedBoats: this.ownedBoats
+      ownedBoats: this.ownedBoats,
+      tutorialComplete: !!this.tutorialComplete
     };
   }
 
   _applySavePayload(d) {
     if (!d || typeof d !== "object") return;
     if (typeof d.money === "number") this.money = d.money;
+    if (typeof d.tutorialComplete === "boolean") this.tutorialComplete = d.tutorialComplete;
+    else if (d.stats && Number(d.stats.deliveries) > 0) this.tutorialComplete = true;
     if (d.stats && typeof d.stats === "object") {
       this.stats.deliveries = Number(d.stats.deliveries) || 0;
       this.stats.distanceKm = Number(d.stats.distanceKm) || 0;
@@ -739,6 +880,12 @@ KK.Game = class Game {
     });
 
     window.addEventListener("keydown", (e) => {
+      if (e.code === "Enter") {
+        const ae = document.activeElement;
+        const isTyping = ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA");
+        const tb = document.getElementById("tutorial-box");
+        if (!isTyping && tb && !tb.classList.contains("hidden")) { e.preventDefault(); this.advanceTutorialDialog(); return; }
+      }
       this.audio.init();
       if (this.startMenu && this.startMenu.isOpen) return;
       if (document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) return;
@@ -1031,7 +1178,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.0.1 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v17.2 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1055,7 +1202,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.0.1 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v17.2 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1354,7 +1501,11 @@ KK.Game = class Game {
     if (nearSupF) { this.serviceAtSupportTrailer(nearSupF.owner); return true; }
 
     if (this._isAtEngineBay(fx, fz, this.vehicle)) {
-      this.vehicle.hoodOpen = true; this.ui.openModal("field_repair"); return true;
+      this.vehicle.hoodOpen = true; this.ui.openModal("field_repair");
+        if (!this.tutorialComplete && this.tutorialStep === 3) {
+          this.showTutorialDialog(["* Good as new. Patch up anything damaged, hop back in with [F], and finish that delivery to Outpost East!"]);
+        }
+        return true;
     }
 
     const nearGasF = this.gasStations ? this.gasStations.getNearbyStation(fx, fz, 11.5) : null;
@@ -1678,7 +1829,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v17.0.1 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v17.2 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -1828,6 +1979,22 @@ KK.Game = class Game {
   }
 
   buyUpgrade(uid) {
+    if (!this.tutorialComplete && this.tutorialStep === 4) {
+      setTimeout(() => {
+        if (!this.tutorialComplete && this.tutorialStep === 4) {
+          this.tutorialComplete = true;
+          this.tutorialStep = 99;
+          if (this._tutArrow) this._tutArrow.visible = false;
+          this._saveProgress(true);
+          this.showTutorialDialog([
+            "* Look at you — a certified Oblast courier. All towns, contracts, barges, and dealerships are now unlocked.",
+            "* This map is massive. There's a mountain pass, a desert mesa, a racetrack, outer islands, and frozen northern wastes...",
+            "* Oh, and one last thing. If the trees start making siren noises, or the snow starts shaking, or you see something way too big moving near the volcano...",
+            "* ...don't stop to say hi. Good luck out there, driver."
+          ]);
+        }
+      }, 120);
+    }
     const u = KK.UPGRADES[uid];
     if (!u || this.vehicle.vState.upgrades[uid]) return;
     if (this.money < u.price) { this.ui.toast("Insufficient funds!", true); return; }
@@ -1842,6 +2009,18 @@ KK.Game = class Game {
       this.vehicle.vState.t72ShellType = "therm";
     }
     if (uid === "mudTires") {
+      if (!this.tutorialComplete && this.tutorialStep === 4) {
+        this.tutorialComplete = true;
+        this.tutorialStep = 99;
+        if (this._tutArrow) this._tutArrow.visible = false;
+        this._saveProgress(true);
+        this.showTutorialDialog([
+          "* Look at you — a certified Oblast courier. All towns, contracts, barges, and dealerships are now unlocked.",
+          "* This map is massive. There's a mountain pass, a desert mesa, a racetrack, outer islands, and frozen northern wastes...",
+          "* Oh, and one last thing. If the trees start making siren noises, or the snow starts shaking, or you see something way too big moving near the volcano...",
+          "* ...don't stop to say hi. Good luck out there, driver."
+        ]);
+      }
       this.scene.remove(this.vehicleRig.root);
       this.vehicleRig = KK.VehicleBuilder.buildVehicle(this.activeVehicleId, this.vehicle.vState, true);
       this.vehicleRig.setCargoVisual(this.vehicle.cargoCount, this.vehicle.cargoType, this.vehicle.cargoStrapped);
@@ -2001,6 +2180,15 @@ KK.Game = class Game {
   }
 
   acceptContract(contractId, asLanConvoy) {
+    if (!this.tutorialComplete && this.tutorialStep === 1) {
+      this.tutorialStep = 2;
+      this.radarFlashTimer = 4.0;
+      this.showTutorialDialog([
+        "* Nice! Cargo's loaded. Keep an eye on that flashing GOLD dot on your radar — that's Kamenka Outpost East.",
+        "* Quick survival cheat-sheet while you roll out: [L] toggles headlights, [V] handles winch/straps, and [O] opens the full controls list anytime.",
+        "* Go make your first ruble!"
+      ]);
+    }
     const c = this.ui.availableContracts.find((x) => x.id === contractId);
     if (!c) return;
     const cDef = KK.CARGO_TYPES[c.cargoType] || KK.CARGO_TYPES.standard;
@@ -2097,6 +2285,16 @@ KK.Game = class Game {
 
   abandonContract() {
     this.activeContract = null; this.activeConvoyId = null; this.vehicle.cargoCount = 0;
+    if (!this.tutorialComplete && this.tutorialStep >= 2 && this.tutorialStep < 4) {
+      if (this.vehicle) this.vehicle.tutorialSensitiveDmg = false;
+      this.tutorialStep = 4;
+      this.radarFlashTimer = 4.0;
+      this.setWaypoint(1325, 165, "Outpost East Garage");
+      this.showTutorialDialog([
+        "* Boom — first paycheck! Now drive over to the flashing GARAGE pad and hit [G] (or [F]) to open the shop.",
+        "* Stock tires are basically butter in the mud. Buy yourself a set of Mud / Off-Road Tires (or any upgrade) so you don't get stuck out in the boonies."
+      ]);
+    }
     this.vehicleRig.setCargoVisual(0, "standard", true);
     if (this.trailer) { this.trailer.cargoCount = 0; this.trailerRig.setCargoVisual(0, "standard", true); }
     this.ui.renderContracts(); this.ui.toast("Contract abandoned.", true);
@@ -3344,7 +3542,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.0.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v17.2.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -3697,6 +3895,7 @@ KK.Game = class Game {
 
     for (const ev of this.vehicle.consumeEvents()) {
       if (ev.kind === "toast") this.ui.toast(ev.data, true);
+      else if (ev.kind === "tutorial_first_dmg") this._triggerTutorialHoodStep();
       else if (ev.kind === "impact") this.audio.playImpact(ev.data);
       else if (ev.kind === "crash_burst") {
         this.particles.emitCrashBurst(ev.data.x, ev.data.y, ev.data.z, ev.data.strength, ev.data.surface, this.weather.weather);
@@ -3797,7 +3996,7 @@ KK.Game = class Game {
           const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v17.0.1 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v17.2 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -3928,7 +4127,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v17.0.1 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    // v17.2 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const dGate = Math.hypot(gx - (-62099), gz - 63132);
@@ -3963,13 +4162,14 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v17.0.1 Auto-save persistent vehicle odometer every 10s when driving!
+    // v17.2 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
       this._saveProgress(false);
     }
 
+    this._updateTutorial(dt);
     let hasLocalPassenger = false;
     if (this.network && this.network.remotePlayers) {
       for (const r of this.network.remotePlayers.values()) {
