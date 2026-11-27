@@ -4382,10 +4382,12 @@ KK.VehicleBuilder = {
       const matRack   = new THREE.MeshBasicMaterial({ color: 0xffbe0b, transparent: true, opacity: 0.92, depthTest: false });
       const matRam    = new THREE.MeshBasicMaterial({ color: 0x00f5ff, transparent: true, opacity: 0.92, depthTest: false });
 
+      const gunPivotX = new THREE.Group();
+      gunPivotX.position.set(0, 0.48, 1.65); turX.add(gunPivotX);
       const breechX = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.48, 1.25), matBreech);
-      breechX.position.set(0, 0.48, 0.92); breechX.renderOrder = 12; turX.add(breechX);
+      breechX.position.set(0, 0, -0.73); breechX.renderOrder = 12; gunPivotX.add(breechX);
       const barrelX = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.115, 6.2, 8), matBreech);
-      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0.48, 4.52); barrelX.renderOrder = 11; turX.add(barrelX);
+      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0, 2.87); barrelX.renderOrder = 11; gunPivotX.add(barrelX);
 
       // Exact 40-shell 1-to-1 bustle ready-rack (4 rows x 10 casings — every single round fired removes 1 casing!)
       const rackShells = [];
@@ -4400,7 +4402,7 @@ KK.VehicleBuilder = {
       ramShell.rotation.x = Math.PI / 2; ramShell.position.set(0, 0.46, -1.25); ramShell.visible = false; ramShell.renderOrder = 13; turX.add(ramShell);
       const ramRod = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 1.45), matRam);
       ramRod.position.set(0, 0.46, -2.05); ramRod.renderOrder = 12; turX.add(ramRod);
-      p140XrayAnim = { turX, breechX, rackShells, ramShell, ramRod };
+      p140XrayAnim = { turX, gunPivotX, breechX, rackShells, ramShell, ramRod };
     } else if (spec.isHarimau) {
       // AUTHENTIC PINDAD HARIMAU (KAPLAN MT) X-RAY INTERNALS + 12-ROUND BUSTLE AUTOLOADER!
       addXPart("engine",      new THREE.BoxGeometry(1.48, 0.68, 1.35), 0, 1.04, -1.85);
@@ -4423,10 +4425,12 @@ KK.VehicleBuilder = {
       const matRack   = new THREE.MeshBasicMaterial({ color: 0xffbe0b, transparent: true, opacity: 0.92, depthTest: false });
       const matRam    = new THREE.MeshBasicMaterial({ color: 0x00f5ff, transparent: true, opacity: 0.92, depthTest: false });
 
+      const gunPivotX = new THREE.Group();
+      gunPivotX.position.set(0, 0.46, 1.50); turX.add(gunPivotX);
       const breechX = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 1.08), matBreech);
-      breechX.position.set(0, 0.46, 0.85); breechX.renderOrder = 12; turX.add(breechX);
+      breechX.position.set(0, 0, -0.65); breechX.renderOrder = 12; gunPivotX.add(breechX);
       const barrelX = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 5.2, 8), matBreech);
-      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0.46, 3.85); barrelX.renderOrder = 11; turX.add(barrelX);
+      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0, 2.35); barrelX.renderOrder = 11; gunPivotX.add(barrelX);
 
       // 12-Round Ready-Rack in Cockerill 3105 Rear Bustle (1-to-1 shell removal!)
       const rackShells = [];
@@ -4440,7 +4444,7 @@ KK.VehicleBuilder = {
       ramShell.rotation.x = Math.PI / 2; ramShell.position.set(0, 0.46, -1.15); ramShell.visible = false; ramShell.renderOrder = 13; turX.add(ramShell);
       const ramRod = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.25), matRam);
       ramRod.position.set(0, 0.46, -1.95); ramRod.renderOrder = 12; turX.add(ramRod);
-      p140XrayAnim = { turX, breechX, rackShells, ramShell, ramRod };
+      p140XrayAnim = { turX, gunPivotX, breechX, rackShells, ramShell, ramRod };
     } else if (spec.isShilka) {
       // AUTHENTIC ZSU-23-4 "SHILKA" X-RAY: GM-575 Rear V-6R Engine + DG4M-1 Radar APU + Live Quad-23mm Turret & 1RL33 Gun Dish!
       addXPart("engine",      new THREE.BoxGeometry(1.22, 0.56, 1.04), 0, 0.98, -1.78);
@@ -4568,10 +4572,12 @@ KK.VehicleBuilder = {
       turretXray.position.set(0, 1.62, 0.16);
       xrayGroup.add(turretXray);
 
+      const gunPivotX = new THREE.Group();
+      gunPivotX.position.set(0, 0.42, 1.25); turretXray.add(gunPivotX);
       const breechX = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.40, 0.98), matBreechX);
-      breechX.position.set(0, 0.42, 0.65); breechX.renderOrder = 12; turretXray.add(breechX);
+      breechX.position.set(0, 0, -0.60); breechX.renderOrder = 12; gunPivotX.add(breechX);
       const barrelX = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 4.6, 8), matBreechX);
-      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0, 2.70); barrelX.renderOrder = 11; breechX.add(barrelX);
+      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0, 2.10); barrelX.renderOrder = 11; gunPivotX.add(barrelX);
 
       const hoistGrp = new THREE.Group();
       hoistGrp.position.set(0, -0.58, -0.52);
@@ -4590,7 +4596,7 @@ KK.VehicleBuilder = {
       const spentStub = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.068, 0.16, 8), new THREE.MeshBasicMaterial({ color: 0xff3b5c, transparent: true, opacity: 0.95, depthTest: false }));
       spentStub.rotation.x = Math.PI / 2; spentStub.visible = false; spentStub.renderOrder = 13; turretXray.add(spentStub);
 
-      tankXrayAnim = { carouselRotor, carouselShells, turretXray, breechX, hoistGrp, liftProj, liftChg, rammerRod, spentStub, spinAngle: 0 };
+      tankXrayAnim = { carouselRotor, carouselShells, turretXray, gunPivotX, breechX, hoistGrp, liftProj, liftChg, rammerRod, spentStub, spinAngle: 0 };
     } else {
       // v17.6.1 UNIFIED HULL-CLAMPED X-RAY ENGINE & DRIVETRAIN POSITIONS (All 25 Wheeled Vehicles!)
       const L = engLayout;
@@ -4633,7 +4639,16 @@ KK.VehicleBuilder = {
     if (spec.isTracked) {
       const trkLen = (spec.bodyLen || 6.4) * 0.88;
       const trkX = (spec.wheels && spec.wheels.length > 0) ? Math.abs(spec.wheels[0].x) : ((spec.bodyWidth || 3.2) * 0.44);
-      addXPart("trackL", new THREE.BoxGeometry(0.54, 0.72, trkLen), -trkX, 0.48, 0);
+      if (spec.id === "bm21") {
+      // v17.9.2 HUGE 40-TUBE BM-21 GRAD ROCKET AMMO RACK IN X-RAY!
+      const matGradAmmo = new THREE.MeshBasicMaterial({ color: 0xff9f1c, transparent: true, opacity: 0.92, depthTest: false });
+      const gradPodX = new THREE.Mesh(new THREE.BoxGeometry(2.18, 0.96, 3.05), matGradAmmo);
+      gradPodX.position.set(0, 2.38, -1.65);
+      gradPodX.rotation.x = -0.32;
+      gradPodX.renderOrder = 12;
+      xrayGroup.add(gradPodX);
+    }
+    addXPart("trackL", new THREE.BoxGeometry(0.54, 0.72, trkLen), -trkX, 0.48, 0);
       addXPart("trackR", new THREE.BoxGeometry(0.54, 0.72, trkLen),  trkX, 0.48, 0);
     }
 
@@ -5159,8 +5174,8 @@ KK.VehicleBuilder = {
             tankXrayAnim.carouselShells[s].visible = (s < Math.min(22, totalShells));
           }
 
-          tankXrayAnim.breechX.position.z = 0.65 - (state.barrelRecoil || 0) * 0.52;
-          if (tankGunPitch) tankXrayAnim.breechX.rotation.x = tankGunPitch.rotation.x;
+          tankXrayAnim.breechX.position.z = -0.60 - (state.barrelRecoil || 0) * 0.52;
+          if (tankGunPitch && tankXrayAnim.gunPivotX) tankXrayAnim.gunPivotX.rotation.x = tankGunPitch.rotation.x;
 
           if (rRem > 0) {
             if (frac < 0.20) {
@@ -5199,13 +5214,13 @@ KK.VehicleBuilder = {
               tankXrayAnim.spentStub.visible = false;
               tankXrayAnim.hoistGrp.visible = false;
               tankXrayAnim.rammerRod.position.z = -1.22;
-              tankXrayAnim.breechX.position.y = 0.42 - Math.sin(dT * Math.PI) * 0.08;
+              tankXrayAnim.breechX.position.y = -Math.sin(dT * Math.PI) * 0.08;
             }
           } else {
             tankXrayAnim.spentStub.visible = false;
             tankXrayAnim.hoistGrp.visible = false;
             tankXrayAnim.rammerRod.position.z = -1.22;
-            tankXrayAnim.breechX.position.y = 0.42;
+            tankXrayAnim.breechX.position.y = 0;
           }
         }
 
@@ -5226,8 +5241,8 @@ KK.VehicleBuilder = {
         if (p140ApsFlash) p140ApsFlash.visible = (state.apsFlashTimer || 0) > 0;
         if (p140XrayAnim && state.xrayActive) {
           p140XrayAnim.turX.rotation.y = typeof state.turretYaw === "number" ? state.turretYaw : 0;
-          p140XrayAnim.breechX.position.z = 0.85 - (state.barrelRecoil || 0) * 0.58;
-          if (tankGunPitch) p140XrayAnim.breechX.rotation.x = tankGunPitch.rotation.x;
+          p140XrayAnim.breechX.position.z = -0.68 - (state.barrelRecoil || 0) * 0.58;
+          if (tankGunPitch && p140XrayAnim.gunPivotX) p140XrayAnim.gunPivotX.rotation.x = tankGunPitch.rotation.x;
           const totalS = state.t72TotalShells !== undefined ? state.t72TotalShells : 40;
           const rackLOn = (state.ammoRackLIntact !== false);
           const rackROn = (state.ammoRackRIntact !== false);
@@ -5252,6 +5267,11 @@ KK.VehicleBuilder = {
         if (trackSys && (wheelAssemblies.length === 12 || wheelAssemblies.length === 14)) {
           const zAxis = new THREE.Vector3(0, 0, 1);
           const updateClosedTrack = (sideObj, isRight) => {
+            const trkHp = isRight ? (state.trackR !== undefined ? state.trackR : 100) : (state.trackL !== undefined ? state.trackL : 100);
+            const trkIntact = trkHp >= 15;
+            if (sideObj.loopSpans) { for (let s = 0; s < sideObj.loopSpans.length; s++) sideObj.loopSpans[s].visible = trkIntact; }
+            if (sideObj.cleats) { for (let c = 0; c < sideObj.cleats.length; c++) sideObj.cleats[c].visible = trkIntact; }
+            if (!trkIntact) return;
             const tx = sideObj.tx;
             const cy = chassisLiftY;
             const perSide = wheelAssemblies.length / 2;

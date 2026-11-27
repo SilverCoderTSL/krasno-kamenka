@@ -15,7 +15,7 @@ KK.HazardManager = class HazardManager {
     this.avalancheChunks = []; // Cascading snow wall on snowy peaks!
     this.tornado = null;       // Rare realistic twisting funnel cloud!
     this.hurricane = null;     // Cat 1-5 Ocean Hurricane with Eyewall, Spiral Bands & Calm Eye!
-    this.hurricaneCheckTimer = 34.0;
+    this.hurricaneCheckTimer = 260.0;
     this.avalancheWaves = [];  // Staggered 3-wave avalanche queue!
 
     this.lavaTimer = 4.0;
@@ -859,7 +859,7 @@ KK.HazardManager = class HazardManager {
       if (!this.hurricane) {
         this.hurricaneCheckTimer -= dt;
         if (this.hurricaneCheckTimer <= 0) {
-          this.hurricaneCheckTimer = 38 + Math.random() * 44;
+          this.hurricaneCheckTimer = 240 + Math.random() * 180;
           const spawnChance = (weatherSys.weather === "hurricane" || weatherSys.weather === "storm")
             ? 0.78 : ((weatherSys.weather === "rain" || weatherSys.weather === "overcast") ? 0.50 : 0.34);
           if (inOpenSea && Math.random() < spawnChance) {
@@ -1014,6 +1014,14 @@ KK.HazardManager = class HazardManager {
       const isVehMounted = ab && boats && boats.getLocalMountedEntry && boats.getLocalMountedEntry(ab);
       if (vehicle && !isVehMounted) {
         const vEff = ab ? this.getHurricaneEffectAt(px, pz) : eff;
+      // v17.9.2 Hurricanes overpower parking brakes & lift/toss vehicles in strong eyewall winds!
+      if (!ab && vehicle && vEff && vEff.windStrength > 0.35) {
+        if (vehicle.parkBrake) vehicle.parkBrake = false;
+        const liftF = (vEff.windStrength - 0.30) * (14.5 + (h.cat || 3) * 3.8);
+        vehicle.vel.y = Math.max(vehicle.vel.y, Math.min(18.0, vehicle.vel.y + liftF * dt));
+        vehicle.vel.x += (vEff.windX || 0) * dt * 1.45;
+        vehicle.vel.z += (vEff.windZ || 0) * dt * 1.45;
+      }
         if (vEff.intensity > 0.02 && !vEff.inEye) {
           const massResist = Math.min(1.25, 2200 / Math.max(950, vehicle.getTotalMassKg ? vehicle.getTotalMassKg() : 2000));
           const inWater = (vehicle.inWaterDepth || 0) > 0.25 || py < seaL + 2.5;
