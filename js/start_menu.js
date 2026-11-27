@@ -1,5 +1,5 @@
 // ============================================================================
-// js/start_menu.js (v17.5.1 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
+// js/start_menu.js (v17.6 ONLINE) — Atmospheric 3-Biome Horror Title Menu, Interactive
 // Clean Spawn Map (Roads, Rivers & Settlements Only + Survivability Ratings) &
 // Account Password Management
 // ============================================================================
@@ -582,7 +582,7 @@ KK.StartMenu = class StartMenu {
             </div>
           </div>
           <div class="sm-acc-box small" style="line-height:1.5;">
-            <label class="sm-lbl">v17.5.1 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
+            <label class="sm-lbl">v17.6 ONLINE KEYBIND SUMMARY (FULL SORTED LIST IN [O] OPTIONS)</label>
             <b>[F]</b> Universal Interact / Enter-Exit (Front/Rear for Hood • <b>Shift+F</b> Force Exit)<br/>
             <b>[E]</b> On-Foot Inventory • <b>[Q/E]</b> Manual Gears (in car) • <b>[4]</b> Auto/Manual<br/>
             <b>[LMB/RMB/MMB]</b> Fire Primary / Turret Scope / Lock Turret<br/>

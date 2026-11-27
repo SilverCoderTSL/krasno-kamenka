@@ -404,7 +404,7 @@ KK.GarageBlueprint = {
           <div class="btn-row" style="margin-top:6px;">
             <button class="btn primary small" onclick="window.__GAME__.garageRestockTires()">FRESH TIRES + SPARES ($300)</button>
             ${!vs.upgrades.mudTires
-              ? `<button class="btn accent small" onclick="window.__GAME__.buyUpgrade('mudTires')">37" OVERSIZE LIFT TIRES ($${KK.UPGRADES.mudTires.price.toLocaleString()})</button>`
+              ? `<button class="btn accent small ${(!window.__GAME__.tutorialComplete && window.__GAME__.tutorialStep === 4) ? "tut-highlight-pulse" : ""}" onclick="window.__GAME__.buyUpgrade('mudTires')">👉 37" OVERSIZE LIFT TIRES ($${KK.UPGRADES.mudTires.price.toLocaleString()})</button>`
               : `<span class="tag-ok">✓ 37" OVERSIZE CLEARANCE</span>`}
           </div>
         </div>

@@ -141,7 +141,7 @@ KK.UIManager = class UIManager {
       players: "ONLINE PLAYERS — FRIENDS & CASH TRANSFER [TAB]"
     };
     document.getElementById("modal-title").textContent = titles[name] || "MENU";
-    if (name === "garage") this.renderGarage();
+    if (name === "garage") { if (this.game && !this.game.tutorialComplete && this.game.tutorialStep === 4) { this.selectedBlueprintNode = "tires_psi"; } this.renderGarage(); }
     if (name === "contracts") this.renderContracts();
     if (name === "harbor") this.renderHarbor();
     if (name === "players") this.renderOnlinePlayers();

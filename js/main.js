@@ -445,12 +445,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v17.5.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v17.6 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v17.5.1 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v17.6 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -559,9 +559,22 @@ KK.Game = class Game {
     }
     if (this._tutArrow) {
       let ax = null, az = null;
-      if (this.tutorialStep === 1) { ax = -18; az = -16; }
-      else if (this.tutorialStep === 2 || this.tutorialStep === 3) { ax = 1350; az = 180; }
-      else if (this.tutorialStep === 4) { ax = 1325; az = 165; }
+      const objEl = document.getElementById("tutorial-obj");
+      if (this.tutorialStep === 1) {
+        ax = -18; az = -16;
+        if (objEl) objEl.textContent = "STEP 1/4: Drive to HQ Warehouse & press [F]";
+      } else if (this.tutorialStep === 2) {
+        ax = 1350; az = 180;
+        if (objEl) objEl.textContent = "STEP 2/4: Follow PURPLE GPS to Outpost East";
+      } else if (this.tutorialStep === 3) {
+        ax = 1350; az = 180;
+        if (objEl) objEl.textContent = "STEP 3/4: Exit [F] -> Front Hood [F] -> Deliver";
+      } else if (this.tutorialStep === 4) {
+        const tE = KK.TOWNS[1];
+        ax = (tE && tE.garageX !== undefined) ? tE.garageX : 1325;
+        az = (tE && tE.garageZ !== undefined) ? tE.garageZ : 165;
+        if (objEl) objEl.textContent = "STEP 4/4: Open Garage [F] & Buy Mud Tires!";
+      }
       if (ax !== null) {
         const gy = this.world.getTerrainInfo(ax, az, false).height;
         const bob = Math.sin(performance.now() * 0.006) * 1.4;
@@ -603,7 +616,7 @@ KK.Game = class Game {
     if (!d || typeof d !== "object") return;
     if (typeof d.money === "number") this.money = d.money;
     if (typeof d.tutorialV17Done === "boolean") this.tutorialComplete = d.tutorialV17Done;
-    // v17.5.1 All players attend tutorial until completed or skipped!
+    // v17.6 All players attend tutorial until completed or skipped!
     if (d.stats && typeof d.stats === "object") {
       this.stats.deliveries = Number(d.stats.deliveries) || 0;
       this.stats.distanceKm = Number(d.stats.distanceKm) || 0;
@@ -972,7 +985,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        // v17.5.1 Garage is strictly [F] only — [G] is exclusively military/flare!
+        // v17.6 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -1217,7 +1230,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.5.1 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v17.6 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1241,7 +1254,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.5.1 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v17.6 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1868,7 +1881,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v17.5.1 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v17.6 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -2324,16 +2337,6 @@ KK.Game = class Game {
 
   abandonContract() {
     this.activeContract = null; this.activeConvoyId = null; this.vehicle.cargoCount = 0;
-    if (!this.tutorialComplete && this.tutorialStep >= 2 && this.tutorialStep < 4) {
-      if (this.vehicle) this.vehicle.tutorialSensitiveDmg = false;
-      this.tutorialStep = 4;
-      this.radarFlashTimer = 4.0;
-      this.setWaypoint(1325, 165, "Outpost East Garage");
-      this.showTutorialDialog([
-        "* Boom — first paycheck! Now drive over to the flashing GARAGE pad and hit [F] to open the shop.",
-        "* Stock tires are basically butter in the mud. Buy yourself a set of Mud / Off-Road Tires (or any upgrade) so you don't get stuck out in the boonies."
-      ]);
-    }
     this.vehicleRig.setCargoVisual(0, "standard", true);
     if (this.trailer) { this.trailer.cargoCount = 0; this.trailerRig.setCargoVisual(0, "standard", true); }
     this.ui.renderContracts(); this.ui.toast("Contract abandoned.", true);
@@ -2361,6 +2364,19 @@ KK.Game = class Game {
     this.ui.toast(`DELIVERY COMPLETE! Earned $${payout.toLocaleString()} (Cargo ${this.vehicle.cargoIntegrity.toFixed(0)}% intact)!`);
     this.activeContract = null; this.activeConvoyId = null; this.vehicle.cargoCount = 0;
     this.vehicleRig.setCargoVisual(0, "standard", true); if (this.trailer && this.trailerRig) { this.trailer.cargoCount = 0; this.trailerRig.setCargoVisual(0, "logs", true); } this.waypoint = null;
+    if (!this.tutorialComplete && this.tutorialStep >= 1 && this.tutorialStep < 4) {
+      if (this.vehicle) this.vehicle.tutorialSensitiveDmg = false;
+      this.tutorialStep = 4;
+      this.radarFlashTimer = 4.0;
+      const tEast = KK.TOWNS[1];
+      const gxG = (tEast && tEast.garageX !== undefined) ? tEast.garageX : 1325;
+      const gzG = (tEast && tEast.garageZ !== undefined) ? tEast.garageZ : 165;
+      this.setWaypoint(gxG, gzG, "Outpost East Garage");
+      this.showTutorialDialog([
+        "* Boom — first paycheck! Now drive over to the GARAGE pad (follow the arrow) and hit [F] to open the shop.",
+        "* Stock tires are basically butter in the mud. Click the glowing 👉 37\" OVERSIZE LIFT TIRES button to upgrade your rig!"
+      ]);
+    }
     this._saveProgress(true);
   }
 
@@ -3029,7 +3045,7 @@ KK.Game = class Game {
     const hasK5 = (spec.id === "t72" && !!vs.upgrades.t72Kontakt5);
     const calMult = Math.pow(Math.max(14, caliberMm) / 125.0, 1.4);
 
-    // v17.5.1 REAL ARMOR (mm RHA) vs WEAPON PENETRATION MATRIX!
+    // v17.6 REAL ARMOR (mm RHA) vs WEAPON PENETRATION MATRIX!
     const vehicleArmorMm = is140 ? 680
       : (spec.id === "t72" ? (hasK5 ? 520 : 420)
       : (spec.id === "harimau" ? 180
@@ -3605,7 +3621,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.5.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v17.6.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -4067,7 +4083,7 @@ KK.Game = class Game {
           const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v17.5.1 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v17.6 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -4198,7 +4214,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v17.5.1 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    // v17.6 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const dGate = Math.hypot(gx - (-62099), gz - 63132);
@@ -4233,7 +4249,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v17.5.1 Auto-save persistent vehicle odometer every 10s when driving!
+    // v17.6 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -4241,7 +4257,7 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
-    // v17.5.1 Animate On-Foot Player Actions [1-5] on localAvatar!
+    // v17.6 Animate On-Foot Player Actions [1-5] on localAvatar!
     if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
       this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
       const tE = performance.now() * 0.012;
@@ -4267,7 +4283,7 @@ KK.Game = class Game {
         if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
       }
     }
-    // v17.5.1 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    // v17.6 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
     if (this.network && this.network.remotePlayers) {
       const nowMs = performance.now();
       for (const [pid, rp] of this.network.remotePlayers.entries()) {
