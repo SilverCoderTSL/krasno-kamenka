@@ -3606,14 +3606,14 @@ KK.World = class World {
       const fz = startZ + this.hash2(cx * 19 + 11, cz * 29 + fi) * size;
       const tFl = this.getTerrainInfo(fx, fz, false);
       if (!tFl || tFl.waterDepth > 0.05 || tFl.surface === "asphalt" || tFl.surface === "race_tarmac" || tFl.surface === "mud") continue;
-      const bm = this.getBiomeAt(fx, fz);
-      if (bm === "desert" || bm === "arctic" || bm === "volcanic" || bm === "mountains") continue;
+      const bw = this.getBiomeWeights(fx, fz);
+      if (!bw || bw.desert > 0.35 || bw.arctic > 0.35 || bw.volcanic > 0.35 || bw.mountains > 0.45) continue;
       const flType = Math.floor(this.hash2(cx * 13 + fi * 3, cz * 23 + fi) * 3);
       let pKey, pMat;
-      if (bm === "taiga") {
+      if (bw.taiga > 0.35) {
         pKey = flType === 0 ? "fl_p" : (flType === 1 ? "fl_b" : "fl_w");
         pMat = flType === 0 ? this.matFlPurple : (flType === 1 ? this.matFlBlue : this.matFlWhite);
-      } else if (bm === "tropical") {
+      } else if (bw.tropical > 0.35) {
         pKey = flType === 0 ? "fl_r" : (flType === 1 ? "fl_y" : "fl_p");
         pMat = flType === 0 ? this.matFlRed : (flType === 1 ? this.matFlYellow : this.matFlPurple);
       } else {
