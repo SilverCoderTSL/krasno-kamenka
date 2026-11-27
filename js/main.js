@@ -445,12 +445,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v17.2.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v17.4 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v17.2.1 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v17.4 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -592,7 +592,7 @@ KK.Game = class Game {
     if (!d || typeof d !== "object") return;
     if (typeof d.money === "number") this.money = d.money;
     if (typeof d.tutorialComplete === "boolean") this.tutorialComplete = d.tutorialComplete;
-    else if (d.stats && Number(d.stats.deliveries) > 0) this.tutorialComplete = true;
+    // v17.4 All players attend tutorial until completed or skipped!
     if (d.stats && typeof d.stats === "object") {
       this.stats.deliveries = Number(d.stats.deliveries) || 0;
       this.stats.distanceKm = Number(d.stats.distanceKm) || 0;
@@ -961,11 +961,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        const pxG = this.onFoot ? this.playerFoot.x : this.vehicle.pos.x;
-        const pzG = this.onFoot ? this.playerFoot.z : this.vehicle.pos.z;
-        let nearGarTown = null;
-        for (const t of KK.TOWNS) { if (t.hasGarage && Math.hypot(pxG - t.garageX, pzG - t.garageZ) < 24) { nearGarTown = t; break; } }
-        if (nearGarTown) { this.ui.openModal("garage"); return; }
+        // v17.4 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -976,8 +972,40 @@ KK.Game = class Game {
           this.throwRoadFlare();
         }
       }
-      // 4. STRICTLY IN-VEHICLE CONTROLS (DISABLED COMPLETELY WHEN ON FOOT!)
+      // 4. ON-FOOT PLAYER ACTIONS [1-5] & STRICTLY IN-VEHICLE GATE!
       else if (this.onFoot) {
+        if (code === "Digit1") {
+          this.onFootEmote = "wave"; this.onFootEmoteTimer = 2.2;
+          this.ui.toast("👋 Waving!");
+        } else if (code === "Digit2") {
+          this.onFootEmote = "kick"; this.onFootEmoteTimer = 0.75;
+          let kickedName = null;
+          if (this.network && this.network.remotePlayers) {
+            for (const [pid, rp] of this.network.remotePlayers.entries()) {
+              if (!rp.onFoot || rp.ridingWithPeerId) continue;
+              const dK = Math.hypot((rp.gx || 0) - this.playerFoot.x, (rp.gz || 0) - this.playerFoot.z);
+              if (dK < 2.8) {
+                kickedName = rp.callsign || "a friend";
+                const kx = ((rp.gx || 0) - this.playerFoot.x) / Math.max(0.2, dK);
+                const kz = ((rp.gz || 0) - this.playerFoot.z) / Math.max(0.2, dK);
+                if (this.network.sendCarBump) this.network.sendCarBump(pid, kx * 10.5, 5.5, kz * 10.5, 2.5);
+                if (this.audio) this.audio.playImpact(0.45);
+                break;
+              }
+            }
+          }
+          this.ui.toast(kickedName ? `🦵 Kicked ${kickedName}!` : "🦵 Kick!");
+        } else if (code === "Digit3") {
+          this.onFootEmote = (this.onFootEmote === "squat" && this.onFootEmoteTimer > 0) ? null : "squat";
+          this.onFootEmoteTimer = this.onFootEmote ? 8.0 : 0;
+          this.ui.toast(this.onFootEmote ? "🇷🇺 Slav Squat (Heels on Ground!)" : "Stood up.");
+        } else if (code === "Digit4") {
+          this.onFootEmote = "dance"; this.onFootEmoteTimer = 4.5;
+          this.ui.toast("🕺 Oblast Dance!");
+        } else if (code === "Digit5") {
+          this.onFootEmote = "salute"; this.onFootEmoteTimer = 2.5;
+          this.ui.toast("🫡 Military Salute!");
+        }
         return;
       }
       else if (code === "KeyQ") {
@@ -1178,7 +1206,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.2.1 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v17.4 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1202,7 +1230,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.2.1 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v17.4 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -1829,7 +1857,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v17.2.1 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v17.4 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -2184,7 +2212,7 @@ KK.Game = class Game {
       this.tutorialStep = 2;
       this.radarFlashTimer = 4.0;
       this.showTutorialDialog([
-        "* Nice! Cargo's loaded. Keep an eye on that flashing GOLD dot on your radar — that's Kamenka Outpost East.",
+        "* Nice! Cargo's loaded. Keep an eye on that flashing PURPLE dot on your radar — that's Kamenka Outpost East.",
         "* Quick survival cheat-sheet while you roll out: [L] toggles headlights, [V] handles winch/straps, and [O] opens the full controls list anytime.",
         "* Go make your first ruble!"
       ]);
@@ -2291,7 +2319,7 @@ KK.Game = class Game {
       this.radarFlashTimer = 4.0;
       this.setWaypoint(1325, 165, "Outpost East Garage");
       this.showTutorialDialog([
-        "* Boom — first paycheck! Now drive over to the flashing GARAGE pad and hit [G] (or [F]) to open the shop.",
+        "* Boom — first paycheck! Now drive over to the flashing GARAGE pad and hit [F] to open the shop.",
         "* Stock tires are basically butter in the mud. Buy yourself a set of Mud / Off-Road Tires (or any upgrade) so you don't get stuck out in the boonies."
       ]);
     }
@@ -2749,7 +2777,7 @@ KK.Game = class Game {
   }
 
   resupplyTankAmmo() {
-    if (!this.ownedVehicles.t72 && !this.ownedVehicles.bm21 && !this.ownedVehicles.shilka && !this.ownedVehicles.pzkpfw_140a4) return;
+    if (!this.ownedVehicles.t72 && !this.ownedVehicles.bm21 && !this.ownedVehicles.shilka && !this.ownedVehicles.pzkpfw_140a4 && !this.ownedVehicles.harimau && !this.ownedVehicles.komodo_std && !this.ownedVehicles.komodo_turret && !this.ownedVehicles.btr80) return;
     const cost = (this.vehicle.vState.vehicleId === "pzkpfw_140a4") ? 0 : 1800;
     if (this.money < cost) { this.ui.toast(`Need $${cost.toLocaleString()} to resupply Soviet armored ordnance!`, true); return; }
     this.money -= cost;
@@ -2760,6 +2788,10 @@ KK.Game = class Game {
     }
     if (this.ownedVehicles.bm21) this.ownedVehicles.bm21.bm21Rockets = 40;
     if (this.ownedVehicles.shilka) this.ownedVehicles.shilka.shilkaAmmo = 800;
+    if (this.ownedVehicles.btr80) this.ownedVehicles.btr80.btrAmmo = 300;
+    if (this.ownedVehicles.komodo_std) this.ownedVehicles.komodo_std.btrAmmo = 400;
+    if (this.ownedVehicles.komodo_turret) this.ownedVehicles.komodo_turret.btrAmmo = 180;
+    if (this.ownedVehicles.harimau) { const h = this.ownedVehicles.harimau; h.t72HeAmmo = 16; h.t72ApAmmo = 16; h.t72CoaxAmmo = 400; }
     if (this.ownedVehicles.pzkpfw_140a4) { const p = this.ownedVehicles.pzkpfw_140a4; p.p140ApAmmo = 14; p.p140HeshAmmo = 10; p.p140ThermAmmo = 8; p.p140RlgAmmo = 8; p.p140AutoAmmo = 240; }
     const curVs = this.vehicle.vState;
     if (curVs.vehicleId === "komodo_turret") {
@@ -2986,10 +3018,30 @@ KK.Game = class Game {
     const hasK5 = (spec.id === "t72" && !!vs.upgrades.t72Kontakt5);
     const calMult = Math.pow(Math.max(14, caliberMm) / 125.0, 1.4);
 
-    // Armor mitigation: heavy tanks withstand far more than cars, but HE & Thermobaric still deal severe external/internal damage!
-    let armorMult = 1.0;
-    if (is140) armorMult = isTherm ? 0.56 : (isHe ? 0.44 : (isAp ? 0.42 : 0.14));
-    else if (isTank) armorMult = isTherm ? 0.72 : (isHe ? 0.58 : (isAp ? 0.62 : (hasK5 ? 0.20 : 0.28)));
+    // v17.4 REAL ARMOR (mm RHA) vs WEAPON PENETRATION MATRIX!
+    const vehicleArmorMm = is140 ? 680
+      : (spec.id === "t72" ? (hasK5 ? 520 : 420)
+      : (spec.id === "harimau" ? 180
+      : (spec.id === "shilka" ? 28
+      : (spec.id === "btr80" || spec.id === "komodo_turret" || spec.id === "komodo_std" ? 24 : 6))));
+    const weaponPenMm = (caliberMm >= 140) ? (isAp ? 880 : 520)
+      : (caliberMm >= 120 ? (isAp ? 620 : 380)
+      : (caliberMm >= 100 ? 460
+      : (caliberMm >= 35 ? 110
+      : (caliberMm >= 28 ? 65
+      : (caliberMm >= 20 ? 38
+      : (caliberMm >= 14 ? 30 : 20))))));
+
+    // Non-penetration ricochet! (e.g. 12.7mm Komodo HMG CANNOT disable a 140A4 or T-72!)
+    if (!isTherm && !isHe && weaponPenMm < vehicleArmorMm * 0.45) {
+      if (this.audio) this.audio.playImpact(0.28);
+      if (this.ui) this.ui.toast(`🛡 RICOCHET! ${Math.round(caliberMm)}mm (${weaponPenMm}mm pen) bounced off ${vehicleArmorMm}mm armor!`);
+      return;
+    }
+
+    let armorMult = Math.max(0.08, Math.min(1.0, weaponPenMm / Math.max(10, vehicleArmorMm)));
+    if (is140) armorMult = Math.min(armorMult, isTherm ? 0.52 : (isHe ? 0.36 : 0.42));
+    else if (isTank) armorMult = Math.min(armorMult, isTherm ? 0.68 : (isHe ? 0.52 : 0.60));
 
     const baseDmg = isTherm ? 78 : (isHe ? 54 : (isAp ? 48 : (shell === "auto40" ? 16 : 6)));
     const dmg = baseDmg * calMult * falloff * armorMult;
@@ -3542,7 +3594,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.2.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v17.4.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -3694,8 +3746,16 @@ KK.Game = class Game {
     this.shilkaActiveBarrel = (this.shilkaActiveBarrel + 1) % 4;
     vs.shilkaAmmo--;
 
-    const bOff = [[-0.32, 0.11], [0.32, 0.11], [-0.32, -0.11], [0.32, -0.11]][this.shilkaActiveBarrel];
-    const muzzleG = new THREE.Vector3(bOff[0], 1.92 + bOff[1], 0.05).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
+    let muzzleG;
+    if (this.vehicleRig && this.vehicleRig.shilkaMuzzleTips && this.vehicleRig.shilkaMuzzleTips[this.shilkaActiveBarrel]) {
+      this.vehicleRig.root.updateMatrixWorld(true);
+      const tipW = new THREE.Vector3();
+      this.vehicleRig.shilkaMuzzleTips[this.shilkaActiveBarrel].getWorldPosition(tipW);
+      muzzleG = new THREE.Vector3(tipW.x + this.world.originX, tipW.y, tipW.z + this.world.originZ);
+    } else {
+      const bOff = [[-0.34, 0.12], [0.34, 0.12], [-0.34, -0.12], [0.34, -0.12]][this.shilkaActiveBarrel];
+      muzzleG = new THREE.Vector3(bOff[0], 1.92 + bOff[1], 3.80).applyQuaternion(this.vehicle.quat).add(this.vehicle.pos);
+    }
     let aimDir;
     if (this.vehicleRig && this.vehicleRig.shilkaGunPitch) {
       this.vehicleRig.root.updateMatrixWorld(true);
@@ -3996,7 +4056,7 @@ KK.Game = class Game {
           const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v17.2.1 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v17.4 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -4127,7 +4187,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v17.2.1 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
+    // v17.4 Zolotoy International GP Circuit Lap Timer & Saved Personal Best!
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const dGate = Math.hypot(gx - (-62099), gz - 63132);
@@ -4162,7 +4222,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v17.2.1 Auto-save persistent vehicle odometer every 10s when driving!
+    // v17.4 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -4170,10 +4230,61 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
+    // v17.4 Animate On-Foot Player Actions [1-5] on localAvatar!
+    if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
+      this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
+      const tE = performance.now() * 0.012;
+      const ud = this.localAvatar.userData || {};
+      if (this.onFootEmote === "wave" && ud.armR) {
+        ud.armR.rotation.x = -2.6; ud.armR.rotation.z = Math.sin(tE * 1.4) * 0.45;
+      } else if (this.onFootEmote === "kick" && ud.legR) {
+        ud.legR.rotation.x = -Math.sin(Math.min(1, (0.75 - this.onFootEmoteTimer) / 0.35) * Math.PI) * 1.45;
+      } else if (this.onFootEmote === "squat") {
+        this.localAvatar.position.y -= 0.42;
+        if (ud.legL) ud.legL.rotation.x = -1.1; if (ud.legR) ud.legR.rotation.x = -1.1;
+      } else if (this.onFootEmote === "dance") {
+        this.localAvatar.position.y += Math.abs(Math.sin(tE * 0.9)) * 0.24;
+        if (ud.armL) ud.armL.rotation.x = -1.6 + Math.sin(tE) * 0.9;
+        if (ud.armR) ud.armR.rotation.x = -1.6 - Math.sin(tE) * 0.9;
+      } else if (this.onFootEmote === "salute" && ud.armR) {
+        ud.armR.rotation.x = -2.45; ud.armR.rotation.z = -0.35;
+      }
+      if (this.onFootEmoteTimer <= 0) {
+        if (ud.armL) { ud.armL.rotation.set(0, 0, 0); }
+        if (ud.armR) { ud.armR.rotation.set(0, 0, 0); }
+        if (ud.legL) { ud.legL.rotation.set(0, 0, 0); }
+        if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
+      }
+    }
+    // v17.4 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    if (this.network && this.network.remotePlayers) {
+      const nowMs = performance.now();
+      for (const [pid, rp] of this.network.remotePlayers.entries()) {
+        if (rp.lastSeen && (nowMs - rp.lastSeen) > 9000) {
+          if (rp.rig && rp.rig.root) this.scene.remove(rp.rig.root);
+          if (rp.avatar) this.scene.remove(rp.avatar);
+          this.network.remotePlayers.delete(pid);
+          continue;
+        }
+        // Run over on-foot friends if we slam into them at >12 km/h!
+        if (!this.onFoot && rp.onFoot && this.vehicle && this.vehicle.speedKmh > 12) {
+          const dP = Math.hypot((rp.gx || 0) - this.vehicle.pos.x, (rp.gz || 0) - this.vehicle.pos.z);
+          if (dP < 2.4 && (!rp._runOverCd || nowMs > rp._runOverCd)) {
+            rp._runOverCd = nowMs + 2200;
+            if (this.audio) this.audio.playImpact(0.75);
+            if (this.ui) this.ui.toast(`💥 You ran over ${rp.callsign || "a friend"}!`);
+            if (this.network.sendCarBump) {
+              const fwdV = new THREE.Vector3(0, 0, 1).applyQuaternion(this.vehicle.quat);
+              this.network.sendCarBump(pid, fwdV.x * 16, 8.5, fwdV.z * 16, 4.0);
+            }
+          }
+        }
+      }
+    }
     let hasLocalPassenger = false;
     if (this.network && this.network.remotePlayers) {
       for (const r of this.network.remotePlayers.values()) {
-        if (r.ridingWithPeerId === this.network.myPeerId) { hasLocalPassenger = true; break; }
+        if (this.network.myPeerId && r.ridingWithPeerId && r.ridingWithPeerId === this.network.myPeerId) { hasLocalPassenger = true; break; }
       }
     }
     this.vehicleRig.updateVisuals(dt, {
@@ -4890,9 +5001,9 @@ KK.Game = class Game {
         else if (this.milCamp && this.milCamp.isNearCamp(this.playerFoot.x, this.playerFoot.z)) prompt = "[F] Inspect Broken T-72 Relic & Claim Stash!";
         else if (this.findNearbyRemoteBlownWheel(this.playerFoot.x, this.playerFoot.z, 3.1)) {
           const rf = this.findNearbyRemoteBlownWheel(this.playerFoot.x, this.playerFoot.z, 3.1);
-          prompt = `[E] Co-op Swap ${rf.rp.callsign}'s Blown ${rf.label} Tire (5s)!`;
+          prompt = `[F] Co-op Swap ${rf.rp.callsign}'s Blown ${rf.label} Tire (5s)!`;
         } else if (nearFrCar) prompt = `[F] Ride Shotgun with ${nearFrCar.callsign}  |  [E] Co-op Pit Crew${nearFrCar.repairing ? " (2x Boost!)" : ""}`;
-        else if (bIdxP >= 0) prompt = `[E] Swap Blown ${this.vehicle.spec.wheels[bIdxP].id} Tire with Spare (${this.vehicle.vState.spareTires || 0} left)`;
+        else if (bIdxP >= 0) prompt = `[F] Swap Blown ${this.vehicle.spec.wheels[bIdxP].id} Tire with Spare (${this.vehicle.vState.spareTires || 0} left)`;
         else if (supFP) prompt = `[F] FULL REFUEL, TIRE SWAP & REPAIR AT ${supFP.owner} SUPPORT TRAILER!`;
         else if (nearC) prompt = "[E] Pick Up Loose Cargo Crate";
         else if (atEngineBay) prompt = this.vehicle.spec.rearEngine ? "[F] Open Rear Engine Deck & Field Repair  |  [F] Enter" : "[F] Open Hood & Field Repair  |  [F] Enter Vehicle";
@@ -4911,7 +5022,7 @@ KK.Game = class Game {
       }
       const near = this.world.getNearbyTownInteraction(this.vehicle.pos.x, this.vehicle.pos.z);
       if (near) {
-        if (near.type === "garage") prompt = `[G] or [F] Open CPM2 Garage & Parts Shop (${near.town.name})`;
+        if (near.type === "garage") prompt = `[F] Open CPM2 Garage & Parts Shop (${near.town.name})`;
         else if (near.type === "dock") {
           const loadedCntP = this.vehicle.cargoCount + (this.trailer && this.trailer.hitched ? this.trailer.cargoCount : 0);
           if (this.activeContract && !this.activeContract.pickedUp && near.town.id === this.activeContract.fromTown) {

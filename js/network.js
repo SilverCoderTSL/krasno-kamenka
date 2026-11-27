@@ -640,7 +640,7 @@ KK.LanNetwork = class LanNetwork {
       // Prune timed-out disconnected clients (> 14s silent)
       let rosterDirty = false;
       for (const [cid, entry] of this.hostPeers.entries()) {
-        if (now - entry.lastSeen > 14000) {
+        if (now - entry.lastSeen > 8000) {
           this.hostPeers.delete(cid);
           delete ws.players[cid];
           delete ws.winches[cid];

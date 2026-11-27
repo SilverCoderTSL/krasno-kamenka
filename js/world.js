@@ -3627,6 +3627,19 @@ KK.World = class World {
           if (this.brokenFences.has(fenceId)) continue;
           const fx = bx + nx * side * offset;
           const fz = bz + nz * side * offset;
+          // v17.3 Skip fences at road intersections / junctions so fences NEVER block crossing roads!
+          let blocksOtherRoad = false;
+          for (let oi = 0; oi < this.roadSegments.length; oi++) {
+            if (oi === si) continue;
+            const oseg = this.roadSegments[oi];
+            if (fx < oseg.minX || fx > oseg.maxX || fz < oseg.minZ || fz > oseg.maxZ) continue;
+            const odx = oseg.x1 - oseg.x0, odz = oseg.z1 - oseg.z0;
+            const olen2 = odx * odx + odz * odz || 1;
+            const ot = Math.max(0, Math.min(1, ((fx - oseg.x0) * odx + (fz - oseg.z0) * odz) / olen2));
+            const opx = oseg.x0 + odx * ot, opz = oseg.z0 + odz * ot;
+            if (Math.hypot(fx - opx, fz - opz) < (oseg.width * 0.95 + 6.5)) { blocksOtherRoad = true; break; }
+          }
+          if (blocksOtherRoad) continue;
           const fy = this.getTerrainInfo(fx, fz, false).height;
 
           const frx = fx - (startX + size * 0.5), frz = fz - (startZ + size * 0.5);

@@ -313,9 +313,9 @@ KK.UIManager = class UIManager {
         const dCenter = Math.hypot(wx - cx, wy - cy);
         if (dCenter > R - 6) { wx = cx + ((wx - cx) / dCenter) * (R - 6); wy = cy + ((wy - cy) / dCenter) * (R - 6); }
         const flOn = (game.radarFlashTimer > 0) && (Math.floor(game.radarFlashTimer * 5) % 2 === 0);
-        rctx.fillStyle = flOn ? "#ffffff" : "#ffbe0b";
+        rctx.fillStyle = flOn ? "#ffffff" : "#a855f7";
         rctx.beginPath(); rctx.arc(wx, wy, flOn ? 7.0 : 5.2, 0, Math.PI * 2); rctx.fill();
-        rctx.strokeStyle = "#ffbe0b"; rctx.lineWidth = flOn ? 2.5 : 1.2; rctx.stroke();
+        rctx.strokeStyle = "#c084fc"; rctx.lineWidth = flOn ? 2.5 : 1.4; rctx.stroke();
       }
       const [nx, ny] = worldToRadar(px, pz - radarRange * 0.88);
       rctx.fillStyle = "#ff5c77"; rctx.font = "bold 10px monospace"; rctx.textAlign = "center"; rctx.fillText("N", nx, ny + 3);
@@ -323,7 +323,7 @@ KK.UIManager = class UIManager {
       rctx.moveTo(cx, cy - 6); rctx.lineTo(cx + 4.5, cy + 5); rctx.lineTo(cx, cy + 2.5); rctx.lineTo(cx - 4.5, cy + 5); rctx.closePath(); rctx.fill();
       rctx.restore();
       const ringFlash = (game.radarFlashTimer > 0) && (Math.floor(game.radarFlashTimer * 5) % 2 === 0);
-      rctx.strokeStyle = ringFlash ? "#ffbe0b" : "rgba(0, 229, 255, 0.45)";
+      rctx.strokeStyle = ringFlash ? "#a855f7" : "rgba(0, 229, 255, 0.45)";
       rctx.lineWidth = ringFlash ? 4.5 : 2;
       rctx.beginPath(); rctx.arc(cx, cy, R, 0, Math.PI * 2); rctx.stroke();
     }
@@ -442,7 +442,7 @@ KK.UIManager = class UIManager {
           <button class="btn accent small" onclick="window.__GAME__.garageFullRepair(${totalRepairCost})">OVERHAUL ALL + LIGHTS ($${totalRepairCost.toLocaleString()})</button>
           <button class="btn small" onclick="window.__GAME__.garageRefuel(${fuelCost})">REFUEL ${vs.fuel.toFixed(0)}/${spec.fuelCapacity}L ($${fuelCost})</button>
           <button class="btn small" onclick="window.__GAME__.garageRestockTires()">TIRES &amp; SPARES (${vs.spareTires || 0} — $300)</button>
-          ${(g.ownedVehicles.t72 || g.ownedVehicles.bm21 || g.ownedVehicles.shilka || g.ownedVehicles.pzkpfw_140a4) ? `<button class="btn primary small" onclick="window.__GAME__.resupplyTankAmmo()">💣 RESUPPLY ORDNANCE ${g.vehicle.vState.vehicleId === "pzkpfw_140a4" ? "(FREE)" : "($1,800)"}</button>` : ""}
+          ${(g.ownedVehicles.t72 || g.ownedVehicles.bm21 || g.ownedVehicles.shilka || g.ownedVehicles.pzkpfw_140a4 || g.ownedVehicles.harimau || g.ownedVehicles.komodo_std || g.ownedVehicles.komodo_turret || g.ownedVehicles.btr80) ? `<button class="btn primary small" onclick="window.__GAME__.resupplyTankAmmo()">💣 RESUPPLY ORDNANCE ${g.vehicle.vState.vehicleId === "pzkpfw_140a4" ? "(FREE)" : "($1,800)"}</button>` : ""}
           <span class="small muted">Headlights L:${hlL}% R:${hlR}%</span>
         </div>
         <div class="sub-tabs" style="margin-bottom:10px;">
@@ -1323,6 +1323,16 @@ KK.UIManager = class UIManager {
               <div><b>1 / 5</b><span>Hitch Trailer / Car-Carrier Hoist</span></div>
             </div>
           </div>
+          <div class="admin-card" style="grid-column:1 / -1; border-color:rgba(168,85,247,0.55); background:linear-gradient(135deg,rgba(20,16,38,0.92),rgba(10,15,24,0.94));">
+            <div class="admin-card-title" style="color:#c084fc;">📖 WHAT THE HECK AM I DOING HERE? (OBLAST FIELD MANUAL)</div>
+            <div style="font-size:12.5px;line-height:1.55;color:#dbe7f3;padding:4px 2px;">
+              <b>Krasno-Kamenka Oblast</b> is an open-world Soviet driving, logistics &amp; survival sim.
+              <b>1)</b> Grab delivery contracts at any Town Warehouse (<b>[F]</b>) and follow the <b style="color:#c084fc;">PURPLE GPS dot</b> on your radar to earn cash.
+              <b>2)</b> Every vehicle simulates real internal parts (radiator, shocks, pistons, brakes) — hold <b>[X]</b> for live X-Ray, or walk to the front/rear bay (<b>[F]</b>) to repair.
+              <b>3)</b> Upgrade tires, snorkels, engines &amp; buy new rigs, trailers, barges, or armored vehicles at Garages &amp; Dealerships.
+              <b>4)</b> Explore 100 km² of mud bogs, mountain passes, desert dunes, islands &amp; racetracks — and watch out for roaming <b>Cryptids</b> (Yeti, Siren Head, Sandwyrm, T-Rex &amp; Godzilla).
+            </div>
+          </div>
           <div class="admin-card">
             <div class="admin-card-title">⚔ BATTLE &amp; MILITARY SYSTEMS</div>
             <div class="ctrl-list small">
@@ -1342,6 +1352,7 @@ KK.UIManager = class UIManager {
             <div class="ctrl-list small">
               <div><b>F</b><span>Universal Interact (Garage at Bay, Dock, Gas Pump, NPCs, Hoist, Enter/Exit)</span></div>
               <div><b>Shift + F</b><span>Force Exit Vehicle Anywhere</span></div>
+              <div><b>1 / 2 / 3 / 4 / 5</b><span>On-Foot Actions: Wave, Kick (Yeet!), Slav Squat, Dance, Salute</span></div>
               <div><b>F (Front / Rear Bay)</b><span>Open Engine Repair Menu (strictly Front or Rear bay!)</span></div>
               <div><b>E (On Foot)</b><span>Open / Close On-Foot Inventory</span></div>
               <div><b>T / Y</b><span>Attach &amp; Reel Winch (Shift+T Slack) / Cut Winch</span></div>
@@ -1576,7 +1587,7 @@ KK.UIManager = class UIManager {
     const warns = [];
     const blownList = (vs.blownTires || []).map((b, i) => b ? spec.wheels[i].id : null).filter(Boolean);
     if (blownList.length > 0) warns.push(`BLOWN TIRE (${blownList.join(", ")})`);
-    if (vs.burnedOut) warns.push("VEHICLE BURNED OUT — Repair at Garage [G] or Field Repair [X]");
+    if (vs.burnedOut) warns.push("VEHICLE BURNED OUT — Repair at Garage [F] or Field Repair [F]");
     if (v.hydrolocked) warns.push("ENGINE HYDROLOCKED");
     if (engOverall < 20) warns.push("ENGINE FAILURE");
     if (v.coolantTemp > 114) warns.push("COOLANT OVERHEATING");

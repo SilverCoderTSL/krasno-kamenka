@@ -776,13 +776,22 @@ KK.CockpitBuilder = {
       arm.position.set(ax, 0.36, 0.24); arm.rotation.x = -0.18; driverGroup.add(arm);
     }
     cockpitGrp.add(driverGroup);
-    // v15.9 Seated Co-op Passenger Avatar (fills passenger seat cleanly when a friend rides shotgun!)
+    // v17.4 SOLID SEATED CO-OP PASSENGER AVATAR (Grounded on seat cushion w/ thighs, calves & arms — no floating ghost!)
     const passengerGroup = new THREE.Group();
-    passengerGroup.position.set(pasX, yF + 0.22, zC - 0.04);
-    const matPasJkt = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.86 });
-    const pTorso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.48, 0.22), matPasJkt); pTorso.position.y = 0.24; passengerGroup.add(pTorso);
-    const pHead  = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), matHead); pHead.position.set(0, 0.62, 0.02); passengerGroup.add(pHead);
-    const pCap   = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.09, 0.25), matCap); pCap.position.set(0, 0.74, 0.04); passengerGroup.add(pCap);
+    passengerGroup.position.set(pasX, yF + 0.09, zC - 0.06);
+    const matPasJkt   = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.86 });
+    const matPasPants = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.90 });
+    const pTorso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.46, 0.22), matPasJkt); pTorso.position.y = 0.23; passengerGroup.add(pTorso);
+    const pHead  = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), matHead); pHead.position.set(0, 0.59, 0.02); passengerGroup.add(pHead);
+    const pCap   = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.09, 0.25), matCap); pCap.position.set(0, 0.71, 0.04); passengerGroup.add(pCap);
+    for (const sx of [-0.11, 0.11]) {
+      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.13, 0.34), matPasPants);
+      thigh.position.set(sx, 0.06, 0.18); passengerGroup.add(thigh);
+      const calf = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.30, 0.13), matPasPants);
+      calf.position.set(sx, -0.09, 0.32); passengerGroup.add(calf);
+      const pArm = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.32), matPasJkt);
+      pArm.position.set(sx * 1.85, 0.26, 0.14); pArm.rotation.x = 0.28; passengerGroup.add(pArm);
+    }
     passengerGroup.visible = false;
     cockpitGrp.add(passengerGroup);
 

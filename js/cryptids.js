@@ -114,7 +114,7 @@ KK.CryptidManager = class CryptidManager {
           } else if (c.kind === "sirenhead") {
             c.state = "recoil"; c.recoilTimer = 2.6; c.fleeTimer = retreatDur;
           } else {
-            c.state = "flee"; c.fleeTimer = retreatDur;
+            c.state = "flee"; c.lockedTargetId = null; c.fleeTimer = retreatDur;
           }
           c.counterAccum = 0;
           if (audio) audio.playCryptidSound(c.kind);
@@ -195,7 +195,7 @@ KK.CryptidManager = class CryptidManager {
           if (audio) audio.playCryptidSound("sandworm");
           return { hit: true, kind: "sandworm", staggered: true, stunSec };
         }
-        c.state = "flee";
+        c.state = "flee"; c.lockedTargetId = null;
         c.fleeTimer = Math.max(22.0, stunSec * 3.2);
         c.counterAccum = 0;
         if (audio) audio.playCryptidSound(c.kind);
@@ -892,13 +892,24 @@ KK.CryptidManager = class CryptidManager {
     this.projectiles.push({ kind, gx, gy, gz, vx, vy, vz, life: 4.5, mesh });
   }
 
+  // v17.3 FULL MULTIPLAYER MONSTER & GODZILLA ATOMIC BEAM SYNC!
   exportSyncState() {
     const out = {};
     for (const c of this.allList) {
-      out[c.kind] = {
+      const entry = {
         x: +c.gx.toFixed(1), y: +c.gy.toFixed(1), z: +c.gz.toFixed(1),
-        yaw: +c.yaw.toFixed(2), st: c.state, ph: +c.phase.toFixed(2), et: +(c.eruptTimer || 0).toFixed(2)
+        yaw: +c.yaw.toFixed(2), st: c.state, ph: +c.phase.toFixed(2),
+        et: +(c.eruptTimer || 0).toFixed(2),
+        vis: (c.mesh ? (c.mesh.visible ? 1 : 0) : 1)
       };
+      if (c.kind === "godzilla") {
+        entry.stT = +(c.stageTimer || 0).toFixed(2);
+        entry.twT = +(c.tailWhipTimer || 0).toFixed(2);
+        entry.kT  = +(c.kickTimer || 0).toFixed(2);
+        entry.bX  = +(c.beamTargetX || c.gx).toFixed(1);
+        entry.bZ  = +(c.beamTargetZ || c.gz).toFixed(1);
+      }
+      out[c.kind] = entry;
     }
     return out;
   }
@@ -909,7 +920,18 @@ KK.CryptidManager = class CryptidManager {
       const s = cryptidDict[c.kind]; if (!s) continue;
       c.tx = s.x; c.ty = s.y; c.tz = s.z; c.tyaw = s.yaw;
       c.state = s.st || c.state; c.eruptTimer = s.et || 0;
-      if (Math.hypot(c.gx - c.tx, c.gz - c.tz) > 90) { c.gx = c.tx; c.gy = c.ty; c.gz = c.tz; c.yaw = c.tyaw; }
+      if (typeof s.ph === "number") c.phase = s.ph;
+      if (c.kind === "godzilla") {
+        if (typeof s.stT === "number") c.stageTimer = s.stT;
+        if (typeof s.twT === "number") c.tailWhipTimer = s.twT;
+        if (typeof s.kT  === "number") c.kickTimer = s.kT;
+        if (typeof s.bX  === "number") c.beamTargetX = s.bX;
+        if (typeof s.bZ  === "number") c.beamTargetZ = s.bZ;
+      }
+      if (Math.hypot(c.gx - c.tx, c.gz - c.tz) > 65) {
+        c.gx = c.tx; c.gy = c.ty; c.gz = c.tz; c.yaw = c.tyaw;
+      }
+      if (c.mesh && s.vis) c.mesh.visible = true;
     }
   }
 
@@ -918,7 +940,7 @@ KK.CryptidManager = class CryptidManager {
     const c = map[kind];
     if (!c || c.state === "flee" || c.state === "dormant") return;
     c.counterAccum = (c.counterAccum || 0) + amount;
-    if (c.counterAccum >= 2.2) { c.state = "flee"; c.fleeTimer = 26; c.counterAccum = 0; }
+    if (c.counterAccum >= 2.2) { c.state = "flee"; c.lockedTargetId = null; c.fleeTimer = 26; c.counterAccum = 0; }
   }
 
   _collectPlayers(vehicle, remotePlayersMap) {
@@ -949,6 +971,41 @@ KK.CryptidManager = class CryptidManager {
       if (!filterFn || filterFn(p)) elig.push(p);
     }
     return elig.length > 0 ? elig[Math.floor(Math.random() * elig.length)] : null;
+  }
+
+  // v17.3 GODZILLA HIGHEST-VALUE TARGET SCORING (Prioritizes 140A4 / Tanks / Armed Military / Expensive Vehicles!)
+  _highestValueTargetIn(players, cx, cz, filterFn) {
+    let best = null, bestScore = -1e9;
+    for (const p of players) {
+      if (filterFn && !filterFn(p)) continue;
+      const d = Math.hypot(p.gx - cx, p.gz - cz);
+      const vid = p.vehicleId || "";
+      const valBonus = (vid === "pzkpfw_140a4") ? 900
+        : (vid === "t72" || vid === "harimau" || vid === "shilka" || vid === "bm21") ? 600
+        : (vid === "komodo_turret" || vid === "komodo_std" || vid === "btr80") ? 380
+        : (vid === "gtr_r35" || vid === "porsche_dakar") ? 220 : 0;
+      const score = valBonus - d * 0.45;
+      if (score > bestScore) { bestScore = score; best = p; }
+    }
+    return best;
+  }
+
+  // v17.4 STICKY MONSTER TARGET LOCK (No glitchy ping-ponging between targets!)
+  _pickStickyTarget(ent, players, cx, cz, filterFn, useHVT = false, maxKeepDist = 420) {
+    if (ent.lockedTargetId) {
+      for (const p of players) {
+        if ((p.id || p.peerId || "local") === ent.lockedTargetId) {
+          const d = Math.hypot(p.gx - cx, p.gz - cz);
+          if (d <= maxKeepDist && (!filterFn || filterFn(p))) return p;
+        }
+      }
+      ent.lockedTargetId = null;
+    }
+    const chosen = useHVT
+      ? this._highestValueTargetIn(players, cx, cz, filterFn)
+      : this._nearestPlayerIn(players, cx, cz, filterFn);
+    if (chosen) ent.lockedTargetId = chosen.id || chosen.peerId || "local";
+    return chosen;
   }
 
   _nearestPlayerIn(players, cx, cz, filterFn) {
