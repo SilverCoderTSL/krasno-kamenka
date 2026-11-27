@@ -522,12 +522,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v17.9 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v17.9.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v17.9 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v17.9.1 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -1127,7 +1127,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        // v17.9 Garage is strictly [F] only — [G] is exclusively military/flare!
+        // v17.9.1 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -1379,7 +1379,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.9 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v17.9.1 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1403,7 +1403,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.9 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v17.9.1 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -2036,7 +2036,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v17.9 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v17.9.1 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -3188,7 +3188,7 @@ KK.Game = class Game {
     return { tipWorld, evacWorld, dirWorld };
   }
 
-  // v17.9 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
+  // v17.9.1 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
   _onArmorHitAck(msg) {
     if (!msg) return;
     const victim = msg.victimCallsign || "Target";
@@ -3224,7 +3224,7 @@ KK.Game = class Game {
   }
 
   // ==========================================================================
-  // v17.9 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
+  // v17.9.1 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
   // ==========================================================================
   _getArmorProfile(spec, vs) {
     const id = spec ? spec.id : "";
@@ -3414,7 +3414,7 @@ KK.Game = class Game {
       zoneNormalL.set(0, 0.12, -0.99).normalize();
     }
 
-    // 3. v17.9 PER-VEHICLE, PER-ZONE RHA ARMOR PROFILE (140A4: 900 Front / 500 Side-Front / 200 Side-Rear / 200 Rear!)
+    // 3. v17.9.1 PER-VEHICLE, PER-ZONE RHA ARMOR PROFILE (140A4: 900 Front / 500 Side-Front / 200 Side-Rear / 200 Rear!)
     const prof = this._getArmorProfile(spec, vs);
     const hitLocalZ = (hx - vx) * Math.sin(this.vehicle.yaw || 0) + (hz - vz) * Math.cos(this.vehicle.yaw || 0);
     let zoneRha = prof.front;
@@ -3545,7 +3545,7 @@ KK.Game = class Game {
       if (this.audio.playArmorClang) this.audio.playArmorClang(caliberMm, false);
       if (caliberMm >= 90 && this.audio.playConcussionMuffle) this.audio.playConcussionMuffle();
     }
-    // v17.9 DAMAGEABLE MODULES & AMMO COOK-OFF (T-72 Cosmonaut vs 140A4 Dual Blow-Out Racks!)
+    // v17.9.1 DAMAGEABLE MODULES & AMMO COOK-OFF (T-72 Cosmonaut vs 140A4 Dual Blow-Out Racks!)
     if (isArmored && caliberMm >= 20) {
       if (zone === "TURRET") {
         this.tankModules.turretRing = Math.max(0, this.tankModules.turretRing - dmg * 0.85);
@@ -3578,6 +3578,14 @@ KK.Game = class Game {
             if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
             if (this.ui) this.ui.toast("🔥 RIGHT BLOW-OUT RACK COOK-OFF! 50% ammo lost — Left rack still operational!", true);
           }
+        } else if (spec.id === "bm21" && (vs.bm21Rockets || 0) > 0) {
+          vs.bm21Rockets = 0;
+          vs.burnedOut = true;
+          this.cookoffJetTimer = 4.5;
+          if (this.particles) this.particles.emitCrashBurst(vx, vy + 1.8, vz, 3.2, "rock", this.weather.weather);
+          if (this.audio && this.audio.playTank125mmBlast) this.audio.playTank125mmBlast(155);
+          if (this.audio && this.audio.playCookoffJet) this.audio.playCookoffJet();
+          if (this.ui) this.ui.toast("💥 BM-21 GRAD ROCKET RACK DETONATED!! MASSIVE SECONDARY EXPLOSION!", true);
         } else if (spec.id === "harimau" || spec.id === "shilka" || spec.id === "komodo_turret") {
           vs.t72HeAmmo = 0; vs.t72ApAmmo = 0; vs.shilkaAmmo = 0; vs.btrAmmo = 0;
           this.cookoffJetTimer = 3.5;
@@ -4253,7 +4261,7 @@ KK.Game = class Game {
     }
   }
 
-  // v17.9.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v17.9.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -5383,7 +5391,7 @@ KK.Game = class Game {
           const camRight = this._tmpCamRight.set(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v17.9 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v17.9.1 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -5523,7 +5531,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (55 - engHp) / 55);
-    // v17.9 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
+    // v17.9.1 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const gpZone = (KK.SMOOTH_TARMAC_ZONES || []).find((z) => z.isGpCircuit);
@@ -5564,7 +5572,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v17.9 Auto-save persistent vehicle odometer every 10s when driving!
+    // v17.9.1 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -5572,7 +5580,7 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
-    // v17.9 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
+    // v17.9.1 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
     if (this.armorViewerActive) this._updateArmorViewerTooltip();
     if (this.turretPopActive) {
       this.turretPopY += this.turretPopVy * dt;
@@ -5602,7 +5610,7 @@ KK.Game = class Game {
         this._turretWhineCd = 0.095;
       }
     }
-    // v17.9 Animate On-Foot Player Actions [1-5] on localAvatar!
+    // v17.9.1 Animate On-Foot Player Actions [1-5] on localAvatar!
     if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
       this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
       const tE = performance.now() * 0.012;
@@ -5628,7 +5636,7 @@ KK.Game = class Game {
         if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
       }
     }
-    // v17.9 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    // v17.9.1 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
     if (this.network && this.network.remotePlayers) {
       const nowMs = performance.now();
       for (const [pid, rp] of this.network.remotePlayers.entries()) {
@@ -6255,7 +6263,7 @@ KK.Game = class Game {
         ctx2.drawImage(this.canvas, 0, 0);
 
         // Stamp clean version watermark in bottom-right corner of every screenshot!
-        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v17.9"}`;
+        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v17.9.1"}`;
         const fontSize = Math.max(14, Math.round(outCv.height * 0.020));
         ctx2.font = `bold ${fontSize}px monospace`;
         const padX = Math.round(fontSize * 0.72);
@@ -6281,11 +6289,11 @@ KK.Game = class Game {
         const a = document.createElement("a");
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         a.href = dataUrl;
-        a.download = `krasno_kamenka_${KK.VERSION || "v17.9"}_${ts}.png`;
+        a.download = `krasno_kamenka_${KK.VERSION || "v17.9.1"}_${ts}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v17.9"})!`);
+        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v17.9.1"})!`);
       } catch (err) {
         this.ui.toast("Screenshot failed: " + err.message, true);
       }

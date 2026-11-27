@@ -456,6 +456,16 @@ KK.AudioEngine = class AudioEngine {
   }
 
   // v17.8.4 LOUD, TERRIFYING CALIBER-SCALED MG / AUTOCANNON SHOT (12.7mm / 14.5mm / 30mm)
+  // v17.9.1 White-noise buffer helper for all cannon, autocannon, clang, whistle & cook-off synths!
+  _noiseBuffer(dur = 0.5) {
+    if (!this.ctx) return null;
+    const len = Math.max(256, Math.floor(this.ctx.sampleRate * Math.max(0.05, dur)));
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
   playKPVTShot(caliberMm = 14.5) {
     if (!this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;

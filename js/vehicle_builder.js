@@ -4571,7 +4571,7 @@ KK.VehicleBuilder = {
       const breechX = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.40, 0.98), matBreechX);
       breechX.position.set(0, 0.42, 0.65); breechX.renderOrder = 12; turretXray.add(breechX);
       const barrelX = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 4.6, 8), matBreechX);
-      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0.42, 3.35); barrelX.renderOrder = 11; turretXray.add(barrelX);
+      barrelX.rotation.x = Math.PI / 2; barrelX.position.set(0, 0, 2.70); barrelX.renderOrder = 11; breechX.add(barrelX);
 
       const hoistGrp = new THREE.Group();
       hoistGrp.position.set(0, -0.58, -0.52);
@@ -4951,23 +4951,32 @@ KK.VehicleBuilder = {
 
       setArmorViewerMode(active, profile) {
         const colorForMm = (mm) => {
-          if (mm >= 800) return 0xa855f7;
-          if (mm >= 450) return 0xef4444;
-          if (mm >= 180) return 0xf97316;
-          if (mm >= 60)  return 0xfacc15;
-          return 0x22c55e;
+          if (mm >= 800) return 0xa855f7;      // Purple: 800mm+ Super-Heavy
+          if (mm >= 450) return 0xef4444;      // Red: 450–799mm Heavy MBT
+          if (mm >= 180) return 0xf97316;      // Orange: 180–449mm Medium
+          if (mm >= 60)  return 0xfacc15;      // Yellow: 60–179mm Light/Roof
+          return 0x22c55e;                     // Green: <60mm Thin/Unarmored
         };
         const p = profile || { front: 24, turret: 24, sideFront: 16, sideRear: 12, rear: 12, roof: 10, belly: 10 };
+        root.updateMatrixWorld(true);
+        const tmpBox = new THREE.Box3();
+        const tmpCtr = new THREE.Vector3();
         root.traverse((obj) => {
           if (!obj.isMesh || !obj.material) return;
           if (active) {
+            // Skip lights, ground glow planes, muzzle flashes, additive beams, glass & X-ray meshes!
+            const m0 = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+            if (!obj.visible || !m0 || m0.transparent || m0.blending === THREE.AdditiveBlending || m0.depthWrite === false) return;
+            if (obj.renderOrder >= 10) return;
             if (!obj.userData._origArmorMat) obj.userData._origArmorMat = obj.material;
-            const pos = obj.position;
+            tmpBox.setFromObject(obj);
+            tmpBox.getCenter(tmpCtr);
+            root.worldToLocal(tmpCtr);
             let mm = p.front;
-            if (pos.y > 1.45) mm = p.turret;
-            else if (pos.y < 0.35) mm = p.belly;
-            else if (Math.abs(pos.x) > 1.15) mm = (pos.z >= 0) ? p.sideFront : p.sideRear;
-            else if (pos.z < -1.5) mm = p.rear;
+            if (tmpCtr.y > 1.48) mm = p.turret;
+            else if (tmpCtr.y < 0.32) mm = p.belly;
+            else if (Math.abs(tmpCtr.x) > 1.25) mm = (tmpCtr.z >= 0) ? p.sideFront : p.sideRear;
+            else if (tmpCtr.z < -1.35) mm = p.rear;
             else mm = p.front;
             obj.material = new THREE.MeshStandardMaterial({
               color: colorForMm(mm), roughness: 0.45, metalness: 0.25
