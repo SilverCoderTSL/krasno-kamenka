@@ -1094,7 +1094,7 @@ KK.UIManager = class UIManager {
         <div class="upg-row"><div><b>Patch Transmission &amp; Clutch (Clutch: ${p.clutchPack.hp.toFixed(0)}% | Gearbox: ${p.gearboxGears.hp.toFixed(0)}%)</b>
           <div class="small muted">Roadside linkage &amp; clutch adjustment up to 65%</div></div>
           <button class="btn primary small" onclick="window.__GAME__.doFieldRepair('transmission')">ADJUST</button></div>
-        <div class="upg-row"><div><b>Straighten Tie-Rod &amp; Patch Shocks/Brakes (Bend: ${(vs.health.tieRodBias * 57.3).toFixed(1)}°)</b>
+        <div class="upg-row"><div><b>Straighten Tie-Rod &amp; Patch Shocks/Brakes (Bend: ${(Math.abs(vs.health.tieRodBias || 0) < 0.008 ? "0.0" : (vs.health.tieRodBias * 57.3).toFixed(1))}°)</b>
           <div class="small muted">Restores steering alignment &amp; patches blown shocks/brakes to 65%</div></div>
           <button class="btn primary small" onclick="window.__GAME__.doFieldRepair('suspension')">HAMMER IT</button></div>
         <div class="upg-row"><div><b>Swap Blown Tire(s) with Spare (Spares left: ${vs.spareTires || 0})</b>

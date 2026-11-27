@@ -83,11 +83,26 @@ KK.OceanCryptidManager = class OceanCryptidManager {
   // HELPER: Check if (gx, gz) is truly open deep ocean far from all islands
   // ==========================================================================
   _isOpenOcean(gx, gz, minMargin = 450) {
+    const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    // v18.1 Check ACTUAL seabed height beneath (gx, gz) so open-sea channels & the Savanna Mega-Bridge over water always count as open sea!
+    if (this.world && this.world.getBaseHeight) {
+      const baseH = this.world.getBaseHeight(gx, gz);
+      if (baseH >= seaL - 1.2) return false;
+      // If a large margin is requested (natural spawns), also sample 4 cardinal points at margin*0.55 to avoid shallow beaches
+      if (minMargin >= 280) {
+        const probe = Math.min(260, minMargin * 0.55);
+        if (this.world.getBaseHeight(gx + probe, gz) >= seaL - 0.8) return false;
+        if (this.world.getBaseHeight(gx - probe, gz) >= seaL - 0.8) return false;
+        if (this.world.getBaseHeight(gx, gz + probe) >= seaL - 0.8) return false;
+        if (this.world.getBaseHeight(gx, gz - probe) >= seaL - 0.8) return false;
+      }
+      return true;
+    }
     if (!KK.ISLANDS) return false;
     for (let i = 0; i < KK.ISLANDS.length; i++) {
       const isl = KK.ISLANDS[i];
-      const rx = isl.rx * 1.12 + minMargin;
-      const rz = isl.rz * 1.12 + minMargin;
+      const rx = isl.rx * 1.02 + minMargin * 0.5;
+      const rz = isl.rz * 1.02 + minMargin * 0.5;
       const nx = (gx - isl.cx) / rx;
       const nz = (gz - isl.cz) / rz;
       if (nx * nx + nz * nz < 1.0) return false;

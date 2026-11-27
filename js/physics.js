@@ -215,7 +215,7 @@ KK.VehiclePhysics = class VehiclePhysics {
 
   damageHeadlights(amount, sideHint = 0) {
     const h = this.vState.health;
-    const bull = this.vState.upgrades.bullbar ? 0.35 : 1.0;
+    const bull = (this.vState.upgrades.bullbar && !(this.vState.stowedUpgrades && this.vState.stowedUpgrades.bullbar)) ? 0.35 : 1.0;
     const dmg = amount * bull;
     const applySide = (key, mult) => {
       const prev = h[key] !== undefined ? h[key] : 100;
@@ -300,6 +300,7 @@ KK.VehiclePhysics = class VehiclePhysics {
       const driftAngle = Math.atan2(latSpeed, fwdSpeed);
       counterSteer = Math.max(-maxSteerRad * 0.48, Math.min(maxSteerRad * 0.48, driftAngle * 0.52));
     }
+    if (Math.abs(hlth.tieRodBias || 0) < 0.008) hlth.tieRodBias = 0;
     const targetSteer = input.steer * maxSteerRad * speedSteerFactor + counterSteer + hlth.tieRodBias + flatPull;
     this.steerAngle += (targetSteer - this.steerAngle) * Math.min(1, dt * (spec.agileSteer ? 11.8 : 8.5));
     this.steerAngle = Math.max(-maxSteerRad * 1.1, Math.min(maxSteerRad * 1.1, this.steerAngle));
@@ -651,14 +652,21 @@ KK.VehiclePhysics = class VehiclePhysics {
     // Dynamic Body & Tire Dirt Accumulation + Dusty Air Filter Wear + River Rinse!
     if (this.speedKmh > 4) {
       if (maxWater > 0.28) {
-        // Driving through rivers washes mud off the body!
         vs.dirtLevel = Math.max(0.08, vs.dirtLevel - 0.085 * dt);
+        vs.snowLevel = Math.max(0, (vs.snowLevel || 0) - 0.14 * dt);
+      } else if (weatherName === "snow" || dominantSurface === "snow" || dominantSurface === "ice") {
+        const snowRate = (dominantSurface === "snow" ? 0.042 : 0.024) * Math.min(2.2, this.speedKmh / 32);
+        vs.snowLevel = Math.min(1.0, (vs.snowLevel || 0) + snowRate * dt);
+        vs.dirtLevel = Math.max(0, (vs.dirtLevel || 0) - 0.014 * dt);
       } else if (onDirtySurface || weatherName === "rain" || weatherName === "storm") {
         const dirtRate = (dominantSurface === "mud" ? 0.055 : 0.016) * (weatherName === "rain" || weatherName === "storm" ? 1.8 : 1.0) * (this.speedKmh / 40);
         vs.dirtLevel = Math.min(1.0, vs.dirtLevel + dirtRate * dt);
+        vs.snowLevel = Math.max(0, (vs.snowLevel || 0) - 0.022 * dt);
         if (dominantSurface === "gravel" || dominantSurface === "shale") {
           this._wearPart("airFilter", 0.028 * (this.speedKmh / 50) * dt);
         }
+      } else if ((vs.snowLevel || 0) > 0) {
+        vs.snowLevel = Math.max(0, vs.snowLevel - 0.004 * dt);
       }
     }
 
@@ -971,13 +979,13 @@ KK.VehiclePhysics = class VehiclePhysics {
         if (dist > maxReach + 12) {
           this.winch.active = false; this.emit("toast", "Winch cable snapped (overstretched)!");
         } else {
-          if (this.winch.reeling < 0) this.winch.length = Math.max(2.5, this.winch.length - (upg.hdWinch ? 7.5 : 4.5) * dt);
-          else if (this.winch.reeling > 0) this.winch.length = Math.min(maxReach, this.winch.length + 7.0 * dt);
+          if (this.winch.reeling < 0) this.winch.length = Math.max(2.2, this.winch.length - (upg.hdWinch ? 28.0 : 18.0) * dt);
+          else if (this.winch.reeling > 0) this.winch.length = Math.min(maxReach, this.winch.length + 14.0 * dt);
           const isComradeWinch = !!this.winch.targetPeerId;
           if (isComradeWinch) {
             // SMART COMRADE RECOVERY: Reeling [T] pulls your COMRADE toward YOU!
             if (this.winch.reeling < 0 || dist > this.winch.length + 0.6) {
-              const pullForce = upg.hdWinch ? 18.5 : 12.0;
+              const pullForce = upg.hdWinch ? 52.0 : 35.0;
               this.emit("winch_pull_peer", {
                 targetPeerId: this.winch.targetPeerId,
                 px: this.pos.x, py: this.pos.y + 0.8, pz: this.pos.z,
@@ -993,8 +1001,8 @@ KK.VehiclePhysics = class VehiclePhysics {
             }
           } else if (dist > this.winch.length && dist > 0.001) {
             const stretch = dist - this.winch.length;
-            const pullStrength = upg.hdWinch ? 54000 : 26000;
-            const fMag = Math.min(pullStrength, stretch * 14000 + (this.winch.reeling < 0 ? pullStrength * 0.45 : 0));
+            const pullStrength = upg.hdWinch ? 180000 : 98000;
+            const fMag = Math.min(pullStrength, stretch * 36000 + (this.winch.reeling < 0 ? pullStrength * 0.80 : 0));
             const fWinch = this._tmpV3.copy(diff).multiplyScalar(fMag / dist);
             totalForce.add(fWinch);
             const wArm = this._tmpV1.sub(this.pos);
@@ -1145,10 +1153,10 @@ KK.VehiclePhysics = class VehiclePhysics {
         const vDotN = this.vel.x * nx + this.vel.z * nz;
         const impactSpd = vDotN < 0 ? -vDotN : 0;
         const tankArmor = spec.isSchreckensfurst ? 0.14 : (spec.isTracked ? 0.24 : 1.0);
-        const bullShield = (upg.bullbar ? 0.35 : 1.0) * tankArmor;
+        const bullShield = ((upg.bullbar && !(vs.stowedUpgrades && vs.stowedUpgrades.bullbar)) ? 0.35 : 1.0) * tankArmor;
 
         // DESTRUCTIBLE TREES: Tanks crush straight through trees at 16 km/h with near-zero damage!
-        const smashSpd = spec.isTracked ? 4.5 : ((mass > 2500 || upg.bullbar) ? 8.2 : 13.0);
+        const smashSpd = spec.isTracked ? 4.5 : ((mass > 2500 || (upg.bullbar && !(vs.stowedUpgrades && vs.stowedUpgrades.bullbar))) ? 8.2 : 13.0);
         if (c.kind === "tree" && impactSpd >= smashSpd) {
           c.broken = true;
           this.vel.x *= spec.isTracked ? 0.94 : 0.80;
@@ -1248,7 +1256,7 @@ KK.VehiclePhysics = class VehiclePhysics {
           const dragKeep = fn.isMetal ? 0.88 : 0.94;
           this.vel.x *= dragKeep;
           this.vel.z *= dragKeep;
-          const fDmg = (fn.isMetal ? 3.5 : 1.2) * (upg.bullbar ? 0.25 : 1.0);
+          const fDmg = (fn.isMetal ? 3.5 : 1.2) * ((upg.bullbar && !(vs.stowedUpgrades && vs.stowedUpgrades.bullbar)) ? 0.25 : 1.0);
           hlth.body = Math.max(0, hlth.body - fDmg);
           this.emit("fence_break", { fenceId: fn.id, isMetal: fn.isMetal, x: fn.x, y: fn.y, z: fn.z, dirX: this.vel.x, dirZ: this.vel.z });
           this.emit("crash_burst", { x: fn.x, y: fn.y + 0.7, z: fn.z, strength: 0.45, surface: "gravel" });
@@ -1324,7 +1332,7 @@ KK.VehiclePhysics = class VehiclePhysics {
           this.vel.z *= 0.72;
           if (impactSpd > 3.8 && this.treeHitCooldown <= 0) {
             this.treeHitCooldown = 0.45;
-            const bDmg = Math.min(34, (impactSpd - 2.5) * 1.75 * (upg.bullbar ? 0.45 : 1.0) * tankArmB);
+            const bDmg = Math.min(34, (impactSpd - 2.5) * 1.75 * ((upg.bullbar && !(vs.stowedUpgrades && vs.stowedUpgrades.bullbar)) ? 0.45 : 1.0) * tankArmB);
             hlth.body = Math.max(0, hlth.body - bDmg * 0.85);
             this._wearPart("radiator", bDmg * 0.55);
             if (!spec.isTracked) this.damageHeadlights(bDmg * 1.4, 0);
@@ -1436,7 +1444,7 @@ KK.VehiclePhysics = class VehiclePhysics {
 
           if (impactMag > 2.2 && this.carHitCooldown <= 0) {
             this.carHitCooldown = 0.28;
-            const bullShield = upg.bullbar ? 0.35 : 1.0;
+            const bullShield = (upg.bullbar && !(vs.stowedUpgrades && vs.stowedUpgrades.bullbar)) ? 0.35 : 1.0;
             const midX = (this.pos.x + rp.gx) * 0.5;
             const midY = this.pos.y + 0.85;
             const midZ = (this.pos.z + rp.gz) * 0.5;
@@ -1597,7 +1605,7 @@ KK.VehiclePhysics = class VehiclePhysics {
 
             if (impactMag > 2.4 && this.tramHitCooldown <= 0) {
               this.tramHitCooldown = 0.40;
-              const bullShield = upg.bullbar ? 0.40 : 1.0;
+              const bullShield = (upg.bullbar && !(vs.stowedUpgrades && vs.stowedUpgrades.bullbar)) ? 0.40 : 1.0;
               const armorScale = (myTier === 3) ? 0.25 : ((myTier === 2) ? 0.55 : 1.35);
               const tDmg = Math.min(34, impactMag * 1.15 * armorScale * bullShield);
               hlth.body = Math.max(0, hlth.body - tDmg);
@@ -1664,7 +1672,7 @@ KK.VehiclePhysics = class VehiclePhysics {
             const sparkZ = this.pos.z + sideSign * rz * (spec.bodyWidth * 0.48);
             if (vOut > 4.5 && this.lastImpactFx <= 0) {
               this.lastImpactFx = 0.22;
-              const railDmg = Math.min(10, (vOut - 3.0) * 0.52 * (spec.isTracked ? 0.22 : (upg.bullbar ? 0.45 : 1.0)));
+              const railDmg = Math.min(10, (vOut - 3.0) * 0.52 * (spec.isTracked ? 0.22 : ((upg.bullbar && !(vs.stowedUpgrades && vs.stowedUpgrades.bullbar)) ? 0.45 : 1.0)));
               hlth.body = Math.max(0, hlth.body - railDmg);
               this.emit("impact", Math.min(0.85, vOut / 16));
               this.emit("crash_burst", { x: sparkX, y: sparkY, z: sparkZ, strength: Math.min(0.9, vOut / 12), surface: "rock" });

@@ -316,7 +316,7 @@ KK.GarageBlueprint = {
               return `<div class="upg-row ${has ? "installed" : ""}">
                 <div><b>${(spec.isTracked && uid === "ledLightbar") ? "OU-3GK Turret-Mounted Xenon Searchlight ([K])" : u.name}</b><div class="small muted">${(spec.isTracked && uid === "ledLightbar") ? "Armored turret spotlight with volumetric beam that sweeps with your tank turret (visible on LAN!)" : u.desc}</div></div>
                 ${has
-                  ? ((uid === "t72Snorkel" || uid === "snorkel" || uid === "sturmKit")
+                  ? ((uid === "t72Snorkel" || uid === "snorkel" || uid === "sturmKit" || uid === "bullbar")
                     ? `<button class="btn small ${(vs.stowedUpgrades && vs.stowedUpgrades[uid]) ? "primary" : "warn"}" onclick="window.__GAME__.toggleStowUpgrade('${uid}')">${(vs.stowedUpgrades && vs.stowedUpgrades[uid]) ? "MOUNT (FREE)" : "REMOVE / STOW"}</button>`
                     : `<span class="tag-ok">INSTALLED</span>`)
                   : `<button class="btn accent small" onclick="window.__GAME__.buyUpgrade('${uid}')">$${u.price.toLocaleString()}</button>`}

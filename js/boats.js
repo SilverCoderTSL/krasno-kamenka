@@ -195,7 +195,11 @@ KK.BoatManager = class BoatManager {
   // v15.4 PHYSICAL DRIVE-ON RAMP & CARGO DECK SURFACE QUERY (Called by world.getTerrainInfo!)
   getDriveableSurfaceAt(gx, gz, groundH = null) {
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
-    const checkList = this.spawnedBoats.concat(Array.from(this.remoteBoats.values()));
+    if (!this._tmpBoatList) this._tmpBoatList = [];
+    const checkList = this._tmpBoatList;
+    checkList.length = 0;
+    for (let si = 0; si < this.spawnedBoats.length; si++) checkList.push(this.spawnedBoats[si]);
+    for (const rb of this.remoteBoats.values()) checkList.push(rb);
     for (let i = 0; i < checkList.length; i++) {
       const b = checkList[i];
       const sp = b.spec;
@@ -303,9 +307,17 @@ KK.BoatManager = class BoatManager {
       const cw = Math.cos(b.yaw || 0), sw = Math.sin(b.yaw || 0);
       vehicle.pos.x = b.gx + (lx * cw - lz * sw);
       vehicle.pos.z = b.gz + (lx * sw + lz * cw);
-      // Bounce velocity cleanly off steel ramp/bulkhead!
-      vehicle.vel.x = b.vx + (vehicle.vel.x - b.vx) * -0.35;
-      vehicle.vel.z = b.vz + (vehicle.vel.z - b.vz) * -0.35;
+      // v18.1 Smooth wall-sliding in boat-local frame (zero boarding stutter when brushing Zubr ramp rails!)
+      const relVx = vehicle.vel.x - (b.vx || 0);
+      const relVz = vehicle.vel.z - (b.vz || 0);
+      let vLocX = relVx * c + relVz * s;
+      let vLocZ = -relVx * s + relVz * c;
+      if (lx <= minX + 0.01 && vLocX < 0) vLocX = 0;
+      else if (lx >= maxX - 0.01 && vLocX > 0) vLocX = 0;
+      if (lz <= minZ + 0.01 && vLocZ < 0) vLocZ = hitRamp ? -vLocZ * 0.25 : 0;
+      else if (lz >= maxZ - 0.01 && vLocZ > 0) vLocZ = hitRamp ? -vLocZ * 0.25 : 0;
+      vehicle.vel.x = (b.vx || 0) + (vLocX * cw - vLocZ * sw);
+      vehicle.vel.z = (b.vz || 0) + (vLocX * sw + vLocZ * cw);
       return { hitRamp, hitWall: true };
     }
     return { hitRamp: false, hitWall: false };
@@ -1314,16 +1326,31 @@ KK.BoatManager = class BoatManager {
         throttle = (input.throttle || 0) - (input.brake || 0);
         steer = input.steer || 0;
         boost = !!input.boost;
+        if ((input.brake || 0) > 0.12 && b.cruiseOn) b.cruiseOn = false;
+      }
+      // v18.1 HANDS-OFF SHIP CRUISE CONTROL: Continues cruising automatically even after leaving the helm!
+      if (b.cruiseOn) {
+        if (b.anchored) {
+          b.cruiseOn = false;
+        } else if (Math.abs(throttle) < 0.05) {
+          const targetKmh = b.cruiseKmh || 45;
+          const errB = targetKmh - (b.speedKmh || 0);
+          if (errB > 0.4) {
+            throttle = Math.max(0.22, Math.min(1.0, errB * 0.10));
+            if (targetKmh > sp.topSpeedKmh * 0.99) boost = true;
+          } else {
+            throttle = 0.20; // Maintain steady cruising headway
+          }
+        }
       }
       b.throttleCmd = throttle;
       b.boostCmd = boost;
 
-      // v15.4.3 ZERO-FRICTION HELM: Pressing [W]/[S] auto-weighs anchor / inflates cushion; unpiloted ship holds station!
       if (isPiloted && b.anchored && Math.abs(throttle) > 0.1) {
         b.anchored = false;
         if (audio && audio.playAnchorClank) audio.playAnchorClank();
       }
-      if (!isPiloted && b.speedKmh < 12) {
+      if (!isPiloted && !b.cruiseOn && b.speedKmh < 12) {
         b.anchored = true;
       }
       if (b.anchored) {

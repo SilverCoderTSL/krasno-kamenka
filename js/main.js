@@ -80,6 +80,7 @@ KK.Game = class Game {
     this._pendingCashTx = new Map();
     this.cryptids = new KK.CryptidManager(this.scene, this.world);
     this.oceanCryptids = KK.OceanCryptidManager ? new KK.OceanCryptidManager(this.scene, this.world) : null;
+    this.savannaMechas = KK.SavannaMechaManager ? new KK.SavannaMechaManager(this.scene, this.world) : null;
     this.hazards = new KK.HazardManager(this.scene, this.world);
     this.clarksonFarm = new KK.ClarksonFarm(this.scene, this.world);
     this.jamesBar = new KK.JamesMayBar(this.scene, this.world);
@@ -536,12 +537,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v18.0.3 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v18.1.1 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v18.0.3 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v18.1.1 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -1141,7 +1142,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        // v18.0.3 Garage is strictly [F] only — [G] is exclusively military/flare!
+        // v18.1.1 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -1344,7 +1345,8 @@ KK.Game = class Game {
     const near = this.world.getNearbyTownInteraction(px, pz);
     if (near && near.type === "garage") return true;
     for (const t of KK.TOWNS) {
-      if (t.hasGarage && Math.hypot(t.x - px, t.z - pz) < 42) return true;
+      const gxT = (t.garageX !== undefined) ? t.garageX : t.x, gzT = (t.garageZ !== undefined) ? t.garageZ : t.z;
+      if (t.hasGarage && Math.hypot(gxT - px, gzT - pz) < 34) return true;
     }
     if (this.clarksonFarm && this.clarksonFarm.isNearJeremy(px, pz)) return true;
     if (this.hammondMesa && this.hammondMesa.isNearHammond(px, pz)) return true;
@@ -1393,7 +1395,7 @@ KK.Game = class Game {
     }
   }
 
-  // v18.0.3 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v18.1.1 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1417,7 +1419,7 @@ KK.Game = class Game {
     }
   }
 
-  // v18.0.3 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v18.1.1 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -2013,7 +2015,7 @@ KK.Game = class Game {
     if ((this.vehicle.vState.dirtLevel || 0) < 0.02) { this.ui.toast("Your rig is already spotless!"); return; }
     if (this.money < 50) { this.ui.toast("Need $50 for Car Wash!", true); return; }
     this.money -= 50;
-    this.vehicle.vState.dirtLevel = 0;
+    this.vehicle.vState.dirtLevel = 0; this.vehicle.vState.snowLevel = 0;
     this.vehicle.vState.health.mudClog = 0;
     this.audio.playCash();
     this._saveProgress();
@@ -2051,7 +2053,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v18.0.3 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v18.1.1 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -2328,7 +2330,7 @@ KK.Game = class Game {
       }
       this.ui.toast("Adjusted clutch & drivetrain linkages to 65%!");
     } else if (part === "suspension") {
-      vs.health.tieRodBias *= 0.10;
+      vs.health.tieRodBias = 0;
       for (const id of ["coilSprings", "shockFL", "shockFR", "shockRL", "shockRR", "tieRods", "antiRollBar", "wheelHubs", "brakeSystem"]) {
         p[id].hp = Math.max(p[id].hp, 65);
       }
@@ -3207,7 +3209,7 @@ KK.Game = class Game {
     return { tipWorld, evacWorld, dirWorld };
   }
 
-  // v18.0.3 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
+  // v18.1.1 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
   _onArmorHitAck(msg) {
     if (!msg) return;
     const victim = msg.victimCallsign || "Target";
@@ -3246,10 +3248,10 @@ KK.Game = class Game {
   }
 
   // ==========================================================================
-  // v18.0.3 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
+  // v18.1.1 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
   // ==========================================================================
   // ==========================================================================
-  // v18.0.3 TANK COMBAT CORE: STATE RESET, EXACT RAY-vs-OBB HITBOXES & LWR/FCS
+  // v18.1.1 TANK COMBAT CORE: STATE RESET, EXACT RAY-vs-OBB HITBOXES & LWR/FCS
   // ==========================================================================
   _resetTankCombatState(resetAmmoRacks = true) {
     if (this.armorViewerActive) this.toggleArmorViewer();
@@ -3553,7 +3555,7 @@ KK.Game = class Game {
       zoneNormalL.set(0, 0.12, -0.99).normalize();
     }
 
-    // 3. v18.0.3 EXACT QUATERNION LOCAL HIT COORDINATES + GROUND-SPLASH BELLY FIX + PROPER ROOF/BELLY NORMALS!
+    // 3. v18.1.1 EXACT QUATERNION LOCAL HIT COORDINATES + GROUND-SPLASH BELLY FIX + PROPER ROOF/BELLY NORMALS!
     const prof = this._getArmorProfile(spec, vs);
     const hitLocalPt = new THREE.Vector3(hx - vx, hy - this.vehicle.pos.y, hz - vz).applyQuaternion(invQuat);
     const hitLocalZ = hitLocalPt.z;
@@ -3619,7 +3621,7 @@ KK.Game = class Game {
     const hlth = vs.health;
 
     // 5. AUTO-RICOCHET & HEAVY MBT NON-PENETRATION (with exposed track/optic chip for autocannons!)
-    // v18.0.3 STRICT PENETRATION CHECK: AP, HE, HESH & Autocannons MUST beat effective armor to penetrate!
+    // v18.1.1 STRICT PENETRATION CHECK: AP, HE, HESH & Autocannons MUST beat effective armor to penetrate!
     const apObliqueBounce = isAp && (impactAngleDeg > 72 || effPenMm < effArmorMm);
     const heNonPen = (isHe && !isTherm && isArmored) && (effPenMm < effArmorMm * 0.92);
     const autoBounce = isAuto && (effPenMm < effArmorMm * 0.92);
@@ -3697,7 +3699,7 @@ KK.Game = class Game {
       if (this.audio.playArmorClang) this.audio.playArmorClang(caliberMm, false);
       if (caliberMm >= 90 && this.audio.playConcussionMuffle) this.audio.playConcussionMuffle();
     }
-    // v18.0.3 LOCATION-ACCURATE DAMAGEABLE MODULES & AMMO STOWAGE COOK-OFFS!
+    // v18.1.1 LOCATION-ACCURATE DAMAGEABLE MODULES & AMMO STOWAGE COOK-OFFS!
     let cookoffKind = null;
     if (isArmored && caliberMm >= 20) {
       if (zone === "TURRET" || zone === "ROOF") {
@@ -4394,19 +4396,23 @@ KK.Game = class Game {
   toggleCruiseControl() {
     if (this.boats && this.boats.activeBoat) {
       const b = this.boats.activeBoat;
-      if (this.boatCruiseOn) {
+      if (b.cruiseOn || this.boatCruiseOn) {
+        b.cruiseOn = false;
         this.boatCruiseOn = false;
         this.ui.toast("BOAT CRUISE CONTROL [7]: OFF");
       } else {
         if (b.anchored) {
-          this.ui.toast(b.spec.amphibious ? "Inflate air cushion [SPACE] first before engaging Cruise Control!" : "Weigh anchor [SPACE] first before engaging Cruise Control!", true);
-          return;
+          b.anchored = false;
+          if (this.audio && this.audio.playAnchorClank) this.audio.playAnchorClank();
         }
         const cur = Math.round(b.speedKmh || 0);
         const defKmh = Math.round(b.spec.topSpeedKmh * 0.85);
-        this.boatCruiseKmh = Math.max(20, Math.min(Math.round(b.spec.topSpeedKmh * 1.15), cur >= 18 ? cur : defKmh));
+        const tgt = Math.max(20, Math.min(Math.round(b.spec.topSpeedKmh * 1.15), cur >= 18 ? cur : defKmh));
+        b.cruiseKmh = tgt;
+        b.cruiseOn = true;
+        this.boatCruiseKmh = tgt;
         this.boatCruiseOn = true;
-        this.ui.toast(`BOAT CRUISE CONTROL [7]: ON (${Math.round(this.boatCruiseKmh / 1.852)} kts / ${this.boatCruiseKmh} km/h) • [=]/[-] Adjust • [S]/[SPC] Cancel`);
+        this.ui.toast(`⛵ SHIP AUTOPILOT CRUISE [7]: ON (${Math.round(tgt / 1.852)} kts / ${tgt} km/h) — Keeps sailing even if you leave the helm!`);
       }
       return;
     }
@@ -4423,17 +4429,19 @@ KK.Game = class Game {
   }
 
   adjustCruiseSpeed(deltaKmh) {
-    if (this.boats && this.boats.activeBoat && this.boatCruiseOn) {
-      const maxKmh = Math.round(this.boats.activeBoat.spec.topSpeedKmh * 1.15);
-      this.boatCruiseKmh = Math.max(15, Math.min(maxKmh, this.boatCruiseKmh + deltaKmh));
-      this.ui.toast(`Boat Cruise Target: ${Math.round(this.boatCruiseKmh / 1.852)} kts (${this.boatCruiseKmh} km/h)`);
+    if (this.boats && this.boats.activeBoat && (this.boats.activeBoat.cruiseOn || this.boatCruiseOn)) {
+      const b = this.boats.activeBoat;
+      const maxKmh = Math.round(b.spec.topSpeedKmh * 1.15);
+      const nextKmh = Math.max(15, Math.min(maxKmh, (b.cruiseKmh || this.boatCruiseKmh) + deltaKmh));
+      b.cruiseKmh = nextKmh; this.boatCruiseKmh = nextKmh;
+      this.ui.toast(`Boat Cruise Target: ${Math.round(nextKmh / 1.852)} kts (${nextKmh} km/h)`);
     } else if (!this.onFoot && this.carCruiseOn) {
       this.carCruiseKmh = Math.max(20, Math.min(260, this.carCruiseKmh + deltaKmh));
       this.ui.toast(`Car Cruise Target: ${this.carCruiseKmh} km/h`);
     }
   }
 
-  // v18.0.3.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v18.1.1.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -4672,11 +4680,14 @@ KK.Game = class Game {
   }
 
   _isPosInOpenSea(gx, gz) {
-    if (this.oceanCryptids && this.oceanCryptids._isOpenOcean) {
-      return this.oceanCryptids._isOpenOcean(gx, gz, 220);
-    }
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
-    return this.world.getTerrainInfo(gx, gz, false).height < seaL - 3.5;
+    if (this.world && this.world.getBaseHeight) {
+      return this.world.getBaseHeight(gx, gz) < seaL - 1.2;
+    }
+    if (this.oceanCryptids && this.oceanCryptids._isOpenOcean) {
+      return this.oceanCryptids._isOpenOcean(gx, gz, 120);
+    }
+    return this.world.getTerrainInfo(gx, gz, false).height < seaL - 2.0;
   }
 
   triggerTestHurricane(cat = 5) {
@@ -5557,7 +5568,7 @@ KK.Game = class Game {
           const camRight = this._tmpCamRight.set(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v18.0.3 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v18.1.1 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -5635,18 +5646,12 @@ KK.Game = class Game {
         steer: (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) - (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0),
         boost: !!(this.keys.ShiftLeft || this.keys.ShiftRight)
       } : null;
-      // v15.2.1 BOAT CRUISE CONTROL [7]: Smooth marine autopilot throttle, cancels on Reverse [S] or Anchor [Space]!
-      if (this.boatCruiseOn) {
-        if (!this.boats.activeBoat || this.boats.activeBoat.anchored || (boatIn && boatIn.brake > 0.1)) {
-          this.boatCruiseOn = false;
-        } else if (boatIn && boatIn.throttle < 0.05) {
-          const bSpd = this.boats.activeBoat.speedKmh || 0;
-          const errB = this.boatCruiseKmh - bSpd;
-          if (errB > 0.4) {
-            boatIn.throttle = Math.max(0.18, Math.min(1.0, errB * 0.095));
-            if (this.boatCruiseKmh > this.boats.activeBoat.spec.topSpeedKmh * 0.99) boatIn.boost = true;
-          }
-        }
+      // v18.1.1 HANDS-OFF SHIP AUTOPILOT CRUISE: Handled per-boat inside boats.update() even when unpiloted!
+      if (this.boats.activeBoat) {
+        this.boatCruiseOn = !!this.boats.activeBoat.cruiseOn;
+        if (this.boats.activeBoat.cruiseKmh) this.boatCruiseKmh = this.boats.activeBoat.cruiseKmh;
+      } else {
+        this.boatCruiseOn = false;
       }
       this.boats.update(dt, boatIn, this.vehicle, this.particles, this.audio, this.ui, this.network.remotePlayers, this.network.peerId, {
         hurricaneEffect: hEff,
@@ -5710,7 +5715,7 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = this.vehicle.vState.burnedOut ? 1.0 : Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (38 - engHp) / 38);
-    // v18.0.3 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
+    // v18.1.1 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const gpZone = (KK.SMOOTH_TARMAC_ZONES || []).find((z) => z.isGpCircuit);
@@ -5751,7 +5756,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v18.0.3 Auto-save persistent vehicle odometer every 10s when driving!
+    // v18.1.1 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -5759,7 +5764,7 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
-    // v18.0.3 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
+    // v18.1.1 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
     if (this.armorViewerActive) this._updateArmorViewerTooltip();
     if (this.lwrAlertTimer > 0) {
       this.lwrAlertTimer = Math.max(0, this.lwrAlertTimer - dt);
@@ -5797,7 +5802,7 @@ KK.Game = class Game {
         this._turretWhineCd = 0.095;
       }
     }
-    // v18.0.3 Animate On-Foot Player Actions [1-5] on localAvatar!
+    // v18.1.1 Animate On-Foot Player Actions [1-5] on localAvatar!
     if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
       this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
       const tE = performance.now() * 0.012;
@@ -5823,7 +5828,7 @@ KK.Game = class Game {
         if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
       }
     }
-    // v18.0.3 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    // v18.1.1 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
     if (this.network && this.network.remotePlayers) {
       const nowMs = performance.now();
       for (const [pid, rp] of this.network.remotePlayers.entries()) {
@@ -5862,7 +5867,7 @@ KK.Game = class Game {
       steerAngle: this.vehicle.steerAngle, camberDeg: this.vehicle.vState.tuning.camberDeg, toeDeg: this.vehicle.vState.tuning.toeDeg,
       headlights: this.vehicle.headlights, lightbar: this.vehicle.lightbar, hasLightbar: !!this.vehicle.vState.upgrades.ledLightbar, headlightL: this.vehicle.vState.health.headlightL, headlightR: this.vehicle.vState.health.headlightR, lightbarHp: this.vehicle.vState.health.lightbar, taillightL: this.vehicle.vState.health.taillightL, taillightR: this.vehicle.vState.health.taillightR, apsFlashTimer: this.apsFlashTimer, isSchreckensfurst: !!this.vehicle.spec.isSchreckensfurst, braking: this.vehicle.braking,
       reversing: this.vehicle.reversing, hazards: this.vehicle.hazards, hoodOpen: this.vehicle.hoodOpen,
-      smokeLevel: Math.max(0, smokeLvl), dirtLevel: this.vehicle.vState.dirtLevel,
+      smokeLevel: Math.max(0, smokeLvl), dirtLevel: this.vehicle.vState.dirtLevel, snowLevel: this.vehicle.vState.snowLevel || 0,
       backfireTimer: this.vehicle.backfireTimer, cargoTilt: this.vehicle.cargoTilt, rideHeight: this.vehicle.vState.tuning.rideHeight,
       xrayActive: this.xrayActive,
       inCockpitCam: (!this.onFoot && !this.ridingWithPeerId && this.camMode === 3),
@@ -5967,6 +5972,16 @@ KK.Game = class Game {
     this.hazards.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network, this.boats);
     this.cryptids.update(dt, this.vehicle, this.weather, this.particles, this.audio, this.ui, this.network, this.hazards);
     if (this.oceanCryptids) this.oceanCryptids.update(dt, this.vehicle, this.boats, this.particles, this.audio, this.ui, this.network, this.hazards);
+    if (this.savannaMechas) {
+      this.savannaMechas.update(dt, focusGx, focusGz, this.oceanCryptids, this.particles, this.audio);
+      if (this.savannaMechas.cameraShakeOut > 0) this.cameraShake = Math.max(this.cameraShake, this.savannaMechas.cameraShakeOut);
+    }
+    if (this.audio && this.audio.updateCityAmbience && KK.ZOLOTOY_CITY) {
+      const zc = KK.ZOLOTOY_CITY;
+      const dCity = Math.hypot(focusGx - zc.cx, focusGz - zc.cz);
+      const cityProx = dCity < 950 ? Math.max(0, Math.min(1, 1.0 - (dCity - 380) / 570)) : 0;
+      if (cityProx > 0.02) this.audio.updateCityAmbience(dt, cityProx);
+    }
     this.clarksonFarm.update(dt, this.vehicle, this.particles, this.audio, this.ui, this);
     this.jamesBar.update(dt, this.vehicle, this);
     this.hammondMesa.update(dt, this.vehicle, this.particles);
@@ -6421,7 +6436,7 @@ KK.Game = class Game {
           wheelOffsets: rp.wheelOffsets, wheelSpins: rp.wheelSpins, blownTires: rp.blownTires, steerAngle: rp.steerAngle,
           camberDeg: rp.camberDeg, toeDeg: 0, headlights: rp.headlights, glassHp: rp.glassHp !== undefined ? rp.glassHp : 100, lightbar: rp.lightbar, hasLightbar: rp.hasLightbar, headlightL: rp.headlightL, headlightR: rp.headlightR, wipersOn: rp.wipersOn, inCockpitCam: false, isEmpty: !!rp.onFoot, hasBtrTurret: !!rp.hasBtrTurret, turretYaw: rp.turretYaw || 0, gunPitch: rp.gunPitch || 0, rwsYaw: rp.rwsYaw !== undefined ? rp.rwsYaw : (rp.turretYaw || 0), rwsPitch: rp.rwsPitch || 0, autoBarrelHeat: rp.autoBarrelHeat || 0, t72Upgrades: { sturmKit: false }, isSchreckensfurst: rp.vehicleId === "pzkpfw_140a4",
           braking: rp.braking, reversing: false, hazards: rp.hazards, hoodOpen: false,
-          trackL: rp.trackL !== undefined ? rp.trackL : 100, trackR: rp.trackR !== undefined ? rp.trackR : 100, turretPopY: rp.turretPopY || 0, turretPopPitch: rp.turretPopPitch || 0, turretPopRoll: rp.turretPopRoll || 0, reloadFrac: rp.reloadFrac || 0, smokeLevel: (rp.smokeLevel && rp.smokeLevel > 0.15) ? rp.smokeLevel : 0, dirtLevel: rp.dirtLevel, backfireTimer: rp.backfireTimer,
+          trackL: rp.trackL !== undefined ? rp.trackL : 100, trackR: rp.trackR !== undefined ? rp.trackR : 100, turretPopY: rp.turretPopY || 0, turretPopPitch: rp.turretPopPitch || 0, turretPopRoll: rp.turretPopRoll || 0, reloadFrac: rp.reloadFrac || 0, smokeLevel: (rp.smokeLevel && rp.smokeLevel > 0.15) ? rp.smokeLevel : 0, dirtLevel: rp.dirtLevel, snowLevel: rp.snowLevel || 0, backfireTimer: rp.backfireTimer,
           cargoTilt: 0, rideHeight: rp.rideHeight, thermalMode: this.thermalMode || 0, coolantTemp: rp.coolantTemp !== undefined ? rp.coolantTemp : 82, egtTemp: rp.egtTemp !== undefined ? rp.egtTemp : 320, barrelHeat: rp.barrelHeat || 0, speedKmh: Math.hypot(rp.vx || 0, rp.vz || 0) * 3.6
         });
       }
@@ -6522,7 +6537,7 @@ KK.Game = class Game {
         ctx2.drawImage(this.canvas, 0, 0);
 
         // Stamp clean version watermark in bottom-right corner of every screenshot!
-        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v18.0.3"}`;
+        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v18.1.1"}`;
         const fontSize = Math.max(14, Math.round(outCv.height * 0.020));
         ctx2.font = `bold ${fontSize}px monospace`;
         const padX = Math.round(fontSize * 0.72);
@@ -6548,11 +6563,11 @@ KK.Game = class Game {
         const a = document.createElement("a");
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         a.href = dataUrl;
-        a.download = `krasno_kamenka_${KK.VERSION || "v18.0.3"}_${ts}.png`;
+        a.download = `krasno_kamenka_${KK.VERSION || "v18.1.1"}_${ts}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v18.0.3"})!`);
+        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v18.1.1"})!`);
       } catch (err) {
         this.ui.toast("Screenshot failed: " + err.message, true);
       }

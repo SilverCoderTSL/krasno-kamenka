@@ -1573,6 +1573,108 @@ KK.AudioEngine = class AudioEngine {
     nsrc.start(t); nsrc.stop(t + 1.18);
   }
 
+  // v18.1 COLOSSAL 68m MECHA HYDRAULIC METALLIC FOOTSTEP BOOM!
+  playMechaFootstep(prox = 0.5) {
+    if (!this.ctx || !this.master || this.muted || prox <= 0.02) return;
+    const out = this.weaponBus || this.master;
+    const now = this.ctx.currentTime;
+    const v = Math.min(1.1, 0.45 + prox * 0.65);
+    const sub = this.ctx.createOscillator(); sub.type = "sine";
+    sub.frequency.setValueAtTime(68, now); sub.frequency.exponentialRampToValueAtTime(19, now + 0.62);
+    const sg = this.ctx.createGain();
+    sg.gain.setValueAtTime(v * 0.85, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
+    sub.connect(sg); sg.connect(out); sub.start(now); sub.stop(now + 0.70);
+
+    const clank = this.ctx.createOscillator(); clank.type = "triangle";
+    clank.frequency.setValueAtTime(210, now); clank.frequency.exponentialRampToValueAtTime(84, now + 0.28);
+    const cg = this.ctx.createGain();
+    cg.gain.setValueAtTime(v * 0.34, now); cg.gain.exponentialRampToValueAtTime(0.001, now + 0.30);
+    clank.connect(cg); cg.connect(out); clank.start(now); clank.stop(now + 0.32);
+
+    const nBuf = this._noiseBuffer(0.42);
+    const nSrc = this.ctx.createBufferSource(); nSrc.buffer = nBuf;
+    const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 320;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(v * 0.55, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
+    nSrc.connect(lp); lp.connect(ng); ng.connect(out); nSrc.start(now);
+  }
+
+  // v18.1 ZOLOTOY METROPOLIS URBAN AMBIENCE (Muffled Disco Beat, Crowd Chatter & City Horns!)
+  updateCityAmbience(dt, cityProx = 0) {
+    if (!this.ctx || !this.master || this.muted || cityProx <= 0.02) return;
+    const now = this.ctx.currentTime;
+    const prox = Math.max(0, Math.min(1, cityProx));
+
+    this._cityBeatAccum = (this._cityBeatAccum || 0) + dt;
+    const beatStep = 60 / 124 / 2;
+    if (this._cityBeatAccum >= beatStep) {
+      this._cityBeatAccum -= beatStep;
+      this._cityStepIdx = ((this._cityStepIdx || 0) + 1) % 16;
+      const step = this._cityStepIdx;
+      if (step % 2 === 0) {
+        const kOsc = this.ctx.createOscillator(); kOsc.type = "sine";
+        kOsc.frequency.setValueAtTime(118, now); kOsc.frequency.exponentialRampToValueAtTime(38, now + 0.14);
+        const kG = this.ctx.createGain();
+        kG.gain.setValueAtTime(0.11 * prox, now); kG.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+        kOsc.connect(kG); kG.connect(this.master); kOsc.start(now); kOsc.stop(now + 0.17);
+      }
+      const notes = [110, 110, 130.8, 110, 146.8, 146.8, 164.8, 146.8, 98, 98, 110, 130.8, 87.3, 98, 110, 130.8];
+      if (step % 2 === 1) {
+        const bOsc = this.ctx.createOscillator(); bOsc.type = "triangle";
+        bOsc.frequency.setValueAtTime(notes[step], now);
+        const bLp = this.ctx.createBiquadFilter(); bLp.type = "lowpass"; bLp.frequency.value = 340 + prox * 260;
+        const bG = this.ctx.createGain();
+        bG.gain.setValueAtTime(0.068 * prox, now); bG.gain.exponentialRampToValueAtTime(0.001, now + 0.21);
+        bOsc.connect(bLp); bLp.connect(bG); bG.connect(this.master); bOsc.start(now); bOsc.stop(now + 0.22);
+      }
+      if (step === 0 || step === 8) {
+        for (const f of (step === 0 ? [440, 523.25, 659.25] : [392, 493.88, 587.33])) {
+          const cOsc = this.ctx.createOscillator(); cOsc.type = "sine";
+          cOsc.frequency.setValueAtTime(f, now);
+          const cG = this.ctx.createGain();
+          cG.gain.setValueAtTime(0.020 * prox, now); cG.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+          cOsc.connect(cG); cG.connect(this.master); cOsc.start(now); cOsc.stop(now + 0.38);
+        }
+      }
+    }
+
+    this._cityChatCd = (this._cityChatCd || 0.7) - dt;
+    if (this._cityChatCd <= 0) {
+      this._cityChatCd = 0.55 + Math.random() * 0.90;
+      const cBuf = this._noiseBuffer(0.65);
+      const cSrc = this.ctx.createBufferSource(); cSrc.buffer = cBuf;
+      const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass";
+      bp.frequency.value = 540 + Math.random() * 480; bp.Q.value = 2.6;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(0.052 * prox, now + 0.18);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+      cSrc.connect(bp); bp.connect(g); g.connect(this.master); cSrc.start(now);
+    }
+
+    this._cityHornCd = (this._cityHornCd || 3.2) - dt;
+    if (this._cityHornCd <= 0) {
+      this._cityHornCd = 4.2 + Math.random() * 6.8;
+      const baseF = 340 + Math.random() * 140;
+      const blasts = Math.random() < 0.48 ? 2 : 1;
+      for (let b = 0; b < blasts; b++) {
+        const t0 = now + b * 0.23;
+        const dur = 0.16 + Math.random() * 0.18;
+        for (const mult of [1.0, 1.25]) {
+          const hOsc = this.ctx.createOscillator(); hOsc.type = "sawtooth";
+          hOsc.frequency.setValueAtTime(baseF * mult, t0);
+          const hLp = this.ctx.createBiquadFilter(); hLp.type = "lowpass"; hLp.frequency.value = 980;
+          const hG = this.ctx.createGain();
+          hG.gain.setValueAtTime(0.001, t0);
+          hG.gain.linearRampToValueAtTime(0.036 * prox, t0 + 0.02);
+          hG.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+          hOsc.connect(hLp); hLp.connect(hG); hG.connect(this.master);
+          hOsc.start(t0); hOsc.stop(t0 + dur + 0.02);
+        }
+      }
+    }
+  }
+
   updateEnvironment(dt, info) {
     if (!this.started || this.muted) return;
     const t = this.ctx.currentTime;

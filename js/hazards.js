@@ -288,10 +288,9 @@ KK.HazardManager = class HazardManager {
 
   spawnHurricaneNear(gx, gz, cat = 5, ui = null, audio = null, network = null) {
     // Strictly prohibit hurricanes on land — must be over open ocean!
-    const playerOcean = this.world ? (this.world.getBiomeWeights(gx, gz).ocean || 0) : 0;
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
-    const terrainH = this.world ? this.world.getTerrainInfo(gx, gz, false).height : 0;
-    if (playerOcean < 0.50 || terrainH >= seaL - 1.5) {
+    const baseH = (this.world && this.world.getBaseHeight) ? this.world.getBaseHeight(gx, gz) : (this.world ? this.world.getTerrainInfo(gx, gz, false).height : 0);
+    if (baseH >= seaL - 1.2) {
       if (ui) ui.toast("❌ Failed to summon hurricane — hurricanes only form over open ocean!", true);
       return null;
     }
@@ -304,7 +303,7 @@ KK.HazardManager = class HazardManager {
       const ang = baseAng + (k / 12) * Math.PI * 2;
       const candX = gx + Math.cos(ang) * dist;
       const candZ = gz + Math.sin(ang) * dist;
-      if ((this.world.getBiomeWeights(candX, candZ).ocean || 0) >= 0.55) {
+      if ((this.world.getBaseHeight ? this.world.getBaseHeight(candX, candZ) < seaL - 1.5 : (this.world.getBiomeWeights(candX, candZ).ocean || 0) >= 0.50)) {
         hx = candX; hz = candZ; foundOcean = true;
         break;
       }

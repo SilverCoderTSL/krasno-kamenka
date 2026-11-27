@@ -1858,7 +1858,49 @@ KK.World = class World {
       grp.add(sGrp);
     }
 
-    // Finalize all batched InstancedMeshes for Zolotoy City!
+    // v18.1 GIANT ILLUMINATED LORE & EASTER-EGG BILLBOARDS ACROSS ZOLOTOY METROPOLIS!
+    const makeBillboardTex = (bg, accent, topTag, headline, subline) => {
+      const cv = document.createElement("canvas"); cv.width = 512; cv.height = 256;
+      const ctx = cv.getContext("2d");
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, 512, 256);
+      ctx.strokeStyle = accent; ctx.lineWidth = 10; ctx.strokeRect(8, 8, 496, 240);
+      ctx.fillStyle = accent; ctx.fillRect(14, 14, 484, 42);
+      ctx.fillStyle = "#0a0d12"; ctx.font = "900 22px monospace"; ctx.textAlign = "center";
+      ctx.fillText(topTag, 256, 43);
+      ctx.fillStyle = "#ffffff"; ctx.font = "900 42px sans-serif";
+      ctx.fillText(headline, 256, 134);
+      ctx.fillStyle = accent; ctx.font = "bold 22px monospace";
+      ctx.fillText(subline, 256, 198);
+      return new THREE.CanvasTexture(cv);
+    };
+    const adDefs = [
+      [  392,  218, -1.57, "#1b1410", "#ffd166", "🍺 OFFICIAL OBLAST WATERING HOLE", "JAMES MAY'S PUB", "WARM BITTER • CHEESE • ZERO SPEEDING"],
+      [ -392,  218,  1.57, "#111f14", "#4ade80", "🚜 DIDDLY SQUAT EAST", "CLARKSON'S FARM", "SPEED & POWER PRODUCE — KEEP OUT!"],
+      [  392, -218, -1.57, "#24150e", "#fb923c", "🏜 HIGH-ALTITUDE CRASH ZONE", "HAMMOND'S MESA", "NOW WITH 14% MORE ROLLOVERS!"],
+      [ -392, -218,  1.57, "#190c26", "#f472b6", "🪩 NIGHTLIFE DISTRICT • 124 BPM", "DISCO ZOLOTOY", "OPEN 24/7 — NEON SYNTHS & VIBES"],
+      [  218,  392,  3.14, "#0d1b2a", "#38bdf8", "🛡 SILVER DIRECTIVE COASTAL DEFENSE", "EINHEIT MECHA CORPS", "PROTECTING ZOLOTOY FROM THE ABYSS"],
+      [ -218,  392,  3.14, "#18181b", "#facc15", "🏁 5.6 KM INTERNATIONAL TRACK", "ZOLOTOY GP CIRCUIT", "FREE PIT GARAGE & CAR WASH ON-SITE!"],
+      [  218, -392,  0.0,  "#1c1917", "#ef4444", "🛞 BUILT FOR SIBERIAN MUD", "VOLGAWORKS TIRES", "NOW AVAILABLE WITH MUD & SNOW COAT"],
+      [ -218, -392,  0.0,  "#0f172a", "#2dd4bf", "🚗 IMPORT TUNING & DYNO", "ZOLOTOY MOTORS", "R35 GT-R • LADA • ARMORED SURPLUS"]
+    ];
+    for (const [bx, bz, rotY, bg, acc, tag, hl, sub] of adDefs) {
+      const bGrp = new THREE.Group();
+      bGrp.position.set(bx, 0, bz);
+      bGrp.rotation.y = rotY;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.72, 18.0, 8), matPole);
+      pole.position.set(0, 9.0, 0); bGrp.add(pole);
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(19.6, 10.2, 0.85), matDark);
+      frame.position.set(0, 20.5, 0); bGrp.add(frame);
+      const tex = makeBillboardTex(bg, acc, tag, hl, sub);
+      const faceMat = new THREE.MeshBasicMaterial({ map: tex });
+      const frontFace = new THREE.Mesh(new THREE.PlaneGeometry(18.8, 9.4), faceMat);
+      frontFace.position.set(0, 20.5, 0.45); bGrp.add(frontFace);
+      const backFace = new THREE.Mesh(new THREE.PlaneGeometry(18.8, 9.4), faceMat);
+      backFace.position.set(0, 20.5, -0.45); backFace.rotation.y = Math.PI; bGrp.add(backFace);
+      grp.add(bGrp);
+    }
+
+        // Finalize all batched InstancedMeshes for Zolotoy City!
     for (const bk of instMap.values()) {
       const cnt = bk.mats.length;
       if (cnt === 0) continue;
@@ -3073,8 +3115,8 @@ KK.World = class World {
       const zc = KK.ZOLOTOY_CITY;
       const dxC = Math.abs(gx - zc.cx), dzC = Math.abs(gz - zc.cz);
       const maxD = Math.max(dxC, dzC);
-      if (maxD < zc.halfSpan + 110) {
-        const bC = maxD < zc.halfSpan + 22 ? 1.0 : Math.max(0, 1.0 - (maxD - (zc.halfSpan + 22)) / 88);
+      if (maxD < zc.halfSpan + 146) {
+        const bC = maxD < zc.halfSpan + 58 ? 1.0 : Math.max(0, 1.0 - (maxD - (zc.halfSpan + 58)) / 88);
         const sC = bC * bC * (3 - 2 * bC);
         h = h * (1 - sC) + zc._baseH * sC;
       }
@@ -3935,7 +3977,8 @@ KK.World = class World {
       const ty = this.getTerrainInfo(town.x, town.z, false).height;
       grp.position.set(town.x, ty, town.z);
 
-      const gX = 24, gZ = -18;
+      // v18.1 Place Zolotoy Metropolis Garage & Warehouse on the outer city perimeter edges instead of downtown center!
+      const gX = town.isMetro ? 448 : 24, gZ = town.isMetro ? 0 : -18;
       const hangar = new THREE.Mesh(new THREE.BoxGeometry(16, 6.2, 12), this.matConcrete);
       hangar.position.set(gX, 3.1, gZ); hangar.castShadow = true; hangar.receiveShadow = true; grp.add(hangar);
       const roof = new THREE.Mesh(new THREE.BoxGeometry(17.2, 0.7, 13.2), this.matRoof);
@@ -3947,7 +3990,7 @@ KK.World = class World {
       const gBeacon = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 16, 8), new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.45 }));
       gBeacon.position.set(gX, 8, gZ + 12.5); grp.add(gBeacon);
 
-      const dX = -22, dZ = -14;
+      const dX = town.isMetro ? -448 : -22, dZ = town.isMetro ? 0 : -14;
       const dockBase = new THREE.Mesh(new THREE.BoxGeometry(14, 1.1, 8), this.matWoodDark);
       dockBase.position.set(dX, 0.55, dZ); grp.add(dockBase);
       const dockCanopy = new THREE.Mesh(new THREE.BoxGeometry(15, 0.4, 9), this.matRustSteel);
@@ -4397,7 +4440,23 @@ KK.World = class World {
         rcSign.position.set(-82, 22.1, -5.8); pitGrp.add(rcSign);
         const rcMast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 8.5, 6), matSteel);
         rcMast.position.set(-82, 25.0, 2.5); pitGrp.add(rcMast);
+        // v18.1 FUNCTIONAL GP CIRCUIT PADDOCK GARAGE & CAR WASH PAD (Change, Tune, Repair & Wash right at the track!)
+        const gpGarPad = new THREE.Mesh(new THREE.BoxGeometry(16, 0.16, 12), this.matGaragePad);
+        gpGarPad.position.set(0, 0.10, -7.2); pitGrp.add(gpGarPad);
+        const gpGarBeacon = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 20, 8), new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.48 }));
+        gpGarBeacon.position.set(0, 10.0, -7.2); pitGrp.add(gpGarBeacon);
         tGrp.add(pitGrp);
+        {
+          // Compute exact world coordinates of the GP Paddock Garage & Car Wash Bay
+          const cwG = Math.cos(tz.yaw || 0), swG = Math.sin(tz.yaw || 0);
+          const pLocX = (sfX + sfTx * 30 + sfNx * pitIn) - sfNx * 7.2;
+          const pLocZ = (sfZ + sfTz * 30 + sfNz * pitIn) - sfNz * 7.2;
+          this.gpGaragePos = {
+            x: tz.cx + pLocX * cwG - pLocZ * swG,
+            z: tz.cz + pLocX * swG + pLocZ * cwG,
+            name: "Zolotoy GP Paddock Garage & Car Wash"
+          };
+        }
 
         // 4. INSTANCED RED/WHITE CORNER TIRE-STACK BARRIERS + TRACKSIDE TREES + SPONSOR BANNERS + BRAKING BOARDS!
         if (gp && gp.samples && gp.samples.length > 10) {
@@ -5900,6 +5959,10 @@ KK.World = class World {
   }
 
   getNearbyTownInteraction(gx, gz) {
+    if (this.gpGaragePos) {
+      const dGp = Math.hypot(gx - this.gpGaragePos.x, gz - this.gpGaragePos.z);
+      if (dGp < 22) return { type: "garage", town: { id: 99, name: this.gpGaragePos.name, hasGarage: true, x: this.gpGaragePos.x, z: this.gpGaragePos.z, garageX: this.gpGaragePos.x, garageZ: this.gpGaragePos.z }, dist: dGp };
+    }
     for (const tw of KK.TOWNS) {
       const dGarage = Math.hypot(gx - tw.garageX, gz - tw.garageZ);
       if (dGarage < 12) return { type: "garage", town: tw, dist: dGarage };

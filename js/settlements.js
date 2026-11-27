@@ -141,10 +141,12 @@ KK.SettlementBuilder = {
   decorateTown(town, grp, animList, nightLights) {
     const mats = this.initMaterials();
 
-    // Streetlamps flanking Garage & Cargo Dock in every town!
-    this._addStreetLamp(grp, 14, -4, mats, nightLights);
-    this._addStreetLamp(grp, -11, -2, mats, nightLights);
-    this._addStreetLamp(grp, 0, 22, mats, nightLights);
+    // Streetlamps flanking Garage & Cargo Dock (skip center lamps in Zolotoy Metro where garage/dock are on city edges!)
+    if (!town.isMetro) {
+      this._addStreetLamp(grp, 14, -4, mats, nightLights);
+      this._addStreetLamp(grp, -11, -2, mats, nightLights);
+      this._addStreetLamp(grp, 0, 22, mats, nightLights);
+    }
 
     // ------------------------------------------------------------------------
     // TOWN 0: KAMENKA-CENTRAL HQ (Soviet Industrial Hub & Apartment Quarter)

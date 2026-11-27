@@ -162,7 +162,7 @@ KK.VehicleBuilder = {
       const y = 128 - Math.pow(rnd(), 1.8) * 96;
       const rx = 5 + rnd() * 18;
       const ry = 3 + rnd() * 11;
-      ctx.fillStyle = rnd() > 0.4 ? "rgba(74, 48, 26, 0.85)" : "rgba(56, 36, 18, 0.92)";
+      ctx.fillStyle = rnd() > 0.4 ? "rgba(255, 255, 255, 0.86)" : "rgba(232, 232, 232, 0.94)";
       ctx.beginPath();
       ctx.ellipse(x, y, rx, ry, rnd() * Math.PI, 0, Math.PI * 2);
       ctx.fill();
@@ -715,6 +715,7 @@ KK.VehicleBuilder = {
     const basePaintColor = new THREE.Color(basePaintHex);
     const cleanTireColor = new THREE.Color(0x15171a);
     const mudBrownColor = new THREE.Color(0x523b26);
+    const snowWhiteColor = new THREE.Color(0xeef6ff);
 
     const matPaint = new THREE.MeshStandardMaterial({ color: basePaintColor.clone(), roughness: 0.36, metalness: 0.12 });
     const matTrim = new THREE.MeshStandardMaterial({ color: spec.accentColor, roughness: 0.78, metalness: 0.14 });
@@ -4888,10 +4889,21 @@ KK.VehicleBuilder = {
         const tire = new THREE.Mesh(new THREE.CylinderGeometry(wRad, wRad, wWid, 20, 1, true), matTire);
         tire.rotation.z = Math.PI / 2; tire.castShadow = true; tireRubberGroup.add(tire);
         const brandMat = this._getTireSidewallMat(vState && vState.tireBrand);
+        if (!chassis.userData._matSidewallCoat) {
+          chassis.userData._matSidewallCoat = new THREE.MeshStandardMaterial({
+            color: 0x4a3420, roughness: 0.96, metalness: 0.02, transparent: true, opacity: 0.0,
+            side: THREE.DoubleSide, depthWrite: false
+          });
+        }
         const swRing = new THREE.Mesh(new THREE.RingGeometry(wRad * 0.54, wRad * 1.008, 20), brandMat);
         swRing.rotation.y = sideSign > 0 ? Math.PI / 2 : -Math.PI / 2;
         swRing.position.x = sideSign * (wWid * 0.502);
         tireRubberGroup.add(swRing);
+        // Translucent mud/snow coat ring flush over sidewall & brand text (turns brown in mud & bright white in snow!)
+        const swCoat = new THREE.Mesh(new THREE.RingGeometry(wRad * 0.54, wRad * 1.009, 20), chassis.userData._matSidewallCoat);
+        swCoat.rotation.y = sideSign > 0 ? Math.PI / 2 : -Math.PI / 2;
+        swCoat.position.x = sideSign * (wWid * 0.506);
+        tireRubberGroup.add(swCoat);
         // Inner tire sidewall ring (keeps inside of tire closed while leaving the rim center completely open!)
         const swInner = new THREE.Mesh(new THREE.RingGeometry(wRad * 0.54, wRad * 1.008, 20), matTire);
         swInner.rotation.y = sideSign > 0 ? -Math.PI / 2 : Math.PI / 2;
@@ -4981,7 +4993,7 @@ KK.VehicleBuilder = {
         this.baseColor.set(state.paintColor || spec.color);
         const stw = state.stowedUpgrades || {};
         snorkelGroup.visible = !!state.upgrades.snorkel && !stw.snorkel;
-        bullbarGroup.visible = !!state.upgrades.bullbar;
+        bullbarGroup.visible = !!state.upgrades.bullbar && !stw.bullbar;
         lightbarGroup.visible = !!state.upgrades.ledLightbar;
         if (btrGunGroup) btrGunGroup.visible = (vehicleId === "komodo_turret" || vehicleId === "komodo_std") || !!state.upgrades.btrTurret;
         if (tankUpgVisuals && state.upgrades) {
@@ -5112,14 +5124,30 @@ KK.VehicleBuilder = {
           }
         }
 
-        // Dynamic Body & Tire Dirt Accumulation!
+        // v18.1.1 Dynamic Mud (Brown) + Snow (White) Accumulation on Body, Tires, Rims & Logo Sidewalls (zero per-frame allocs!)
         const dirt = Math.max(0, Math.min(1, state.dirtLevel || 0));
-        matPaint.color.copy(this.baseColor).lerp(mudBrownColor, dirt * 0.46);
-        matPaint.roughness = 0.36 + dirt * 0.58;
-        matTire.color.copy(cleanTireColor).lerp(mudBrownColor, dirt * 0.72);
-        if (matRim && this._baseRimColor) matRim.color.copy(this._baseRimColor).lerp(mudBrownColor, dirt * 0.55);
-        matDirtOverlay.opacity = dirt * 0.76;
-        if (matMudSplotch) matMudSplotch.opacity = dirt * 0.92;
+        const snow = Math.max(0, Math.min(1, state.snowLevel || 0));
+        const snowMix = (dirt + snow > 0.001) ? (snow / (dirt + snow)) : 0;
+        matPaint.color.copy(this.baseColor).lerp(mudBrownColor, dirt * 0.46).lerp(snowWhiteColor, snow * 0.65);
+        matPaint.roughness = Math.min(0.96, 0.36 + dirt * 0.58 + snow * 0.45);
+        matTire.color.copy(cleanTireColor).lerp(mudBrownColor, dirt * 0.72).lerp(snowWhiteColor, snow * 0.76);
+        if (matRim && this._baseRimColor) matRim.color.copy(this._baseRimColor).lerp(mudBrownColor, dirt * 0.55).lerp(snowWhiteColor, snow * 0.68);
+        const coatMax = Math.max(dirt, snow);
+        matDirtOverlay.color.copy(mudBrownColor).lerp(snowWhiteColor, snowMix);
+        matDirtOverlay.opacity = coatMax * 0.78;
+        if (matMudSplotch) {
+          matMudSplotch.color.copy(mudBrownColor).lerp(snowWhiteColor, snowMix);
+          matMudSplotch.opacity = coatMax * 0.92;
+        }
+        if (chassis.userData._matSidewallCoat) {
+          chassis.userData._matSidewallCoat.color.copy(mudBrownColor).lerp(snowWhiteColor, snowMix);
+          chassis.userData._matSidewallCoat.opacity = coatMax * 0.72;
+        }
+        if (typeof state.glassHp === "number" && KK.CockpitBuilder && KK.CockpitBuilder._getCrackedGlassTex) {
+          const wantExCrack = state.glassHp < 55;
+          if (wantExCrack && !matGlass.map) { matGlass.map = KK.CockpitBuilder._getCrackedGlassTex(); matGlass.opacity = 0.64; matGlass.needsUpdate = true; }
+          else if (!wantExCrack && matGlass.map) { matGlass.map = null; matGlass.opacity = 0.44; matGlass.needsUpdate = true; }
+        }
 
         // Real-Time X-Ray Mechanical View ([X] Hold)!
         const isXray = !!state.xrayActive;

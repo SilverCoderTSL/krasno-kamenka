@@ -261,6 +261,10 @@ KK.CockpitBuilder = {
           p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2],
           p0[0], p0[1], p0[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2]
         ], 3));
+        g.setAttribute("uv", new THREE.Float32BufferAttribute([
+          0, 0, 1, 0, 1, 1,
+          0, 0, 1, 1, 0, 1
+        ], 2));
         g.computeVertexNormals();
         return new THREE.Mesh(g, this._matFormGlass);
       };
@@ -577,8 +581,8 @@ KK.CockpitBuilder = {
     ctx.fillStyle = "rgba(76, 124, 156, 0.36)";
     ctx.fillRect(0, 0, 256, 256);
     // Spiderweb bullet/impact cracks
-    ctx.strokeStyle = "rgba(235, 248, 255, 0.85)";
-    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = "rgba(248, 253, 255, 0.96)";
+    ctx.lineWidth = 2.5;
     for (const [cx, cy] of [[86, 108], [174, 146]]) {
       for (let r = 0; r < 9; r++) {
         const a = (r / 9) * Math.PI * 2 + 0.2;

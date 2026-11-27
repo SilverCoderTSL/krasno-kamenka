@@ -64,8 +64,8 @@ KK.EntityManager = class EntityManager {
     this.matRadWolf = new THREE.MeshStandardMaterial({ color: 0x2b3328, roughness: 0.95 });
     this.matRadEye  = new THREE.MeshBasicMaterial({ color: 0x9eff2a });
 
-    for (let i = 0; i < 18; i++) this._spawnIslandAnimal("zebra", i, -68000, 61000);
-    for (let i = 0; i < 12; i++) this._spawnIslandAnimal("giraffe", i, -68000, 61000);
+    for (let i = 0; i < 18; i++) this._spawnIslandAnimal("zebra", i, -66200, 62400);
+    for (let i = 0; i < 12; i++) this._spawnIslandAnimal("giraffe", i, -69800, 59400);
     for (let i = 0; i < 18; i++) this._spawnIslandAnimal("macaw", i, 69000, 62000);
     for (let i = 0; i < 16; i++) this._spawnIslandAnimal("boar", i, 69000, 62000);
     for (let i = 0; i < 14; i++) this._spawnIslandAnimal("polarBear", i, -65000, -67000);
@@ -538,11 +538,14 @@ KK.EntityManager = class EntityManager {
     const updateHerd = (list, activeFlag, biomeKey, fleeSpd, walkSpd) => {
       for (const a of list) {
         if (!activeFlag) { a.mesh.visible = false; continue; }
+        const zc = KK.ZOLOTOY_CITY;
+        const zLim = zc ? (zc.halfSpan + 95) : 0;
+        const curInZCity = !!(zc && Math.abs(a.gx - zc.cx) < zLim && Math.abs(a.gz - zc.cz) < zLim);
         const dP = Math.hypot(a.gx - px, a.gz - pz);
-        if (dP > 360 || (this.world.getBiomeWeights(a.gx, a.gz)[biomeKey] || 0) < 0.25) {
-          const ang = Math.random() * 6.28, rad = 75 + Math.random() * 190;
+        if (curInZCity || dP > 360 || (this.world.getBiomeWeights(a.gx, a.gz)[biomeKey] || 0) < 0.25) {
+          const ang = Math.random() * 6.28, rad = 85 + Math.random() * 210;
           const nx = px + Math.cos(ang) * rad, nz = pz + Math.sin(ang) * rad;
-          const inZCity = KK.ZOLOTOY_CITY && Math.abs(nx - KK.ZOLOTOY_CITY.cx) < (KK.ZOLOTOY_CITY.halfSpan + 40) && Math.abs(nz - KK.ZOLOTOY_CITY.cz) < (KK.ZOLOTOY_CITY.halfSpan + 40);
+          const inZCity = !!(zc && Math.abs(nx - zc.cx) < zLim && Math.abs(nz - zc.cz) < zLim);
           if (!inZCity && (this.world.getBiomeWeights(nx, nz)[biomeKey] || 0) > 0.28 && (!this.world.isDryInland || this.world.isDryInland(nx, nz, 5.5, 5.0))) {
             a.gx = nx; a.gz = nz; a.state = "wander";
           } else { a.mesh.visible = false; continue; }
@@ -552,7 +555,7 @@ KK.EntityManager = class EntityManager {
         else if (a.timer <= 0) { a.state = Math.random() < 0.4 ? "graze" : "wander"; a.yaw += (Math.random() - 0.5) * 2.0; a.timer = 2.5 + Math.random() * 5; }
         const spd = a.state === "flee" ? fleeSpd : (a.state === "wander" ? walkSpd : 0);
         if (spd > 0) {
-          const anx = a.gx + Math.sin(a.yaw) * spd * dt, anz = a.gz + Math.cos(a.yaw) * spd * dt; if (!this.world.isDryInland || this.world.isDryInland(anx, anz, 5.0, 4.0)) { a.gx = anx; a.gz = anz; } else { a.yaw += Math.PI * 0.75; }
+          const anx = a.gx + Math.sin(a.yaw) * spd * dt, anz = a.gz + Math.cos(a.yaw) * spd * dt; const stepInZCity = !!(zc && Math.abs(anx - zc.cx) < zLim && Math.abs(anz - zc.cz) < zLim); if (!stepInZCity && (!this.world.isDryInland || this.world.isDryInland(anx, anz, 5.0, 4.0))) { a.gx = anx; a.gz = anz; } else { a.yaw += Math.PI * 0.75; }
           a.phase += dt * (a.state === "flee" ? 12 : 5);
           const sw = Math.sin(a.phase) * 0.55;
           a.legs[0].rotation.x = sw; a.legs[1].rotation.x = -sw; a.legs[2].rotation.x = -sw; a.legs[3].rotation.x = sw;
