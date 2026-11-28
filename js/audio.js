@@ -1573,30 +1573,162 @@ KK.AudioEngine = class AudioEngine {
     nsrc.start(t); nsrc.stop(t + 1.18);
   }
 
-  // v18.1 COLOSSAL 68m MECHA HYDRAULIC METALLIC FOOTSTEP BOOM!
+  // v18.1.3 COLOSSAL 68m MECHA FOOTSTEP BOOM + HYDRAULIC CLANK + PNEUMATIC SHOCK HISS!
   playMechaFootstep(prox = 0.5) {
     if (!this.ctx || !this.master || this.muted || prox <= 0.02) return;
     const out = this.weaponBus || this.master;
     const now = this.ctx.currentTime;
-    const v = Math.min(1.1, 0.45 + prox * 0.65);
+    const v = Math.min(1.15, 0.45 + prox * 0.70);
+
+    // 1. Seismic sub-bass ground stomp
     const sub = this.ctx.createOscillator(); sub.type = "sine";
-    sub.frequency.setValueAtTime(68, now); sub.frequency.exponentialRampToValueAtTime(19, now + 0.62);
+    sub.frequency.setValueAtTime(64, now); sub.frequency.exponentialRampToValueAtTime(16, now + 0.68);
     const sg = this.ctx.createGain();
-    sg.gain.setValueAtTime(v * 0.85, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
-    sub.connect(sg); sg.connect(out); sub.start(now); sub.stop(now + 0.70);
+    sg.gain.setValueAtTime(v * 0.92, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.74);
+    sub.connect(sg); sg.connect(out); sub.start(now); sub.stop(now + 0.76);
 
-    const clank = this.ctx.createOscillator(); clank.type = "triangle";
-    clank.frequency.setValueAtTime(210, now); clank.frequency.exponentialRampToValueAtTime(84, now + 0.28);
-    const cg = this.ctx.createGain();
-    cg.gain.setValueAtTime(v * 0.34, now); cg.gain.exponentialRampToValueAtTime(0.001, now + 0.30);
-    clank.connect(cg); cg.connect(out); clank.start(now); clank.stop(now + 0.32);
+    // 2. Heavy steel armor-plate & joint-lock resonance clang
+    for (const [f0, f1, amp] of [[225, 82, 0.36], [395, 195, 0.16]]) {
+      const cl = this.ctx.createOscillator(); cl.type = "triangle";
+      cl.frequency.setValueAtTime(f0, now); cl.frequency.exponentialRampToValueAtTime(f1, now + 0.30);
+      const cg = this.ctx.createGain();
+      cg.gain.setValueAtTime(v * amp, now); cg.gain.exponentialRampToValueAtTime(0.001, now + 0.33);
+      cl.connect(cg); cg.connect(out); cl.start(now); cl.stop(now + 0.35);
+    }
 
-    const nBuf = this._noiseBuffer(0.42);
+    // 3. Gravel & ground impact rumble
+    const nBuf = this._noiseBuffer(0.45);
     const nSrc = this.ctx.createBufferSource(); nSrc.buffer = nBuf;
-    const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 320;
+    const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 340;
     const ng = this.ctx.createGain();
-    ng.gain.setValueAtTime(v * 0.55, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
+    ng.gain.setValueAtTime(v * 0.58, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
     nSrc.connect(lp); lp.connect(ng); ng.connect(out); nSrc.start(now);
+
+    // 4. Pneumatic hydraulic shock-absorber release hiss ("psssshh!")
+    const hBuf = this._noiseBuffer(0.55);
+    const hSrc = this.ctx.createBufferSource(); hSrc.buffer = hBuf;
+    const hBp = this.ctx.createBiquadFilter(); hBp.type = "bandpass";
+    hBp.frequency.setValueAtTime(1720, now + 0.08);
+    hBp.frequency.exponentialRampToValueAtTime(520, now + 0.60);
+    hBp.Q.value = 1.8;
+    const hg = this.ctx.createGain();
+    hg.gain.setValueAtTime(0.001, now + 0.06);
+    hg.gain.linearRampToValueAtTime(v * 0.24, now + 0.14);
+    hg.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+    hSrc.connect(hBp); hBp.connect(hg); hg.connect(this.master);
+    hSrc.start(now + 0.06);
+  }
+
+  // v18.1.3 CONTINUOUS PROXIMITY MECHA AUDIO (Reactor Hum, Stride-Coupled Hydraulic Servo Whirring, Gear Whine & Dormant Steel Groans!)
+  _ensureMechaNodes() {
+    if (this._mechaNodesReady || !this.ctx || !this.master) return;
+    this._mechaNodesReady = true;
+
+    // 1. Deep Nuclear/Diesel-Electric Reactor Hum
+    this._mechaHumOsc1 = this.ctx.createOscillator(); this._mechaHumOsc1.type = "sine"; this._mechaHumOsc1.frequency.value = 44;
+    this._mechaHumOsc2 = this.ctx.createOscillator(); this._mechaHumOsc2.type = "triangle"; this._mechaHumOsc2.frequency.value = 88;
+    this._mechaHumLP = this.ctx.createBiquadFilter(); this._mechaHumLP.type = "lowpass"; this._mechaHumLP.frequency.value = 175;
+    this._mechaHumGain = this.ctx.createGain(); this._mechaHumGain.gain.value = 0.0;
+    this._mechaHumOsc1.connect(this._mechaHumLP);
+    this._mechaHumOsc2.connect(this._mechaHumLP);
+    this._mechaHumLP.connect(this._mechaHumGain);
+    this._mechaHumGain.connect(this.master);
+    this._mechaHumOsc1.start(); this._mechaHumOsc2.start();
+
+    // 2. Heavy Hydraulic & Electric Servo Whirring (dual detuned oscillators through sweeping bandpass!)
+    this._mechaServoOsc1 = this.ctx.createOscillator(); this._mechaServoOsc1.type = "sawtooth"; this._mechaServoOsc1.frequency.value = 170;
+    this._mechaServoOsc2 = this.ctx.createOscillator(); this._mechaServoOsc2.type = "triangle"; this._mechaServoOsc2.frequency.value = 344;
+    this._mechaServoBP = this.ctx.createBiquadFilter(); this._mechaServoBP.type = "bandpass"; this._mechaServoBP.frequency.value = 540; this._mechaServoBP.Q.value = 2.6;
+    this._mechaServoGain = this.ctx.createGain(); this._mechaServoGain.gain.value = 0.0;
+    this._mechaServoOsc1.connect(this._mechaServoBP);
+    this._mechaServoOsc2.connect(this._mechaServoBP);
+    this._mechaServoBP.connect(this._mechaServoGain);
+    this._mechaServoGain.connect(this.master);
+    this._mechaServoOsc1.start(); this._mechaServoOsc2.start();
+
+    // 3. Precision Metallic Gear-Tooth Whine Harmonic
+    this._mechaGearOsc = this.ctx.createOscillator(); this._mechaGearOsc.type = "sine"; this._mechaGearOsc.frequency.value = 620;
+    this._mechaGearGain = this.ctx.createGain(); this._mechaGearGain.gain.value = 0.0;
+    this._mechaGearOsc.connect(this._mechaGearGain);
+    this._mechaGearGain.connect(this.master);
+    this._mechaGearOsc.start();
+  }
+
+  updateMechaAmbience(dt, activeProx = 0, strideEffort = 0, isEngaging = false, dormantProx = 0) {
+    if (!this.ctx || !this.master) return;
+    const now = this.ctx.currentTime;
+    if (this.muted || (activeProx <= 0.01 && dormantProx <= 0.01)) {
+      if (this._mechaNodesReady) {
+        this._mechaHumGain.gain.setTargetAtTime(0.0, now, 0.18);
+        this._mechaServoGain.gain.setTargetAtTime(0.0, now, 0.14);
+        this._mechaGearGain.gain.setTargetAtTime(0.0, now, 0.14);
+      }
+      return;
+    }
+
+    if (activeProx > 0.01) {
+      this._ensureMechaNodes();
+      const p = Math.max(0, Math.min(1, activeProx));
+      const load = Math.max(0, Math.min(1, strideEffort)) + (isEngaging ? 0.35 : 0);
+      this._mechaAmbPhase = (this._mechaAmbPhase || 0) + dt;
+      const pulse = 0.88 + 0.12 * Math.sin(this._mechaAmbPhase * 5.2);
+
+      // Reactor hum swells smoothly with proximity
+      this._mechaHumOsc1.frequency.setTargetAtTime(42 + load * 6, now, 0.12);
+      this._mechaHumOsc2.frequency.setTargetAtTime(84 + load * 12, now, 0.12);
+      this._mechaHumGain.gain.setTargetAtTime(0.24 * p * pulse, now, 0.12);
+
+      // Heavy hydraulic servo whir rises & falls in lockstep with each 68m leg lift & knee swing!
+      const servoHz = 148 + load * 135;
+      this._mechaServoOsc1.frequency.setTargetAtTime(servoHz, now, 0.08);
+      this._mechaServoOsc2.frequency.setTargetAtTime(servoHz * 2.02, now, 0.08);
+      this._mechaServoBP.frequency.setTargetAtTime(420 + load * 520, now, 0.08);
+      this._mechaServoGain.gain.setTargetAtTime((0.055 + load * 0.135) * p, now, 0.09);
+
+      // High-precision steel gear-tooth whine during leg load or combat torso slewing
+      this._mechaGearOsc.frequency.setTargetAtTime(560 + load * 310 + Math.sin(this._mechaAmbPhase * 8.5) * 18, now, 0.08);
+      this._mechaGearGain.gain.setTargetAtTime((0.015 + load * 0.036) * p, now, 0.09);
+
+      // Periodic pneumatic valve hiss & mechanical relay clunk when standing close!
+      this._mechaValveCd = (this._mechaValveCd || 2.4) - dt;
+      if (this._mechaValveCd <= 0 && p > 0.25) {
+        this._mechaValveCd = 2.6 + Math.random() * 2.8;
+        const vBuf = this._noiseBuffer(0.32);
+        const vSrc = this.ctx.createBufferSource(); vSrc.buffer = vBuf;
+        const vBp = this.ctx.createBiquadFilter(); vBp.type = "bandpass";
+        vBp.frequency.setValueAtTime(1950, now); vBp.frequency.exponentialRampToValueAtTime(780, now + 0.28);
+        vBp.Q.value = 3.2;
+        const vg = this.ctx.createGain();
+        vg.gain.setValueAtTime(0.001, now);
+        vg.gain.linearRampToValueAtTime(0.11 * p, now + 0.04);
+        vg.gain.exponentialRampToValueAtTime(0.001, now + 0.30);
+        vSrc.connect(vBp); vBp.connect(vg); vg.connect(this.master);
+        vSrc.start(now);
+      }
+    } else if (this._mechaNodesReady) {
+      this._mechaHumGain.gain.setTargetAtTime(0.0, now, 0.18);
+      this._mechaServoGain.gain.setTargetAtTime(0.0, now, 0.14);
+      this._mechaGearGain.gain.setTargetAtTime(0.0, now, 0.14);
+    }
+
+    // Eerie hollow-steel creaking monument groan when standing underneath dormant EINHEIT-01 or EINHEIT-02!
+    if (dormantProx > 0.15) {
+      this._dormantGroanCd = (this._dormantGroanCd || 3.5) - dt;
+      if (this._dormantGroanCd <= 0) {
+        this._dormantGroanCd = 5.5 + Math.random() * 6.0;
+        const gOsc = this.ctx.createOscillator(); gOsc.type = "sawtooth";
+        const fStart = 68 + Math.random() * 28;
+        gOsc.frequency.setValueAtTime(fStart, now);
+        gOsc.frequency.exponentialRampToValueAtTime(fStart * 0.72, now + 1.85);
+        const gBp = this.ctx.createBiquadFilter(); gBp.type = "bandpass"; gBp.frequency.value = 210; gBp.Q.value = 5.5;
+        const gg = this.ctx.createGain();
+        gg.gain.setValueAtTime(0.001, now);
+        gg.gain.linearRampToValueAtTime(0.095 * dormantProx, now + 0.45);
+        gg.gain.exponentialRampToValueAtTime(0.001, now + 1.90);
+        gOsc.connect(gBp); gBp.connect(gg); gg.connect(this.master);
+        gOsc.start(now); gOsc.stop(now + 1.95);
+      }
+    }
   }
 
   // v18.1 ZOLOTOY METROPOLIS URBAN AMBIENCE (Muffled Disco Beat, Crowd Chatter & City Horns!)
