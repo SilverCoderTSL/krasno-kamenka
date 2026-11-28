@@ -48,6 +48,62 @@ KK.CockpitBuilder = {
     harimau:       { arch: "military", rhd: false, beltY: 1.48, roofY: 1.94, seatZ:  2.10, yFloor: 0.96, cabW: 1.72, windZ: 2.85, windY: 1.62, windTilt: -0.22, special: "t72_periscope" }
   },
 
+  // v18.3 PER-VEHICLE MULTI-SEAT PASSENGER LAYOUT (Supports 1–12+ visual passenger avatars, e.g. Toyota Coaster!)
+  getPassengerSeats(vehicleId) {
+    const cfg = this.getConfig(vehicleId);
+    const zC = cfg.seatZ, yF = cfg.yFloor, w = cfg.cabW;
+    const drvX = (cfg.special === "t72_periscope") ? 0 : ((cfg.rhd ? -1 : 1) * (w * 0.25));
+    const pasX = -drvX;
+    const seats = [];
+
+    if (vehicleId === "toyota_coaster") {
+      // 12-seat bus layout: front shotgun + 5 double-aisle rows down the bus cabin!
+      seats.push({ x: pasX, y: yF + 0.09, z: zC - 0.06 });
+      for (let r = 0; r < 5; r++) {
+        const rz = zC - 1.10 - r * 0.92;
+        seats.push({ x: -w * 0.29, y: yF + 0.09, z: rz });
+        seats.push({ x:  w * 0.29, y: yF + 0.09, z: rz });
+      }
+      seats.push({ x: 0, y: yF + 0.09, z: zC - 5.65 });
+      return seats;
+    }
+    if (vehicleId === "uaz452" || vehicleId === "delica") {
+      // 6-seat van layout: front shotgun + 2 middle + 3 rear bench
+      seats.push({ x: pasX, y: yF + 0.09, z: zC - 0.06 });
+      seats.push({ x: -w * 0.27, y: yF + 0.09, z: zC - 1.05 });
+      seats.push({ x:  w * 0.27, y: yF + 0.09, z: zC - 1.05 });
+      seats.push({ x: -w * 0.30, y: yF + 0.09, z: zC - 2.02 });
+      seats.push({ x:  0,        y: yF + 0.09, z: zC - 2.02 });
+      seats.push({ x:  w * 0.30, y: yF + 0.09, z: zC - 2.02 });
+      return seats;
+    }
+    if (vehicleId === "btr80" || vehicleId === "komodo_std" || vehicleId === "komodo_recon" || vehicleId === "komodo_turret" || vehicleId === "humvee" || vehicleId === "mega_cruiser") {
+      // 5-seat armored troop / tactical layout
+      seats.push({ x: pasX, y: yF + 0.09, z: zC - 0.06 });
+      seats.push({ x: -w * 0.28, y: yF + 0.09, z: zC - 0.96 });
+      seats.push({ x:  w * 0.28, y: yF + 0.09, z: zC - 0.96 });
+      seats.push({ x: -w * 0.28, y: yF + 0.09, z: zC - 1.80 });
+      seats.push({ x:  w * 0.28, y: yF + 0.09, z: zC - 1.80 });
+      return seats;
+    }
+    if (cfg.special === "t72_periscope") {
+      // Tank commander/loader crew spots
+      seats.push({ x: 0.45, y: yF + 0.48, z: zC - 0.95 });
+      seats.push({ x: -0.45, y: yF + 0.48, z: zC - 0.95 });
+      return seats;
+    }
+    if (vehicleId === "porsche_dakar" || vehicleId === "lc79" || vehicleId === "kamaz" || vehicleId === "maz537" || vehicleId === "bm21" || vehicleId === "lambo_tractor") {
+      // Classic 2-seat cab (1 passenger seat)
+      seats.push({ x: pasX, y: yF + 0.09, z: zC - 0.06 });
+      return seats;
+    }
+    // Standard 4-seat cars & SUVs (shotgun + rear left + rear right)
+    seats.push({ x: pasX, y: yF + 0.09, z: zC - 0.06 });
+    seats.push({ x: -w * 0.26, y: yF + 0.09, z: zC - 0.88 });
+    seats.push({ x:  w * 0.26, y: yF + 0.09, z: zC - 0.88 });
+    return seats;
+  },
+
   getConfig(vehicleId) {
     return this.CONFIGS[vehicleId] || this.CONFIGS.uaz452;
   },
@@ -780,24 +836,31 @@ KK.CockpitBuilder = {
       arm.position.set(ax, 0.36, 0.24); arm.rotation.x = -0.18; driverGroup.add(arm);
     }
     cockpitGrp.add(driverGroup);
-    // v17.4 SOLID SEATED CO-OP PASSENGER AVATAR (Grounded on seat cushion w/ thighs, calves & arms — no floating ghost!)
-    const passengerGroup = new THREE.Group();
-    passengerGroup.position.set(pasX, yF + 0.09, zC - 0.06);
-    const matPasJkt   = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.86 });
+    // v18.3 MULTI-SEAT SOLID SEATED PASSENGER AVATARS (Fits every seat in the car/van/bus — up to 12 in Toyota Coaster!)
+    const seatDefs = this.getPassengerSeats(vehicleId);
+    const jacketPalette = [0xd97706, 0x2563eb, 0x16a34a, 0xdc2626, 0x9333ea, 0x0891b2, 0xea580c, 0x4f46e5, 0x059669, 0xbe123c, 0xca8a04, 0x0284c7];
     const matPasPants = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.90 });
-    const pTorso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.46, 0.22), matPasJkt); pTorso.position.y = 0.23; passengerGroup.add(pTorso);
-    const pHead  = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), matHead); pHead.position.set(0, 0.59, 0.02); passengerGroup.add(pHead);
-    const pCap   = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.09, 0.25), matCap); pCap.position.set(0, 0.71, 0.04); passengerGroup.add(pCap);
-    for (const sx of [-0.11, 0.11]) {
-      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.13, 0.34), matPasPants);
-      thigh.position.set(sx, 0.06, 0.18); passengerGroup.add(thigh);
-      const calf = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.30, 0.13), matPasPants);
-      calf.position.set(sx, -0.09, 0.32); passengerGroup.add(calf);
-      const pArm = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.32), matPasJkt);
-      pArm.position.set(sx * 1.85, 0.26, 0.14); pArm.rotation.x = 0.28; passengerGroup.add(pArm);
+    const passengerGroups = [];
+    for (let si = 0; si < seatDefs.length; si++) {
+      const sd = seatDefs[si];
+      const pg = new THREE.Group();
+      pg.position.set(sd.x, sd.y, sd.z);
+      const matPasJkt = new THREE.MeshStandardMaterial({ color: jacketPalette[si % jacketPalette.length], roughness: 0.86 });
+      const pTorso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.46, 0.22), matPasJkt); pTorso.position.y = 0.23; pg.add(pTorso);
+      const pHead  = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), matHead); pHead.position.set(0, 0.59, 0.02); pg.add(pHead);
+      const pCap   = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.09, 0.25), matCap); pCap.position.set(0, 0.71, 0.04); pg.add(pCap);
+      for (const sx of [-0.11, 0.11]) {
+        const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.13, 0.34), matPasPants);
+        thigh.position.set(sx, 0.06, 0.18); pg.add(thigh);
+        const calf = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.30, 0.13), matPasPants);
+        calf.position.set(sx, -0.09, 0.32); pg.add(calf);
+        const pArm = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.32), matPasJkt);
+        pArm.position.set(sx * 1.85, 0.26, 0.14); pArm.rotation.x = 0.28; pg.add(pArm);
+      }
+      pg.visible = false;
+      cockpitGrp.add(pg);
+      passengerGroups.push(pg);
     }
-    passengerGroup.visible = false;
-    cockpitGrp.add(passengerGroup);
 
     // 3D ANIMATED WINDSHIELD WIPERS
     const wiperGroup = new THREE.Group();
@@ -831,7 +894,10 @@ KK.CockpitBuilder = {
           shifterPivot.rotation.x += (targetPitch - shifterPivot.rotation.x) * sAlpha;
           shifterPivot.rotation.z += (targetRoll  - shifterPivot.rotation.z) * sAlpha;
         }
-        passengerGroup.visible = !!state.hasPassenger;
+        const pCount = (typeof state.passengerCount === "number") ? state.passengerCount : (state.hasPassenger ? 1 : 0);
+        for (let pi = 0; pi < passengerGroups.length; pi++) {
+          passengerGroups[pi].visible = (pi < pCount);
+        }
         if (KK.CockpitBuilder && KK.CockpitBuilder._matFormGlass && typeof state.glassHp === "number") {
           const wantCrack = state.glassHp < 55;
           const mFG = KK.CockpitBuilder._matFormGlass;

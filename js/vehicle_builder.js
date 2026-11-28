@@ -4683,17 +4683,36 @@ KK.VehicleBuilder = {
       const ringX = new THREE.Mesh(new THREE.TorusGeometry(ringRad, 0.085, 8, 22), ringMat);
       ringX.rotation.x = Math.PI / 2; ringX.position.set(0, ringY, ringZ); ringX.renderOrder = 12; xrayGroup.add(ringX);
 
+      // v18.3 EXACT PIXEL-MATCHED SECONDARY AUTOCANNON / MG X-RAY ALIGNMENT!
       const modTurX = new THREE.Group();
-      modTurX.position.set(0, ringY, ringZ);
+      if (tankTurretPivot) {
+        modTurX.position.copy(tankTurretPivot.position);
+      } else if (btrTurretPivot) {
+        modTurX.position.copy(btrTurretPivot.position);
+      } else {
+        modTurX.position.set(0, ringY, ringZ);
+      }
       xrayGroup.add(modTurX);
 
       const lwsX = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.30), lwsMat);
-      lwsX.position.set(-0.56, 0.95, 0.22); lwsX.renderOrder = 12; modTurX.add(lwsX);
+      lwsX.position.set(spec.isSchreckensfurst ? -0.68 : -0.56, spec.isSchreckensfurst ? 1.44 : 0.95, spec.isSchreckensfurst ? 0.15 : 0.22);
+      lwsX.renderOrder = 12; modTurX.add(lwsX);
 
       const secPivotX = new THREE.Group();
-      secPivotX.position.set(spec.isSchreckensfurst ? 0.62 : 0.45, 0.98, 0.18);
-      const secBarX = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.055, spec.isSchreckensfurst ? 2.25 : 1.35, 8), secMat);
-      secBarX.rotation.x = Math.PI / 2; secBarX.position.set(0, 0, spec.isSchreckensfurst ? 1.12 : 0.68);
+      if (p140RwsPivot && p140RwsGunPitch) {
+        secPivotX.position.set(
+          p140RwsPivot.position.x + p140RwsGunPitch.position.x,
+          p140RwsPivot.position.y + p140RwsGunPitch.position.y,
+          p140RwsPivot.position.z + p140RwsGunPitch.position.z
+        );
+      } else if (btrGunGroup) {
+        secPivotX.position.copy(btrGunGroup.position);
+      } else {
+        secPivotX.position.set(spec.isSchreckensfurst ? 0.62 : 0.45, 1.32, 0.18);
+      }
+      const secLen = spec.isSchreckensfurst ? 2.45 : (spec.id === "komodo_turret" ? 2.15 : 1.48);
+      const secBarX = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.058, secLen, 8), secMat);
+      secBarX.rotation.x = Math.PI / 2; secBarX.position.set(0, 0, secLen * 0.5 + 0.12);
       secBarX.renderOrder = 12; secPivotX.add(secBarX); modTurX.add(secPivotX);
 
       let lightAmmoBoxX = null;

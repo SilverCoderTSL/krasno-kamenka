@@ -3,8 +3,8 @@
 // 9 Cars, 11 Distinct-Sound Engines, 5 Brands, 7 Landmarks & Cryptid Zones
 // ============================================================================
 window.KK = window.KK || {};
-KK.VERSION = "v18.2";
-KK.VERSION_FULL = "v18.2 ONLINE";
+KK.VERSION = "v18.3";
+KK.VERSION_FULL = "v18.3 ONLINE";
 
 KK.WORLD_SIZE = 200000;
 KK.HALF_WORLD = 100000;
@@ -155,7 +155,7 @@ KK.TOWNS = [
   { id: 19, name: "Savanna Marina Port", survivability: "HIGH", survScore: 92, survColor: "#ffd166", survNote: "Modern waterfront suburb & deep-water container port", biome: "savanna", x: -64800, z: 67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Sleek coastal marina suburb with paved boat ramps and highway access to Zolotoy City." },
   { id: 20, name: "Poligon-9 Gunnery Range", survivability: "LOW", survScore: 34, survColor: "#8ecae6", survNote: "Frozen tank proving ground • Target hulks & heavy ice runway", biome: "arctic", x: -65200, z: -67200, hasGarage: true, hasDock: true, isIsland: true, desc: "Wide open arctic weapons testing range with target tank hulks, concrete blast walls & ice runway." },
   { id: 21, name: "Kholodnyy Radar Peak", survivability: "EXTREME", survScore: 22, survColor: "#ff3b5c", survNote: "Bitter high-altitude whiteout station • Severe cold soak", biome: "arctic", x: -74600, z: -74800, hasGarage: true, hasDock: true, isIsland: true, desc: "Frozen summit radar station. Keep your engine running — sub-zero winds rapidly chill coolant!" },
-  // v18.2 OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
+  // v18.3 OSTROV TROPIKA EXPANSION — 4 Additional Dense Indonesian Villages (7 Total!)
   { id: 22, name: "Kampung Nelayan (West Coast)", survivability: "MODERATE", survScore: 66, survColor: "#2de08b", survNote: "Crowded stilt fishing village • Flooded rutted dirt lanes", biome: "tropical", x: 61800, z: 62600, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense coastal stilt village packed with wooden boats, warungs & mud-choked lanes." },
   { id: 23, name: "Desa Lereng Api (Volcano Ridge)", survivability: "LOW", survScore: 44, survColor: "#ff9f1c", survNote: "High mountain switchback village on Gunung Api's slope", biome: "tropical", x: 73400, z: 57200, hasGarage: true, hasDock: true, isIsland: true, desc: "Steep terraced clove-farm village clinging to Gunung Api's winding volcanic hairpins." },
   { id: 24, name: "Bukit Bambu (Bamboo Pass)", survivability: "MODERATE", survScore: 58, survColor: "#ffd166", survNote: "Misty bamboo-forest highland pass • Broken washboard tracks", biome: "tropical", x: 75800, z: 64200, hasGarage: true, hasDock: true, isIsland: true, desc: "Dense bamboo-grove crossroads linking the volcanic summit road to the southern lake." },
@@ -168,7 +168,7 @@ KK.ROAD_LINKS = [
   [3, 4], [3, 8], [4, 6], [4, 7],
   [5, 6], [6, 7],
   [0, 9], [2, 9], [5, 9],
-  // v18.2 Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
+  // v18.3 Ostrov Tropika: 7-Village Mountain Switchback Ring + Volcano Highland Climb!
   [10, 22], [22, 15], [15, 25], [25, 16], [16, 24], [24, 23], [23, 10], [15, 23], [15, 24],
   // Zolotoy Savanna (Modernized Pristine Highway Network!)
   [11, 17], [11, 18], [11, 19], [17, 19], [18, 19],
@@ -311,20 +311,20 @@ KK.RIVERS = [
   { name: "Rzhavsk Flood Basin", x: -8400, z: 10200, rx: 320, rz: 90, yaw: -0.6, depth: 1.65 },
   { name: "Black Timber Swamp", x: 18500, z: 3200, rx: 280, rz: 120, yaw: 0.2, depth: 1.35 },
   { name: "Volchya River", x: 33000, z: -9000, rx: 360, rz: 95, yaw: 1.1, depth: 1.8 },
-  // v18.2 Zolotoy Savanna Scenic Oasis Lakes
+  // v18.3 Zolotoy Savanna Scenic Oasis Lakes
   { name: "Lake Zolotoye",           x: -65400, z: 56800, rx: 340, rz: 220, yaw:  0.35, depth: 2.3, isSavannaLake: true },
   { name: "Mirage Salt Basin",       x: -73800, z: 63600, rx: 380, rz: 250, yaw: -0.45, depth: 2.5, isSavannaLake: true },
   { name: "Savanna Flamingo Lagoon", x: -63600, z: 67800, rx: 290, rz: 210, yaw:  0.75, depth: 2.1, isSavannaLake: true }
 ];
 
-// v18.2 Zolotoy Savanna Large Animated & Collidable Oil Refineries
+// v18.3 Zolotoy Savanna Large Animated & Collidable Oil Refineries
 KK.SAVANNA_REFINERIES = [
   { id: "ref_east",  name: "Zolotoy East Petrochem Refinery", x: -61400, z: 56200, yaw:  0.22, radius: 135 },
   { id: "ref_west",  name: "Steppe Heavy Cracking Refinery",  x: -75800, z: 58800, yaw: -0.58, radius: 135 },
   { id: "ref_south", name: "South Savanna Crude Terminal",    x: -70600, z: 67800, yaw:  1.15, radius: 135 }
 ];
 
-// v18.2 Ostrov Tropika Terraced Indonesian Rice Paddyfields (Sawah)
+// v18.3 Ostrov Tropika Terraced Indonesian Rice Paddyfields (Sawah)
 KK.TROPIKA_PADDYFIELDS = [
   { id: "sawah_nw",   name: "Sawah Lembah Palma",  x: 65800, z: 59400, yaw:  0.30, tiers: 5, width: 150, depth: 120 },
   { id: "sawah_mid",  name: "Sawah Desa Kabut",    x: 71800, z: 60800, yaw: -0.42, tiers: 5, width: 165, depth: 130 },

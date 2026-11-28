@@ -1573,50 +1573,157 @@ KK.AudioEngine = class AudioEngine {
     nsrc.start(t); nsrc.stop(t + 1.18);
   }
 
-  // v18.1.3 COLOSSAL 68m MECHA FOOTSTEP BOOM + HYDRAULIC CLANK + PNEUMATIC SHOCK HISS!
-  playMechaFootstep(prox = 0.5) {
+  // v18.3 COLOSSAL 68m MECHA EARTHQUAKE FOOTSTEP BOOM + DOUBLE STEEL THUD + HYDRAULIC HISS!
+  playMechaFootstep(prox = 0.5, isSprinting = false) {
     if (!this.ctx || !this.master || this.muted || prox <= 0.02) return;
     const out = this.weaponBus || this.master;
     const now = this.ctx.currentTime;
-    const v = Math.min(1.15, 0.45 + prox * 0.70);
+    const v = Math.min(1.65, (0.72 + prox * 0.95) * (isSprinting ? 1.18 : 1.0));
 
-    // 1. Seismic sub-bass ground stomp
-    const sub = this.ctx.createOscillator(); sub.type = "sine";
-    sub.frequency.setValueAtTime(64, now); sub.frequency.exponentialRampToValueAtTime(16, now + 0.68);
-    const sg = this.ctx.createGain();
-    sg.gain.setValueAtTime(v * 0.92, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.74);
-    sub.connect(sg); sg.connect(out); sub.start(now); sub.stop(now + 0.76);
+    // 1. Massive chest-shaking seismic sub-bass shockwave (54 Hz -> 14 Hz over 1.25s!)
+    const sub1 = this.ctx.createOscillator(); sub1.type = "sine";
+    sub1.frequency.setValueAtTime(56, now); sub1.frequency.exponentialRampToValueAtTime(14, now + 1.15);
+    const sg1 = this.ctx.createGain();
+    sg1.gain.setValueAtTime(0.001, now);
+    sg1.gain.linearRampToValueAtTime(v * 1.42, now + 0.018);
+    sg1.gain.exponentialRampToValueAtTime(0.001, now + 1.25);
+    sub1.connect(sg1); sg1.connect(out); sub1.start(now); sub1.stop(now + 1.30);
 
-    // 2. Heavy steel armor-plate & joint-lock resonance clang
-    for (const [f0, f1, amp] of [[225, 82, 0.36], [395, 195, 0.16]]) {
+    // 2. Second harmonic tectonic slam (96 Hz -> 22 Hz)
+    const sub2 = this.ctx.createOscillator(); sub2.type = "triangle";
+    sub2.frequency.setValueAtTime(98, now); sub2.frequency.exponentialRampToValueAtTime(22, now + 0.72);
+    const sg2 = this.ctx.createGain();
+    sg2.gain.setValueAtTime(v * 0.95, now); sg2.gain.exponentialRampToValueAtTime(0.001, now + 0.78);
+    sub2.connect(sg2); sg2.connect(out); sub2.start(now); sub2.stop(now + 0.82);
+
+    // 3. Colossal steel boot & ankle-lock heavy clank
+    for (const [f0, f1, amp] of [[210, 68, 0.52], [380, 165, 0.26]]) {
       const cl = this.ctx.createOscillator(); cl.type = "triangle";
-      cl.frequency.setValueAtTime(f0, now); cl.frequency.exponentialRampToValueAtTime(f1, now + 0.30);
+      cl.frequency.setValueAtTime(f0, now); cl.frequency.exponentialRampToValueAtTime(f1, now + 0.36);
       const cg = this.ctx.createGain();
-      cg.gain.setValueAtTime(v * amp, now); cg.gain.exponentialRampToValueAtTime(0.001, now + 0.33);
-      cl.connect(cg); cg.connect(out); cl.start(now); cl.stop(now + 0.35);
+      cg.gain.setValueAtTime(v * amp, now); cg.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
+      cl.connect(cg); cg.connect(out); cl.start(now); cl.stop(now + 0.42);
     }
 
-    // 3. Gravel & ground impact rumble
-    const nBuf = this._noiseBuffer(0.45);
+    // 4. Thunderous earth-shattering shock-roar & rolling dust wave
+    const nBuf = this._noiseBuffer(0.92);
     const nSrc = this.ctx.createBufferSource(); nSrc.buffer = nBuf;
-    const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 340;
+    const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass";
+    lp.frequency.setValueAtTime(480, now); lp.frequency.exponentialRampToValueAtTime(68, now + 0.85);
     const ng = this.ctx.createGain();
-    ng.gain.setValueAtTime(v * 0.58, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+    ng.gain.setValueAtTime(v * 0.98, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.88);
     nSrc.connect(lp); lp.connect(ng); ng.connect(out); nSrc.start(now);
 
-    // 4. Pneumatic hydraulic shock-absorber release hiss ("psssshh!")
-    const hBuf = this._noiseBuffer(0.55);
+    // 5. Pneumatic shock-absorber release hiss
+    const hBuf = this._noiseBuffer(0.58);
     const hSrc = this.ctx.createBufferSource(); hSrc.buffer = hBuf;
     const hBp = this.ctx.createBiquadFilter(); hBp.type = "bandpass";
-    hBp.frequency.setValueAtTime(1720, now + 0.08);
-    hBp.frequency.exponentialRampToValueAtTime(520, now + 0.60);
-    hBp.Q.value = 1.8;
+    hBp.frequency.setValueAtTime(1650, now + 0.10);
+    hBp.frequency.exponentialRampToValueAtTime(460, now + 0.64);
+    hBp.Q.value = 1.6;
     const hg = this.ctx.createGain();
-    hg.gain.setValueAtTime(0.001, now + 0.06);
-    hg.gain.linearRampToValueAtTime(v * 0.24, now + 0.14);
-    hg.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+    hg.gain.setValueAtTime(0.001, now + 0.08);
+    hg.gain.linearRampToValueAtTime(v * 0.28, now + 0.16);
+    hg.gain.exponentialRampToValueAtTime(0.001, now + 0.66);
     hSrc.connect(hBp); hBp.connect(hg); hg.connect(this.master);
-    hSrc.start(now + 0.06);
+    hSrc.start(now + 0.08);
+  }
+
+  // v18.3 HEAVY RESONANT HOLLOW-STEEL THUMP (When ramming or shooting a 68m Mecha!)
+  playMechaMetalThump(strength = 0.8) {
+    if (!this.ctx || !this.master || this.muted) return;
+    const out = this.weaponBus || this.master;
+    const now = this.ctx.currentTime;
+    const v = Math.max(0.25, Math.min(1.35, strength));
+    // Deep metallic bell-plate thump + dissonant thick armor harmonics
+    for (const [f0, f1, dur, amp, tp] of [
+      [115, 58, 0.72, 0.85, "triangle"],
+      [242, 188, 0.56, 0.44, "sawtooth"],
+      [418, 355, 0.42, 0.22, "sine"]
+    ]) {
+      const osc = this.ctx.createOscillator(); osc.type = tp;
+      osc.frequency.setValueAtTime(f0, now);
+      osc.frequency.exponentialRampToValueAtTime(f1, now + dur);
+      const lp = this.ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 950;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(v * amp, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.04);
+      osc.connect(lp); lp.connect(g); g.connect(out);
+      osc.start(now); osc.stop(now + dur + 0.06);
+    }
+    const nBuf = this._noiseBuffer(0.22);
+    const nSrc = this.ctx.createBufferSource(); nSrc.buffer = nBuf;
+    const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 640; bp.Q.value = 1.4;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(v * 0.62, now); ng.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+    nSrc.connect(bp); bp.connect(ng); ng.connect(out); nSrc.start(now);
+  }
+
+  // v18.3 EERIE COLOSSAL MECHA VICTORY HORN (Modeled on 140A4's A1/A2/E3/Bb3 horn, pitched cavernous & haunting!)
+  playMechaVictoryHorn(prox = 0.85) {
+    if (!this.ctx || !this.master || this.muted || prox <= 0.02) return;
+    const out = this.weaponBus || this.master;
+    const now = this.ctx.currentTime;
+    const dur = 4.6;
+    const v = Math.min(1.25, 0.42 + prox * 0.85);
+    // Exact 140A4 Schreckensfürst chord intervals (sub A, root A, detuned growl, fifth E, eerie dark Bb) lowered 20% for colossal 68m scale!
+    const voices = [
+      [44.0,  "sine",     0.95],
+      [88.0,  "sawtooth", 0.55],
+      [86.4,  "sawtooth", 0.52],
+      [131.8, "sawtooth", 0.36],
+      [186.5, "sawtooth", 0.28]
+    ];
+    const bell = this.ctx.createBiquadFilter(); bell.type = "lowpass";
+    bell.frequency.setValueAtTime(240, now);
+    bell.frequency.exponentialRampToValueAtTime(980, now + 0.65);
+    bell.frequency.setValueAtTime(920, now + dur - 1.1);
+    bell.frequency.exponentialRampToValueAtTime(180, now + dur);
+    bell.Q.value = 2.6;
+    const mg = this.ctx.createGain();
+    mg.gain.setValueAtTime(0.001, now);
+    mg.gain.linearRampToValueAtTime(v * 0.58, now + 0.45);
+    mg.gain.setValueAtTime(v * 0.54, now + dur - 1.2);
+    mg.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.15);
+    bell.connect(mg); mg.connect(out);
+
+    for (const [hz, type, amp] of voices) {
+      const osc = this.ctx.createOscillator(); osc.type = type;
+      osc.frequency.setValueAtTime(hz * 0.96, now);
+      osc.frequency.linearRampToValueAtTime(hz, now + 0.38);
+      osc.frequency.linearRampToValueAtTime(hz * 0.94, now + dur);
+      const vg = this.ctx.createGain(); vg.gain.value = amp;
+      osc.connect(vg); vg.connect(bell);
+      osc.start(now); osc.stop(now + dur + 0.2);
+    }
+  }
+
+  // v18.3 CARTOONISH PANCAKE SQUASH CRUNCH & 10-SECOND ELASTIC BOING REBOUND!
+  playSquashCrunch() {
+    if (!this.ctx || !this.master || this.muted) return;
+    const out = this.weaponBus || this.master;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator(); osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(360, now); osc.frequency.exponentialRampToValueAtTime(48, now + 0.35);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.68, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    osc.connect(g); g.connect(out); osc.start(now); osc.stop(now + 0.40);
+    this.playMechaMetalThump(1.0);
+  }
+
+  playBoingRebound() {
+    if (!this.ctx || !this.master || this.muted) return;
+    const out = this.weaponBus || this.master;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator(); osc.type = "triangle";
+    osc.frequency.setValueAtTime(125, now);
+    osc.frequency.exponentialRampToValueAtTime(520, now + 0.14);
+    osc.frequency.exponentialRampToValueAtTime(220, now + 0.28);
+    osc.frequency.exponentialRampToValueAtTime(420, now + 0.42);
+    osc.frequency.exponentialRampToValueAtTime(260, now + 0.56);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.55, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.60);
+    osc.connect(g); g.connect(out); osc.start(now); osc.stop(now + 0.62);
   }
 
   // v18.1.3 CONTINUOUS PROXIMITY MECHA AUDIO (Reactor Hum, Stride-Coupled Hydraulic Servo Whirring, Gear Whine & Dormant Steel Groans!)

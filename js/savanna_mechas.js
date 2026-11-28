@@ -808,6 +808,8 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     m1.id = "einheit_01";
     m1.dormantStyle = "kneel";
     m1.gx = -63200; m1.gz = 51600; m1.yaw = 0.52;
+    m1._footL = { x: m1.gx, y: 0, z: m1.gz };
+    m1._footR = { x: m1.gx, y: 0, z: m1.gz };
     this.mechas.push(m1);
 
     // 2. Deactivated Monumental Statue #2 ("EINHEIT-02"): POWERED-DOWN SLUMPED SHUTDOWN CROUCH!
@@ -815,9 +817,11 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     m2.id = "einheit_02";
     m2.dormantStyle = "slump";
     m2.gx = -77200; m2.gz = 64800; m2.yaw = -1.15;
+    m2._footL = { x: m2.gx, y: 0, z: m2.gz };
+    m2._footR = { x: m2.gx, y: 0, z: m2.gz };
     this.mechas.push(m2);
 
-    // 3. ACTIVE COASTAL PATROL COLOSSUS ("EINHEIT-03"): Roams Zolotoy Savanna's entire coastline!
+    // 3. ACTIVE COASTAL PATROL COLOSSUS ("EINHEIT-03"): Patrols coast & SPRINTS at 350 km/h to intercept monsters/Yamato!
     const m3 = this._buildSingleMecha(true);
     m3.id = "einheit_03";
     m3.isPatrol = true;
@@ -830,10 +834,14 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     m3.torsoYaw = 0;
     m3.podPitch = 0;
     m3._smoothRootY = null;
+    m3.mode = "patrol"; // patrol | sprint | engage | victory_horn | returning
+    m3.hornTimer = 0;
+    m3.activeThreatKind = null;
+    m3._footL = { x: m3.gx, y: 0, z: m3.gz, planted: true };
+    m3._footR = { x: m3.gx, y: 0, z: m3.gz, planted: true };
     this.mechas.push(m3);
   }
 
-  // Sample exact terrain height + surface slope pitch/roll in mecha local heading frame!
   _sampleGroundAndSlope(gx, gz, yaw, seaL) {
     const hC = Math.max(seaL + 0.3, this.world.getTerrainInfo(gx, gz, false).height);
     const step = 4.5;
@@ -847,8 +855,6 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     return { h: hC, pitch: slopePitch, roll: slopeRoll };
   }
 
-  // Analytical 2-Bone Leg IK (L1 = 2.56 thigh, L2 = 2.44 shin, sole = 0.48 below ankle!)
-  // Plants ankle at exact (targetZ, targetY) relative to hipPivot so feet NEVER float or clip!
   _solveLegIK(leg, targetZ, targetY, slopePitch, slopeRoll, groundWeight) {
     const L1 = 2.56, L2 = 2.44;
     let d = Math.hypot(targetZ, targetY);
@@ -873,12 +879,29 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     leg.ankle.rotation.z = slopeRoll * groundWeight;
   }
 
-  // Apply dramatic, grounded, museum-grade Dormant Statue poses (grounded cleanly onto real terrain!)
+  // Emit MASSIVE behemoth expanding shockwave dust cloud + dirt geyser per footstep!
+  _emitBehemothFootDust(fx, fy, fz, particles, isSprinting = false) {
+    if (!particles) return;
+    particles.emitCrashBurst(fx, fy + 1.2, fz, isSprinting ? 4.8 : 3.8, "rock", "clear");
+    const count = isSprinting ? 22 : 16;
+    for (let k = 0; k < count; k++) {
+      const ang = (k / count) * Math.PI * 2 + Math.random() * 0.35;
+      const spd = (isSprinting ? 24 : 16) + Math.random() * 14;
+      const up = 3.5 + Math.random() * (isSprinting ? 14.0 : 9.5);
+      particles.emitRGB(
+        fx + Math.cos(ang) * (4.5 + Math.random() * 3.5),
+        fy + 0.8 + Math.random() * 1.8,
+        fz + Math.sin(ang) * (4.5 + Math.random() * 3.5),
+        Math.cos(ang) * spd, up, Math.sin(ang) * spd,
+        0.74, 0.65, 0.49, 1.4 + Math.random() * 1.1, -3.5, isSprinting ? 4.2 : 3.2
+      );
+    }
+  }
+
   _applyDormantPose(m, seaL) {
     const sc = 5.2;
     const sinY = Math.sin(m.yaw), cosY = Math.cos(m.yaw);
     if (m.dormantStyle === "kneel") {
-      // EINHEIT-01: Deactivated One-Knee Kneel!
       const lFootX = m.gx + (-1.44 * cosY + 2.10 * sinY) * sc;
       const lFootZ = m.gz + ( 1.44 * sinY + 2.10 * cosY) * sc;
       const rKneeX = m.gx + ( 1.44 * cosY + 0.35 * sinY) * sc;
@@ -886,6 +909,9 @@ KK.SavannaMechaManager = class SavannaMechaManager {
       const gL = this._sampleGroundAndSlope(lFootX, lFootZ, m.yaw, seaL);
       const gR = this._sampleGroundAndSlope(rKneeX, rKneeZ, m.yaw, seaL);
       const rootY = Math.min(gL.h, gR.h);
+      m._rootY = rootY;
+      m._footL = { x: lFootX, y: gL.h, z: lFootZ, r: 8.8 };
+      m._footR = { x: rKneeX, y: gR.h, z: rKneeZ, r: 9.2 };
 
       this.world.toLocal(m.gx, rootY, m.gz, m.root.position);
       m.root.rotation.y = m.yaw;
@@ -898,24 +924,19 @@ KK.SavannaMechaManager = class SavannaMechaManager {
       m.pelvisGrp.rotation.x = 0.10;
 
       this._solveLegIK(m.legs[0], 2.05, lAnkleLocalY - (pelvY - 0.40), gL.pitch, gL.roll, 1.0);
-
       m.legs[1].hip.rotation.x = 0.34;
       m.legs[1].knee.rotation.x = 1.56;
       m.legs[1].ankle.rotation.x = -0.35;
       m.legs[1].ankle.rotation.z = 0;
 
-      m.torsoGrp.rotation.x = 0.34;
-      m.torsoGrp.rotation.y = -0.14;
-      m.torsoGrp.rotation.z = 0.05;
-      m.headGrp.rotation.x = 0.46;
-      m.headGrp.rotation.y = 0.18;
+      m.torsoGrp.rotation.x = 0.34; m.torsoGrp.rotation.y = -0.14; m.torsoGrp.rotation.z = 0.05;
+      m.headGrp.rotation.x = 0.46; m.headGrp.rotation.y = 0.18;
       m.arms[0].shoulder.rotation.x = -0.48; m.arms[0].shoulder.rotation.z = 0.12;
       m.arms[0].elbow.rotation.x = -0.82;
       m.arms[1].shoulder.rotation.x = 0.22;  m.arms[1].shoulder.rotation.z = -0.14;
       m.arms[1].elbow.rotation.x = -0.16;
       for (const pp of m.podPivots) pp.rotation.x = 0.20;
     } else {
-      // EINHEIT-02: Powered-Down Slumped Shutdown Stance (both feet dynamically IK-planted on ridge slope!)
       const lFootX = m.gx + (-1.44 * cosY + 0.45 * sinY) * sc;
       const lFootZ = m.gz + ( 1.44 * sinY + 0.45 * cosY) * sc;
       const rFootX = m.gx + ( 1.44 * cosY - 0.65 * sinY) * sc;
@@ -923,6 +944,9 @@ KK.SavannaMechaManager = class SavannaMechaManager {
       const gL = this._sampleGroundAndSlope(lFootX, lFootZ, m.yaw, seaL);
       const gR = this._sampleGroundAndSlope(rFootX, rFootZ, m.yaw, seaL);
       const rootY = Math.min(gL.h, gR.h);
+      m._rootY = rootY;
+      m._footL = { x: lFootX, y: gL.h, z: lFootZ, r: 8.6 };
+      m._footR = { x: rFootX, y: gR.h, z: rFootZ, r: 8.6 };
 
       this.world.toLocal(m.gx, rootY, m.gz, m.root.position);
       m.root.rotation.y = m.yaw;
@@ -937,12 +961,8 @@ KK.SavannaMechaManager = class SavannaMechaManager {
       this._solveLegIK(m.legs[0],  0.45, lAnkleY - (pelvY - 0.40), gL.pitch, gL.roll, 1.0);
       this._solveLegIK(m.legs[1], -0.65, rAnkleY - (pelvY - 0.40), gR.pitch, gR.roll, 1.0);
 
-      m.torsoGrp.rotation.x = 0.42;
-      m.torsoGrp.rotation.y = 0.16;
-      m.torsoGrp.rotation.z = -0.07;
-      m.headGrp.rotation.x = 0.56;
-      m.headGrp.rotation.y = -0.24;
-      m.headGrp.rotation.z = 0.14;
+      m.torsoGrp.rotation.x = 0.42; m.torsoGrp.rotation.y = 0.16; m.torsoGrp.rotation.z = -0.07;
+      m.headGrp.rotation.x = 0.56; m.headGrp.rotation.y = -0.24; m.headGrp.rotation.z = 0.14;
       m.arms[0].shoulder.rotation.x = -0.34; m.arms[0].shoulder.rotation.z = 0.08;
       m.arms[0].elbow.rotation.x = -0.18;
       m.arms[1].shoulder.rotation.x = -0.26; m.arms[1].shoulder.rotation.z = -0.10;
@@ -951,9 +971,115 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     }
   }
 
+  // v18.3 SOLID COLLISION FOR DORMANT & ACTIVE MECHAS + CARTOONISH 10-SECOND FOOT SQUASH!
+  resolveVehicleCollision(vehicle, onFoot, playerFoot, audio, ui) {
+    let squashedNow = false;
+    const nowMs = performance.now();
+    const px = onFoot ? playerFoot.x : vehicle.pos.x;
+    const pz = onFoot ? playerFoot.z : vehicle.pos.z;
+    const carRad = onFoot ? 1.1 : Math.max(vehicle.spec.bodyWidth || 2.2, (vehicle.spec.bodyLen || 4.6) * 0.44) * 0.56;
+
+    for (let i = 0; i < this.mechas.length; i++) {
+      const m = this.mechas[i];
+      if (!m.root.visible) continue;
+      if (Math.hypot(px - m.gx, pz - m.gz) > 45) continue;
+
+      const feet = [m._footL, m._footR];
+      for (let fi = 0; fi < feet.length; fi++) {
+        const f = feet[fi];
+        if (!f) continue;
+        const dx = px - f.x, dz = pz - f.z;
+        const d = Math.hypot(dx, dz);
+        const legR = f.r || 8.2;
+
+        // 1. CARTOONISH SQUASH if underneath active EINHEIT-03's stomping boot!
+        if (m.isPatrol && f.justPlanted && d < legR + carRad * 0.65) {
+          squashedNow = true;
+          return { hit: true, squashed: true, mechaId: m.id };
+        }
+
+        // 2. SOLID TITANIUM LEG COLLISION (Dormant statues & active mecha legs — metal thump, zero aggro!)
+        const minDist = legR + carRad;
+        if (d < minDist) {
+          const nx = d > 0.01 ? dx / d : 1;
+          const nz = d > 0.01 ? dz / d : 0;
+          const pen = minDist - d;
+          if (onFoot) {
+            playerFoot.x += nx * pen;
+            playerFoot.z += nz * pen;
+          } else {
+            vehicle.pos.x += nx * pen;
+            vehicle.pos.z += nz * pen;
+            const vn = vehicle.vel.x * nx + vehicle.vel.z * nz;
+            if (vn < 0) {
+              const impactSpd = -vn;
+              vehicle.vel.x -= nx * vn * 1.42;
+              vehicle.vel.z -= nz * vn * 1.42;
+              if (impactSpd > 2.2 && (!m._thumpCd || nowMs > m._thumpCd)) {
+                m._thumpCd = nowMs + 320;
+                if (audio && audio.playMechaMetalThump) audio.playMechaMetalThump(Math.min(1.25, 0.35 + impactSpd * 0.08));
+                if (impactSpd > 8 && ui) ui.toast(`CLANG! Rammed colossal ${m.id.toUpperCase()} armor leg — zero scratch on the mecha!`);
+              }
+            }
+          }
+          return { hit: true, squashed: false, mechaId: m.id };
+        }
+      }
+    }
+    return { hit: false, squashed: squashedNow };
+  }
+
+  // v18.3 SHOOTING ANY MECHA (DORMANT OR ACTIVE): Steel Sparks + Loud Resonant Metal Thump (No reaction / unharmed!)
+  checkProjectileHit(ox, oy, oz, dx, dy, dz, maxDist, caliberMm = 125, particles = null, audio = null) {
+    let bestT = maxDist;
+    let bestHit = null;
+    for (let i = 0; i < this.mechas.length; i++) {
+      const m = this.mechas[i];
+      if (!m.root.visible) continue;
+      // Approximate 68m mecha hull as tall bounding box (width 28m, height 68m, depth 22m)
+      const baseY = m._rootY !== undefined ? m._rootY : -30;
+      const minX = m.gx - 15, maxX = m.gx + 15;
+      const minY = baseY,     maxY = baseY + 68;
+      const minZ = m.gz - 15, maxZ = m.gz + 15;
+
+      let tmin = 0.5, tmax = bestT;
+      const slab = (ro, rd, bmin, bmax) => {
+        if (Math.abs(rd) < 1e-6) return (ro >= bmin && ro <= bmax);
+        let t1 = (bmin - ro) / rd, t2 = (bmax - ro) / rd;
+        if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+        tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2);
+        return tmin <= tmax;
+      };
+      if (slab(ox, dx, minX, maxX) && slab(oy, dy, minY, maxY) && slab(oz, dz, minZ, maxZ)) {
+        if (tmin >= 0.5 && tmin < bestT) {
+          bestT = tmin;
+          bestHit = { t: tmin, x: ox + dx * tmin, y: oy + dy * tmin, z: oz + dz * tmin, mecha: m };
+        }
+      }
+    }
+    if (bestHit) {
+      if (particles) {
+        for (let k = 0; k < (caliberMm >= 90 ? 18 : 8); k++) {
+          particles.emitRGB(
+            bestHit.x, bestHit.y, bestHit.z,
+            -dx * (10 + Math.random() * 14) + (Math.random() - 0.5) * 14,
+            4 + Math.random() * 12,
+            -dz * (10 + Math.random() * 14) + (Math.random() - 0.5) * 14,
+            1.0, 0.88, 0.35, 0.45 + Math.random() * 0.25, -10.0, 1.5
+          );
+        }
+      }
+      if (audio && audio.playMechaMetalThump) {
+        const str = caliberMm >= 100 ? 1.25 : (caliberMm >= 30 ? 0.78 : 0.45);
+        audio.playMechaMetalThump(str);
+      }
+    }
+    return bestHit;
+  }
+
   _fireRocketVolley(mecha, targetX, targetY, targetZ, audio, particles) {
     mecha.root.updateMatrixWorld(true);
-    mecha.flashTimer = 0.35;
+    mecha.flashTimer = 0.38;
     const tipW = new THREE.Vector3();
     for (let i = 0; i < 6; i++) {
       const pod = mecha.podTips[i % 2];
@@ -961,15 +1087,15 @@ KK.SavannaMechaManager = class SavannaMechaManager {
       const sx = tipW.x + this.world.originX;
       const sy = tipW.y;
       const sz = tipW.z + this.world.originZ;
-      const spreadX = (Math.random() - 0.5) * 32;
-      const spreadZ = (Math.random() - 0.5) * 32;
+      const spreadX = (Math.random() - 0.5) * 34;
+      const spreadZ = (Math.random() - 0.5) * 34;
       const dx = (targetX + spreadX) - sx;
-      const dy = (targetY + 4.0) - sy;
+      const dy = (targetY + 5.0) - sy;
       const dz = (targetZ + spreadZ) - sz;
       const dist = Math.max(12, Math.hypot(dx, dy, dz));
-      const spd = 230 + Math.random() * 45;
+      const spd = 245 + Math.random() * 45;
       const mesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.55, 0.72, 6.0, 6),
+        new THREE.CylinderGeometry(0.58, 0.76, 6.4, 6),
         new THREE.MeshBasicMaterial({ color: 0xffa61a })
       );
       mesh.rotation.x = Math.PI / 2;
@@ -979,16 +1105,39 @@ KK.SavannaMechaManager = class SavannaMechaManager {
       this.rockets.push({
         grp, gx: sx, gy: sy, gz: sz,
         vx: (dx / dist) * spd, vy: (dy / dist) * spd + 18, vz: (dz / dist) * spd,
-        life: Math.min(8.5, dist / spd + 0.6)
+        life: Math.min(9.5, dist / spd + 0.6)
       });
       if (particles) {
-        particles.emitCrashBurst(sx, sy, sz, 1.8, "rock", "clear");
+        particles.emitCrashBurst(sx, sy, sz, 2.0, "rock", "clear");
       }
     }
     if (audio && audio.playTank125mmBlast) audio.playTank125mmBlast(155);
   }
 
-  update(dt, playerGx, playerGz, oceanCryptids, particles, audio) {
+  // Find nearest active Megalodon, Kraken, OR Possessed Yamato near Zolotoy Savanna's coast!
+  _detectSavannaOceanThreat(oceanCryptids, seaL) {
+    if (!oceanCryptids) return null;
+    const savCx = -68000, savCz = 61000, savRx = 17500, savRz = 15000;
+    const check = (kind, obj, activeCond, gyOff) => {
+      if (!obj || !activeCond) return null;
+      const dSav = Math.hypot(obj.gx - savCx, obj.gz - savCz);
+      // Detect any sea monster / Yamato anywhere around Zolotoy Savanna's surrounding sea (<26km from island center!)
+      if (dSav > 26000) return null;
+      // Compute nearest dry coastal firing point on Savanna's perimeter facing the monster!
+      const ang = Math.atan2(obj.gz - savCz, obj.gx - savCx);
+      const coastX = savCx + Math.cos(ang) * (savRx * 0.78);
+      const coastZ = savCz + Math.sin(ang) * (savRz * 0.78);
+      return { kind, obj, gx: obj.gx, gy: seaL + gyOff, gz: obj.gz, coastX, coastZ, dSav };
+    };
+    const mg = oceanCryptids.megalodon;
+    const kr = oceanCryptids.kraken;
+    const ym = oceanCryptids.yamato;
+    return check("megalodon", mg, mg && mg.state !== "dormant" && mg.state !== "retreating", 2)
+      || check("kraken", kr, kr && kr.state !== "dormant" && kr.state !== "flee", 4)
+      || check("yamato", ym, ym && (ym.state === "drifting" || ym.state === "retaliating"), 14);
+  }
+
+  update(dt, playerGx, playerGz, oceanCryptids, particles, audio, ui = null) {
     this.cameraShakeOut = 0;
     if (this._salvoCd > 0) this._salvoCd = Math.max(0, this._salvoCd - dt);
     this._headScanT += dt;
@@ -1000,8 +1149,12 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     for (let i = 0; i < this.mechas.length; i++) {
       const m = this.mechas[i];
       if (m.isPatrol) {
+        const threat = this._detectSavannaOceanThreat(oceanCryptids, seaL);
+        const dP0 = Math.hypot(m.gx - playerGx, m.gz - playerGz);
+
+        // Compute deterministic patrol point (used during patrol & returning)
         const wps = m.patrolWaypoints;
-        const speedMs = 13.5;
+        const patrolSpd = 13.5;
         let totalLen = 0;
         const segLens = [];
         for (let k = 0; k < wps.length; k++) {
@@ -1009,9 +1162,9 @@ KK.SavannaMechaManager = class SavannaMechaManager {
           const sl = Math.hypot(b[0] - a[0], b[1] - a[1]);
           segLens.push(sl); totalLen += sl;
         }
-        const cycleSec = totalLen / speedMs;
+        const cycleSec = totalLen / patrolSpd;
         const nowSec = (Date.now() * 0.001) % cycleSec;
-        let walkDist = nowSec * speedMs;
+        let walkDist = nowSec * patrolSpd;
         let segIdx = 0;
         while (segIdx < segLens.length - 1 && walkDist > segLens[segIdx]) {
           walkDist -= segLens[segIdx];
@@ -1019,28 +1172,89 @@ KK.SavannaMechaManager = class SavannaMechaManager {
         }
         const wpA = wps[segIdx], wpB = wps[(segIdx + 1) % wps.length];
         const frac = segLens[segIdx] > 1 ? (walkDist / segLens[segIdx]) : 0;
-        m.gx = wpA[0] + (wpB[0] - wpA[0]) * frac;
-        m.gz = wpA[1] + (wpB[1] - wpA[1]) * frac;
-        const targetYaw = Math.atan2(wpB[0] - wpA[0], wpB[1] - wpA[1]);
-        let dyaw = targetYaw - m.yaw;
-        while (dyaw > Math.PI) dyaw -= Math.PI * 2;
-        while (dyaw < -Math.PI) dyaw += Math.PI * 2;
-        m.yaw += dyaw * Math.min(1, dt * 2.2);
+        const patrolX = wpA[0] + (wpB[0] - wpA[0]) * frac;
+        const patrolZ = wpA[1] + (wpB[1] - wpA[1]) * frac;
+        const patrolYaw = Math.atan2(wpB[0] - wpA[0], wpB[1] - wpA[1]);
+
+        let isSprinting = false;
+        let isMoving = true;
+
+        // STATE MACHINE: Patrol -> 350 km/h Sprint -> Engage Salvo -> Eerie 140A4 Victory Horn -> Return to Patrol!
+        if (threat) {
+          m.activeThreatKind = threat.kind;
+          const dCoast = Math.hypot(threat.coastX - m.gx, threat.coastZ - m.gz);
+          const dThreat = Math.hypot(threat.gx - m.gx, threat.gz - m.gz);
+          if (dCoast > 320 && dThreat > 3600) {
+            if (m.mode !== "sprint" && ui && dP0 < 18000) {
+              ui.toast(`🚨 EINHEIT-03 DETECTED ${threat.kind.toUpperCase()} OFF ZOLOTOY COAST — SPRINTING AT 350 KM/H!`, true);
+            }
+            m.mode = "sprint";
+            isSprinting = true;
+            const sprintSpd = 97.2; // Blistering 350 km/h giant sprint!
+            const stepM = Math.min(dCoast, sprintSpd * dt);
+            const ux = (threat.coastX - m.gx) / dCoast;
+            const uz = (threat.coastZ - m.gz) / dCoast;
+            m.gx += ux * stepM;
+            m.gz += uz * stepM;
+            const tYaw = Math.atan2(ux, uz);
+            let dy = tYaw - m.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+            m.yaw += dy * Math.min(1, dt * 5.0);
+          } else {
+            m.mode = "engage";
+            isMoving = false;
+            isEngaging = true;
+            // Turn hull smoothly toward monster!
+            const tYaw = Math.atan2(threat.gx - m.gx, threat.gz - m.gz);
+            let dy = tYaw - m.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+            m.yaw += dy * Math.min(1, dt * 2.5);
+          }
+        } else if (m.mode === "sprint" || m.mode === "engage") {
+          // Threat eliminated or driven off -> BLAST EERIE 140A4-LIKE VICTORY HORN!
+          m.mode = "victory_horn";
+          m.hornTimer = 4.6;
+          isMoving = false;
+          const hornProx = Math.max(0.18, Math.min(1.0, 1.0 - dP0 / 9500));
+          if (audio && audio.playMechaVictoryHorn && dP0 < 9500) audio.playMechaVictoryHorn(hornProx);
+          if (ui && dP0 < 12000) ui.toast("📯 EINHEIT-03 SOUNDED VICTORY WAR-HORN — COAST SECURED! Resuming patrol...");
+        } else if (m.mode === "victory_horn") {
+          isMoving = false;
+          m.hornTimer -= dt;
+          if (m.hornTimer <= 0) m.mode = "returning";
+        } else if (m.mode === "returning") {
+          const dRet = Math.hypot(patrolX - m.gx, patrolZ - m.gz);
+          if (dRet < 45) {
+            m.mode = "patrol";
+          } else {
+            const retSpd = dRet > 1200 ? 48.0 : 22.0;
+            const ux = (patrolX - m.gx) / dRet, uz = (patrolZ - m.gz) / dRet;
+            m.gx += ux * Math.min(dRet, retSpd * dt);
+            m.gz += uz * Math.min(dRet, retSpd * dt);
+            const tYaw = Math.atan2(ux, uz);
+            let dy = tYaw - m.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+            m.yaw += dy * Math.min(1, dt * 3.0);
+          }
+        } else {
+          // Normal synced coastal patrol
+          m.gx = patrolX; m.gz = patrolZ;
+          let dy = patrolYaw - m.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+          m.yaw += dy * Math.min(1, dt * 2.2);
+        }
 
         const dP = Math.hypot(m.gx - playerGx, m.gz - playerGz);
-        m.root.visible = dP < 8500;
-        if (dP < 560) activeProx = Math.max(activeProx, Math.pow(1.0 - dP / 560, 1.3));
+        m.root.visible = dP < 9500;
+        if (dP < 650) activeProx = Math.max(activeProx, Math.pow(1.0 - dP / 650, 1.25));
 
-        // DYNAMIC TERRAIN-DETECTING 2-BONE IK WALK CYCLE!
-        this._stepPhase += dt * 1.15;
+        // DYNAMIC TERRAIN-DETECTING 2-BONE IK (SPRINT / PATROL / PLANTED FIRING STANCE!)
+        const cadence = isSprinting ? 4.4 : (isMoving ? 1.15 : 0.0);
+        this._stepPhase += dt * cadence;
         const ph = this._stepPhase;
-        const sL = Math.sin(ph);
-        const sR = Math.sin(ph + Math.PI);
-        const liftL = Math.max(0, Math.cos(ph));
-        const liftR = Math.max(0, Math.cos(ph + Math.PI));
-        strideEffort = Math.abs(Math.cos(ph));
+        const sL = isMoving ? Math.sin(ph) : 0.25;
+        const sR = isMoving ? Math.sin(ph + Math.PI) : -0.25;
+        const liftL = isMoving ? Math.max(0, Math.cos(ph)) : 0;
+        const liftR = isMoving ? Math.max(0, Math.cos(ph + Math.PI)) : 0;
+        strideEffort = isSprinting ? 1.0 : (isMoving ? Math.abs(Math.cos(ph)) : (isEngaging ? 0.45 : 0.12));
 
-        const strideAmp = 1.95;
+        const strideAmp = isSprinting ? 2.55 : 1.95;
         const zL = sL * strideAmp;
         const zR = sR * strideAmp;
         const sinY = Math.sin(m.yaw), cosY = Math.cos(m.yaw);
@@ -1053,8 +1267,9 @@ KK.SavannaMechaManager = class SavannaMechaManager {
         const gL = this._sampleGroundAndSlope(lFootWx, lFootWz, m.yaw, seaL);
         const gR = this._sampleGroundAndSlope(rFootWx, rFootWz, m.yaw, seaL);
         const targetRootY = Math.min(gL.h, gR.h);
-        if (m._smoothRootY === null || Math.abs(targetRootY - m._smoothRootY) > 18) m._smoothRootY = targetRootY;
-        else m._smoothRootY += (targetRootY - m._smoothRootY) * Math.min(1, dt * 10);
+        if (m._smoothRootY === null || Math.abs(targetRootY - m._smoothRootY) > 24) m._smoothRootY = targetRootY;
+        else m._smoothRootY += (targetRootY - m._smoothRootY) * Math.min(1, dt * (isSprinting ? 18 : 10));
+        m._rootY = m._smoothRootY;
 
         if (m.root.visible) {
           this.world.toLocal(m.gx, m._smoothRootY, m.gz, m.root.position);
@@ -1063,86 +1278,97 @@ KK.SavannaMechaManager = class SavannaMechaManager {
 
         const gWeightL = Math.max(0, 1.0 - liftL * 2.2);
         const gWeightR = Math.max(0, 1.0 - liftR * 2.2);
-        const ankleLocalYL = (gL.h - m._smoothRootY) / sc + 0.48 + Math.pow(liftL, 0.85) * 1.45;
-        const ankleLocalYR = (gR.h - m._smoothRootY) / sc + 0.48 + Math.pow(liftR, 0.85) * 1.45;
+        const liftH = isSprinting ? 1.95 : 1.45;
+        const ankleLocalYL = (gL.h - m._smoothRootY) / sc + 0.48 + Math.pow(liftL, 0.85) * liftH;
+        const ankleLocalYR = (gR.h - m._smoothRootY) / sc + 0.48 + Math.pow(liftR, 0.85) * liftH;
 
         const stanceAnkleY = (liftL < liftR) ? ((gL.h - m._smoothRootY) / sc + 0.48) : ((gR.h - m._smoothRootY) / sc + 0.48);
         const minFootAnkleY = Math.min((gL.h - m._smoothRootY) / sc, (gR.h - m._smoothRootY) / sc) + 0.48;
-        const pelvY = Math.min(minFootAnkleY + 4.92, stanceAnkleY + 4.78 + Math.abs(Math.sin(ph)) * 0.22);
+        const pelvY = Math.min(minFootAnkleY + 4.92, stanceAnkleY + (isSprinting ? 4.45 : 4.78) + (isMoving ? Math.abs(Math.sin(ph)) * 0.25 : 0));
         m.pelvisGrp.position.y = pelvY;
-        m.pelvisGrp.rotation.z = sL * 0.068;
-        m.pelvisGrp.rotation.x = 0.03;
+        m.pelvisGrp.rotation.z = isMoving ? sL * (isSprinting ? 0.11 : 0.068) : 0;
+        m.pelvisGrp.rotation.x = isSprinting ? 0.22 : 0.03;
 
         this._solveLegIK(m.legs[0], zL, ankleLocalYL - (pelvY - 0.40), gL.pitch, gL.roll, gWeightL);
         this._solveLegIK(m.legs[1], zR, ankleLocalYR - (pelvY - 0.40), gR.pitch, gR.roll, gWeightR);
 
-        m.torsoGrp.rotation.x  = 0.06 + Math.abs(Math.cos(ph)) * 0.045;
-        m.torsoGrp.rotation.z  = -sL * 0.045;
-        m.arms[0].shoulder.rotation.x =  sL * 0.32;
-        m.arms[0].elbow.rotation.x    = -0.34 - Math.max(0, -sL) * 0.28;
-        m.arms[1].shoulder.rotation.x =  sR * 0.32;
-        m.arms[1].elbow.rotation.x    = -0.34 - Math.max(0, -sR) * 0.28;
+        m.torsoGrp.rotation.x  = (isSprinting ? 0.26 : 0.06) + (isMoving ? Math.abs(Math.cos(ph)) * 0.06 : 0);
+        m.torsoGrp.rotation.z  = isMoving ? -sL * 0.05 : 0;
+        const armSw = isSprinting ? 0.72 : 0.32;
+        m.arms[0].shoulder.rotation.x = isMoving ? sL * armSw : -0.15;
+        m.arms[0].elbow.rotation.x    = isSprinting ? -1.05 : (-0.34 - Math.max(0, -sL) * 0.28);
+        m.arms[1].shoulder.rotation.x = isMoving ? sR * armSw : -0.15;
+        m.arms[1].elbow.rotation.x    = isSprinting ? -1.05 : (-0.34 - Math.max(0, -sR) * 0.28);
 
-        if (m.strobeMesh) m.strobeMesh.visible = (Math.floor(this._headScanT * 1.8) % 2 === 0);
+        if (m.strobeMesh) m.strobeMesh.visible = (Math.floor(this._headScanT * (isSprinting ? 6.0 : 1.8)) % 2 === 0);
 
-        const halfIdx = Math.floor((ph + Math.PI * 0.5) / Math.PI);
-        if (halfIdx !== this._lastStepHalf) {
-          this._lastStepHalf = halfIdx;
-          if (dP < 680) {
-            const prox = Math.max(0, 1.0 - dP / 680);
-            this.cameraShakeOut = Math.max(this.cameraShakeOut, prox * 0.58);
-            if (audio && audio.playMechaFootstep) audio.playMechaFootstep(prox);
-            else if (audio && audio.playImpact) audio.playImpact(0.45 + prox * 0.55);
-          }
-          if (particles && dP < 1800) {
+        // Update live foot world positions + trigger thunderous footsteps, MASSIVE dust & squash window!
+        let plantedLeft = false, plantedRight = false;
+        if (isMoving) {
+          const halfIdx = Math.floor((ph + Math.PI * 0.5) / Math.PI);
+          if (halfIdx !== this._lastStepHalf) {
+            this._lastStepHalf = halfIdx;
             const isLeftPlant = (halfIdx % 2 === 0);
-            const fx = isLeftPlant ? lFootWx : rFootWx;
-            const fz = isLeftPlant ? lFootWz : rFootWz;
-            const fy = isLeftPlant ? gL.h : gR.h;
-            particles.emitCrashBurst(fx, fy + 0.5, fz, 2.5, "rock", "clear");
+            plantedLeft = isLeftPlant;
+            plantedRight = !isLeftPlant;
+            if (dP < 1300) {
+              const prox = Math.max(0, 1.0 - dP / 1300);
+              this.cameraShakeOut = Math.max(this.cameraShakeOut, prox * (isSprinting ? 0.95 : 0.78));
+              if (audio && audio.playMechaFootstep) audio.playMechaFootstep(prox, isSprinting);
+            }
+            if (particles && dP < 3600) {
+              const fx = isLeftPlant ? lFootWx : rFootWx;
+              const fz = isLeftPlant ? lFootWz : rFootWz;
+              const fy = isLeftPlant ? gL.h : gR.h;
+              this._emitBehemothFootDust(fx, fy, fz, particles, isSprinting);
+            }
           }
         }
+        m._footL = { x: lFootWx, y: gL.h, z: lFootWz, r: 8.6, justPlanted: plantedLeft || (liftL < 0.06 && isMoving) };
+        m._footR = { x: rFootWx, y: gR.h, z: rFootWz, r: 8.6, justPlanted: plantedRight || (liftR < 0.06 && isMoving) };
 
-        let threat = null;
-        if (oceanCryptids) {
-          const mg = oceanCryptids.megalodon;
-          const kr = oceanCryptids.kraken;
-          if (mg && mg.state !== "dormant" && mg.state !== "retreating") {
-            const dM = Math.hypot(mg.gx - m.gx, mg.gz - m.gz);
-            if (dM < 2800) threat = { kind: "megalodon", obj: mg, gx: mg.gx, gy: seaL + 2, gz: mg.gz, dist: dM };
-          }
-          if (!threat && kr && kr.state !== "dormant" && kr.state !== "flee") {
-            const dK = Math.hypot(kr.gx - m.gx, kr.gz - m.gz);
-            if (dK < 2800) threat = { kind: "kraken", obj: kr, gx: kr.gx, gy: seaL + 4, gz: kr.gz, dist: dK };
-          }
-        }
-        if (threat) {
-          isEngaging = true;
+        // Combat Rocket Firing (Works vs Megalodon, Kraken AND Possessed Yamato!)
+        if (threat && m.mode === "engage") {
           const worldBear = Math.atan2(threat.gx - m.gx, threat.gz - m.gz);
           let relBear = worldBear - m.yaw;
           while (relBear > Math.PI) relBear -= Math.PI * 2;
           while (relBear < -Math.PI) relBear += Math.PI * 2;
-          m.torsoYaw += (relBear - m.torsoYaw) * Math.min(1, dt * 3.0);
+          m.torsoYaw += (relBear - m.torsoYaw) * Math.min(1, dt * 3.5);
           m.torsoGrp.rotation.y = m.torsoYaw;
           m.headGrp.rotation.y *= Math.exp(-dt * 4.0);
-          m.podPitch += (-0.18 - m.podPitch) * Math.min(1, dt * 4.0);
+          m.headGrp.rotation.x *= Math.exp(-dt * 4.0);
+          m.podPitch += (-0.22 - m.podPitch) * Math.min(1, dt * 4.0);
           if (this._salvoCd <= 0) {
-            this._salvoCd = 4.2;
-            this._fireRocketVolley(m, threat.gx, threat.gy, threat.gz, dP < 2200 ? audio : null, particles);
-            threat.obj.hp = (threat.obj.hp || 120) - 85;
-            if (threat.obj.hp <= 0) {
+            this._salvoCd = 3.6;
+            this._fireRocketVolley(m, threat.gx, threat.gy, threat.gz, dP < 3800 ? audio : null, particles);
+            threat.obj.hp = (threat.obj.hp || 140) - 85;
+            if (threat.kind === "yamato") {
+              threat.obj._mechaHits = (threat.obj._mechaHits || 0) + 1;
+              if (threat.obj._mechaHits >= 3) {
+                threat.obj.state = "departing";
+                threat.obj.salvosLeft = 0;
+                threat.obj._mechaHits = 0;
+              }
+            } else if (threat.obj.hp <= 0) {
               if (threat.kind === "megalodon") {
-                threat.obj.state = "retreating"; threat.obj.fleeTimer = 14.0; threat.obj.hp = 120;
+                threat.obj.state = "retreating"; threat.obj.fleeTimer = 18.0; threat.obj.hp = 120;
               } else {
-                threat.obj.state = "flee"; threat.obj.fleeTimer = 14.0; threat.obj.hp = 165;
+                threat.obj.state = "flee"; threat.obj.fleeTimer = 18.0; threat.obj.hp = 165;
               }
             }
           }
+        } else if (m.mode === "victory_horn") {
+          m.torsoYaw *= Math.exp(-dt * 3.0);
+          m.torsoGrp.rotation.y = m.torsoYaw;
+          m.headGrp.rotation.x = -0.22; // Raises Stahlhelm slightly toward the sky while sounding war-horn!
+          m.headGrp.rotation.y = 0;
+          m.podPitch += (0.0 - m.podPitch) * Math.min(1, dt * 3.0);
         } else {
-          const idleTorso = -sL * 0.09;
+          const idleTorso = isMoving ? -sL * 0.09 : 0;
           m.torsoYaw += (idleTorso - m.torsoYaw) * Math.min(1, dt * 3.0);
           m.torsoGrp.rotation.y = m.torsoYaw;
-          m.headGrp.rotation.y = Math.sin(this._headScanT * 0.45) * 0.34;
+          m.headGrp.rotation.x *= Math.exp(-dt * 4.0);
+          m.headGrp.rotation.y = isSprinting ? 0 : Math.sin(this._headScanT * 0.45) * 0.34;
           m.podPitch += (0.0 - m.podPitch) * Math.min(1, dt * 3.0);
         }
         for (const pp of m.podPivots) pp.rotation.x = m.podPitch;
@@ -1173,7 +1399,7 @@ KK.SavannaMechaManager = class SavannaMechaManager {
         particles.emitRGB(rk.gx, rk.gy, rk.gz, (Math.random() - 0.5) * 3.5, 2.5, (Math.random() - 0.5) * 3.5, 1.0, 0.72, 0.25, 0.50, 0.5, 2.2);
       }
       if (rk.life <= 0 || rk.gy <= seaL) {
-        if (particles) particles.emitCrashBurst(rk.gx, Math.max(seaL + 1.0, rk.gy), rk.gz, 3.2, "water", "clear");
+        if (particles) particles.emitCrashBurst(rk.gx, Math.max(seaL + 1.0, rk.gy), rk.gz, 3.6, "water", "clear");
         this.scene.remove(rk.grp);
         this.rockets.splice(r, 1);
       }

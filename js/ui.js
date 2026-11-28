@@ -1082,27 +1082,40 @@ KK.UIManager = class UIManager {
   renderFieldRepair() {
     const el = document.getElementById("field-repair-content");
     if (!el) return;
-    const v = this.game.vehicle, vs = v.vState, p = vs.parts;
-    el.innerHTML = `<p class="small muted">Roadside Soviet field engineering. Patch critical worn subsystems right under the hood so you can limp to the nearest Garage!</p>
-      <div class="upgrade-list">
-        <div class="upg-row"><div><b>Drain Hydrolock &amp; Patch Engine Internals (Avg ${KK.getEngineOverallHealth(vs).toFixed(0)}%)</b>
-          <div class="small muted">${v.hydrolocked ? "ENGINE HYDROLOCKED — Drain water now!" : "Patches Head Gasket, Pistons, Crank, Spark Plugs & Injectors to 65%"}</div></div>
-          <button class="btn primary small" onclick="window.__GAME__.doFieldRepair('engine')">WRENCH IT</button></div>
-        <div class="upg-row"><div><b>Scrape Mud off Radiator &amp; Patch Cooling (Mud: ${vs.health.mudClog.toFixed(0)}% | Rad: ${p.radiator.hp.toFixed(0)}%)</b>
-          <div class="small muted">Clears swamp mud, patches Water Pump &amp; replaces shattered Headlight bulbs!</div></div>
-          <button class="btn primary small" onclick="window.__GAME__.doFieldRepair('radiator')">CLEAN &amp; COOL</button></div>
-        <div class="upg-row"><div><b>Patch Transmission &amp; Clutch (Clutch: ${p.clutchPack.hp.toFixed(0)}% | Gearbox: ${p.gearboxGears.hp.toFixed(0)}%)</b>
-          <div class="small muted">Roadside linkage &amp; clutch adjustment up to 65%</div></div>
-          <button class="btn primary small" onclick="window.__GAME__.doFieldRepair('transmission')">ADJUST</button></div>
-        <div class="upg-row"><div><b>Straighten Tie-Rod &amp; Patch Shocks/Brakes (Bend: ${(Math.abs(vs.health.tieRodBias || 0) < 0.008 ? "0.0" : (vs.health.tieRodBias * 57.3).toFixed(1))}°)</b>
-          <div class="small muted">Restores steering alignment &amp; patches blown shocks/brakes to 65%</div></div>
-          <button class="btn primary small" onclick="window.__GAME__.doFieldRepair('suspension')">HAMMER IT</button></div>
-        <div class="upg-row"><div><b>Swap Blown Tire(s) with Spare (Spares left: ${vs.spareTires || 0})</b>
-          <div class="small muted">Blown: ${(vs.blownTires || []).map((b, i) => b ? v.spec.wheels[i].id : null).filter(Boolean).join(", ") || "None (All inflated!)"} — Or walk directly to a flat wheel on foot &amp; press [E]!</div></div>
-          <button class="btn primary small" onclick="window.__GAME__.doFieldRepair('tires')">SWAP SPARE</button></div>
-        <div class="upg-row"><div><b>Emergency Jerrycan Fuel (+18 Liters)</b>
-          <div class="small muted">Current Fuel: ${vs.fuel.toFixed(1)} L</div></div>
-          <button class="btn accent small" onclick="window.__GAME__.doFieldRepair('fuel')">POUR ($120)</button></div></div>`;
+    const v = this.game.vehicle, vs = v.vState, p = vs.parts, h = vs.health;
+    const engPct  = Math.round(KK.getEngineOverallHealth(vs));
+    const coolPct = Math.round(Math.min(p.radiator ? p.radiator.hp : 100, Math.max(0, 100 - (h.mudClog || 0))));
+    const trnPct  = Math.round(Math.min(p.clutchPack ? p.clutchPack.hp : 100, p.gearboxGears ? p.gearboxGears.hp : 100));
+    const bendDeg = Math.abs(h.tieRodBias || 0) < 0.008 ? 0 : Math.abs(h.tieRodBias * 57.3);
+    const suspPct = Math.round(Math.min(p.tieRods ? p.tieRods.hp : 100, p.shockFL ? p.shockFL.hp : 100, Math.max(15, 100 - bendDeg * 14)));
+    const blownCnt = (vs.blownTires || []).filter(Boolean).length;
+    const tirePct = v.spec.isTracked ? Math.round(Math.min(h.trackL ?? 100, h.trackR ?? 100)) : (blownCnt > 0 ? 10 : 100);
+    const fuelPct = Math.round(Math.min(100, ((vs.fuel || 0) / Math.max(1, v.spec.fuelCapacity || 80)) * 100));
+
+    const tiles = [
+      { act: "engine",       ico: "⚙️", lbl: "ENGINE",     pct: engPct,  tag: v.hydrolocked ? "HYDROLOCK" : (vs.burnedOut ? "BURNED" : ""), btn: "PATCH" },
+      { act: "radiator",     ico: "❄️", lbl: "COOLING",    pct: coolPct, tag: (h.mudClog || 0) > 35 ? "MUD CLOG" : "", btn: "CLEAN" },
+      { act: "transmission", ico: "⚡", lbl: "GEARBOX",    pct: trnPct,  tag: "", btn: "PATCH" },
+      { act: "suspension",   ico: "🛞", lbl: "STEER/SUSP", pct: suspPct, tag: bendDeg > 0.5 ? `BENT ${bendDeg.toFixed(0)}°` : "", btn: "ALIGN" },
+      { act: "tires",        ico: v.spec.isTracked ? "🛡️" : "⭕", lbl: v.spec.isTracked ? "TRACKS" : `TIRES (${vs.spareTires || 0} SPARE)`, pct: tirePct, tag: blownCnt > 0 ? `${blownCnt} FLAT` : "", btn: v.spec.isTracked ? "FIX TRACK" : "SWAP" },
+      { act: "fuel",         ico: "⛽", lbl: `FUEL (${(vs.fuel || 0).toFixed(0)}L)`, pct: fuelPct, tag: fuelPct < 20 ? "LOW" : "", btn: "+18L ($120)" }
+    ];
+
+    el.innerHTML = `<div class="vfix-grid" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px;">
+      ${tiles.map((t) => {
+        const col = t.pct >= 75 ? "#2de08b" : (t.pct >= 40 ? "#ffd166" : "#ff3b5c");
+        const cls = (t.pct < 40 || t.tag) ? "crit" : (t.pct < 80 ? "warn" : "ok");
+        return `<div class="vfix-card ${cls}">
+          <div class="vfix-row">
+            <span class="vfix-ico">${t.ico}</span>
+            <span class="vfix-lbl">${t.lbl}</span>
+            <span class="vfix-pct" style="color:${col};">${t.tag || (t.pct + "%")}</span>
+          </div>
+          <div class="vfix-bar"><div class="vfix-fill" style="width:${Math.max(4, t.pct)}%;background:${col};"></div></div>
+          <button class="btn ${cls === "ok" ? "" : "primary"} small vfix-btn" onclick="window.__GAME__.doFieldRepair('${t.act}')">${t.btn}</button>
+        </div>`;
+      }).join("")}
+    </div>`;
   }
 
   renderCoopPitCrew() {

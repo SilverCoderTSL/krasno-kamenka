@@ -191,6 +191,60 @@ KK.GarageBlueprint = {
         </div>
       </div>
 
+      ${(() => {
+        const p = vs.parts || {};
+        const h = vs.health || {};
+        const avgOf = (ids) => {
+          let sum = 0, cnt = 0;
+          for (const id of ids) { if (p[id]) { sum += p[id].hp; cnt++; } }
+          return cnt > 0 ? Math.round(sum / cnt) : 100;
+        };
+        const engPct = Math.round(KK.getEngineOverallHealth(vs));
+        const coolPct = Math.round(Math.min(avgOf(["radiator", "waterPump", "intercooler"]), Math.max(0, 100 - (h.mudClog || 0))));
+        const drvtPct = avgOf(["flywheel", "clutchPack", "gearboxGears", "transferCase", "driveshaft"]);
+        const suspPct = Math.round(Math.min(avgOf(["shockFL", "shockFR", "shockRL", "shockRR", "tieRods", "brakePads", "brakeSystem"]), Math.max(20, 100 - Math.abs(h.tieRodBias || 0) * 400)));
+        const bodyPct = Math.round(Math.min(h.body ?? 100, h.glass ?? 100, h.headlightL ?? 100, h.headlightR ?? 100));
+        const blownCnt = (vs.blownTires || []).filter(Boolean).length;
+        const tirePct = spec.isTracked
+          ? Math.round(Math.min(h.trackL ?? 100, h.trackR ?? 100))
+          : (blownCnt > 0 ? Math.max(0, 40 - blownCnt * 20) : Math.round(h.tires ?? 100));
+
+        const cards = [
+          { key: "engine",       ico: "⚙️", lbl: "ENGINE",     pct: engPct,  warn: vs.burnedOut ? "BURNED" : "" },
+          { key: "cooling",      ico: "❄️", lbl: "COOLING",    pct: coolPct, warn: (h.mudClog || 0) > 35 ? "CLOGGED" : "" },
+          { key: "drivetrain",   ico: "⚡", lbl: "DRIVETRAIN", pct: drvtPct, warn: "" },
+          { key: "suspension",   ico: "🛞", lbl: "SUSPENSION", pct: suspPct, warn: Math.abs(h.tieRodBias || 0) > 0.02 ? "BENT" : "" },
+          { key: "body_lights",  ico: "💡", lbl: "BODY/GLASS", pct: bodyPct, warn: (h.glass ?? 100) < 55 ? "CRACKED" : "" },
+          { key: "tires_tracks", ico: spec.isTracked ? "🛡️" : "⭕", lbl: spec.isTracked ? "TRACKS" : "TIRES", pct: tirePct, warn: blownCnt > 0 ? (blownCnt + " FLAT") : "" }
+        ];
+        const brokenCount = cards.filter((c) => c.pct < 92 || c.warn).length;
+        return `
+        <div class="vfix-panel">
+          <div class="vfix-head">
+            <span class="vfix-title">${brokenCount === 0 ? "✅ ALL SYSTEMS 100% HEALTHY" : `⚠️ ${brokenCount} SYSTEM${brokenCount > 1 ? "S" : ""} NEED REPAIR`}</span>
+            ${brokenCount > 0 ? `<button class="btn accent small" onclick="window.__GAME__.garageFullRepair(${totalRepairCost})">🔧 FIX ALL ($${totalRepairCost.toLocaleString()})</button>` : ""}
+          </div>
+          <div class="vfix-grid">
+            ${cards.map((c) => {
+              const col = c.pct >= 80 ? "#2de08b" : (c.pct >= 45 ? "#ffd166" : "#ff3b5c");
+              const isBad = c.pct < 92 || !!c.warn;
+              const estCost = Math.max(40, Math.round((100 - c.pct) * 4.5 + (c.warn ? 80 : 0)));
+              return `<div class="vfix-card ${c.pct < 45 || c.warn ? "crit" : (isBad ? "warn" : "ok")}">
+                <div class="vfix-row">
+                  <span class="vfix-ico">${c.ico}</span>
+                  <span class="vfix-lbl">${c.lbl}</span>
+                  <span class="vfix-pct" style="color:${col};">${c.warn || (c.pct + "%")}</span>
+                </div>
+                <div class="vfix-bar"><div class="vfix-fill" style="width:${Math.max(4, c.pct)}%;background:${col};"></div></div>
+                ${isBad
+                  ? `<button class="btn primary small vfix-btn" onclick="window.__GAME__.garageRepairSystem('${c.key}', ${estCost})">FIX ($${estCost})</button>`
+                  : `<div class="vfix-ok">✓ OK</div>`}
+              </div>`;
+            }).join("")}
+          </div>
+        </div>`;
+      })()}
+
       <div class="bp-legend-bar">
         <span class="small muted" style="font-weight:700;">MATERIAL / BRAND KEY:</span>
         ${legendHtml}
