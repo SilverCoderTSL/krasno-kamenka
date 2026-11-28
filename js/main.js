@@ -81,6 +81,7 @@ KK.Game = class Game {
     this.cryptids = new KK.CryptidManager(this.scene, this.world);
     this.oceanCryptids = KK.OceanCryptidManager ? new KK.OceanCryptidManager(this.scene, this.world) : null;
     this.savannaMechas = KK.SavannaMechaManager ? new KK.SavannaMechaManager(this.scene, this.world) : null;
+    if (this.world && this.world.updateGpLeaderboard) this.world.updateGpLeaderboard(this.gpTop5, "RED — WAIT FOR GREEN");
     this.hazards = new KK.HazardManager(this.scene, this.world);
     this.clarksonFarm = new KK.ClarksonFarm(this.scene, this.world);
     this.jamesBar = new KK.JamesMayBar(this.scene, this.world);
@@ -158,7 +159,7 @@ KK.Game = class Game {
     this.ridingWithPeerId = null;
     this.timedWork = null;
     this.wipersOn = false;
-    this.gpLapStartMs = 0;
+    this.gpLapStartMs = 0; this.gpNextCheckpoint = 0;
     this.gpLastLapSec = 0;
     this.tutorialStep = this.tutorialComplete ? 99 : 0;
     this.radarFlashTimer = 0;
@@ -178,6 +179,10 @@ KK.Game = class Game {
     document.addEventListener("visibilitychange", () => { if (document.hidden) { try { this._saveProgress(false); } catch (_) {} } });
     this.gpInGate = false;
     try { this.gpBestLaps = JSON.parse(localStorage.getItem("kk_gp_best_laps_v1") || "{}"); } catch (_) { this.gpBestLaps = {}; }
+    try { this.gpTop5 = JSON.parse(localStorage.getItem("kk_gp_leaderboard_v2") || "[]"); if (!Array.isArray(this.gpTop5)) this.gpTop5 = []; } catch (_) { this.gpTop5 = []; }
+    this.gpNextCheckpoint = 0;
+    this.gpLastCountdownSec = -1;
+    this.gpWasGreen = false;
     this.windshieldMud = 0;
     this.coopBoostTimer = 0;
     this.coopTargetPeerId = null;
@@ -303,6 +308,10 @@ KK.Game = class Game {
       },
       onLwrPing: (msg) => {
         this._handleIncomingLwrPing(msg);
+      },
+      onGpRecord: (msg) => {
+        if (!msg || typeof msg.timeSec !== "number" || msg.timeSec < 25) return;
+        this._recordGpLeaderboardEntry(msg.callsign || "DRIVER", msg.carName || "CAR", msg.vehicleId || "", msg.timeSec, false);
       },
       onCarBump: (msg) => {
         if (!msg) return;
@@ -537,12 +546,12 @@ KK.Game = class Game {
     requestAnimationFrame(this._loop);
 
     setTimeout(() => {
-      this.ui.toast('Welcome to v18.1.3 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
+      this.ui.toast('Welcome to v18.2 ONLINE! 300 km/h Smooth Chunk Streaming, Opaque Wave Ocean, Pooled Searchlight, 4-Mode Boat Camera [C] & Museum-Grade Detailed Ships!');
     }, 650);
   }
 
   // ==========================================================================
-  // v18.1.3 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
+  // v18.2 UNDERTALE-STYLE DEV TUTORIAL SYSTEM (HQ <-> KAMENKA OUTPOST EAST)
   // ==========================================================================
   _createTutorialArrow() {
     const grp = new THREE.Group();
@@ -1142,7 +1151,7 @@ KK.Game = class Game {
         this.adjustCruiseSpeed(-10);
       }
       else if (code === "KeyG") {
-        // v18.1.3 Garage is strictly [F] only — [G] is exclusively military/flare!
+        // v18.2 Garage is strictly [F] only — [G] is exclusively military/flare!
         const vidG = this.vehicle.vState.vehicleId;
         if (!this.onFoot && (vidG === "t72" || vidG === "harimau")) this.launchT72Smoke();
         else if (!this.onFoot && vidG === "pzkpfw_140a4") this.triggerDonnerschildAps();
@@ -1395,7 +1404,7 @@ KK.Game = class Game {
     }
   }
 
-  // v18.1.3 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
+  // v18.2 ULTRA-SIMPLE SHIP HELM [SPACE]: Enter or Exit Helm (ANYONE can drive!)
   toggleShipHelm() {
     if (!this.boats) return;
     if (this.boats.activeBoat) {
@@ -1419,7 +1428,7 @@ KK.Game = class Game {
     }
   }
 
-  // v18.1.3 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
+  // v18.2 SATISFYING IGNITION [I] AUTO-LOCK / AUTO-UNLOCK ON SHIP DECKS!
   toggleVehicleIgnition() {
     if (this.onFoot || this.ridingWithPeerId || (this.boats && this.boats.activeBoat)) return;
     this.vehicle.ignitionOn = !this.vehicle.ignitionOn;
@@ -2053,7 +2062,7 @@ KK.Game = class Game {
     this.ui.toast(`Repaired ${KK.PARTS_CATALOG[partId].name} to 100%!`);
   }
 
-  // v18.1.3 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
+  // v18.2 GUNFIRE DAMAGE TO TIRES, HEADLIGHTS, GLASS & TANK TRACKS!
   applyGunfireHitToLocalVehicle(hx, hy, hz, caliber = 14) {
     if (!this.vehicle || !this.vehicle.vState) return;
     const d = Math.hypot(hx - this.vehicle.pos.x, hz - this.vehicle.pos.z);
@@ -3209,7 +3218,7 @@ KK.Game = class Game {
     return { tipWorld, evacWorld, dirWorld };
   }
 
-  // v18.1.3 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
+  // v18.2 DIRECTIONAL ARMOR ZONES, SLOPED RHA, KONTAKT-5 ERA, DONNERSCHILD APS & SHELL SPALL MODEL!
   _onArmorHitAck(msg) {
     if (!msg) return;
     const victim = msg.victimCallsign || "Target";
@@ -3248,10 +3257,10 @@ KK.Game = class Game {
   }
 
   // ==========================================================================
-  // v18.1.3 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
+  // v18.2 PER-ZONE ARMOR PROFILES, SEMICOLON [;] ARMOR VIEWER & [`] FCS/LWR
   // ==========================================================================
   // ==========================================================================
-  // v18.1.3 TANK COMBAT CORE: STATE RESET, EXACT RAY-vs-OBB HITBOXES & LWR/FCS
+  // v18.2 TANK COMBAT CORE: STATE RESET, EXACT RAY-vs-OBB HITBOXES & LWR/FCS
   // ==========================================================================
   _resetTankCombatState(resetAmmoRacks = true) {
     if (this.armorViewerActive) this.toggleArmorViewer();
@@ -3555,7 +3564,7 @@ KK.Game = class Game {
       zoneNormalL.set(0, 0.12, -0.99).normalize();
     }
 
-    // 3. v18.1.3 EXACT QUATERNION LOCAL HIT COORDINATES + GROUND-SPLASH BELLY FIX + PROPER ROOF/BELLY NORMALS!
+    // 3. v18.2 EXACT QUATERNION LOCAL HIT COORDINATES + GROUND-SPLASH BELLY FIX + PROPER ROOF/BELLY NORMALS!
     const prof = this._getArmorProfile(spec, vs);
     const hitLocalPt = new THREE.Vector3(hx - vx, hy - this.vehicle.pos.y, hz - vz).applyQuaternion(invQuat);
     const hitLocalZ = hitLocalPt.z;
@@ -3621,7 +3630,7 @@ KK.Game = class Game {
     const hlth = vs.health;
 
     // 5. AUTO-RICOCHET & HEAVY MBT NON-PENETRATION (with exposed track/optic chip for autocannons!)
-    // v18.1.3 STRICT PENETRATION CHECK: AP, HE, HESH & Autocannons MUST beat effective armor to penetrate!
+    // v18.2 STRICT PENETRATION CHECK: AP, HE, HESH & Autocannons MUST beat effective armor to penetrate!
     const apObliqueBounce = isAp && (impactAngleDeg > 72 || effPenMm < effArmorMm);
     const heNonPen = (isHe && !isTherm && isArmored) && (effPenMm < effArmorMm * 0.92);
     const autoBounce = isAuto && (effPenMm < effArmorMm * 0.92);
@@ -3699,7 +3708,7 @@ KK.Game = class Game {
       if (this.audio.playArmorClang) this.audio.playArmorClang(caliberMm, false);
       if (caliberMm >= 90 && this.audio.playConcussionMuffle) this.audio.playConcussionMuffle();
     }
-    // v18.1.3 LOCATION-ACCURATE DAMAGEABLE MODULES & AMMO STOWAGE COOK-OFFS!
+    // v18.2 LOCATION-ACCURATE DAMAGEABLE MODULES & AMMO STOWAGE COOK-OFFS!
     let cookoffKind = null;
     if (isArmored && caliberMm >= 20) {
       if (zone === "TURRET" || zone === "ROOF") {
@@ -4441,7 +4450,7 @@ KK.Game = class Game {
     }
   }
 
-  // v18.1.3.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
+  // v18.2.1 ON-SCREEN BOAT DECK BUTTON HANDLER (Zero Keyboard Conflicts!)
   boatDeckAction(action) {
     if (!this.boats) return;
     if (action === "toggle_ignition") {
@@ -4837,6 +4846,29 @@ KK.Game = class Game {
     const ty = this.world.getTerrainInfo(gx, gz, true).height;
     this._prepareVehicleForWarp(gx, ty + 1.15, gz, 0, 0);
     if (this.ui) this.ui.toast("🏙 Warped to Zolotoy City Metropolis — Monument Plaza & Tram Loop ahead!");
+  }
+
+  _recordGpLeaderboardEntry(callsign, carName, vehicleId, timeSec, broadcast = false) {
+    if (!isFinite(timeSec) || timeSec < 25) return false;
+    const entry = {
+      callsign: String(callsign || "DRIVER").slice(0, 16),
+      carName: String(carName || vehicleId || "CAR").slice(0, 22),
+      vehicleId: String(vehicleId || ""),
+      timeSec: +Number(timeSec).toFixed(2)
+    };
+    this.gpTop5 = Array.isArray(this.gpTop5) ? this.gpTop5.slice() : [];
+    this.gpTop5.push(entry);
+    this.gpTop5.sort((a, b) => a.timeSec - b.timeSec);
+    this.gpTop5 = this.gpTop5.slice(0, 5);
+    try { localStorage.setItem("kk_gp_leaderboard_v2", JSON.stringify(this.gpTop5)); } catch (_) {}
+    const madeTop5 = this.gpTop5.some((e) => e.callsign === entry.callsign && e.timeSec === entry.timeSec && e.carName === entry.carName);
+    if (this.world && this.world.updateGpLeaderboard) {
+      this.world.updateGpLeaderboard(this.gpTop5, this.gpWasGreen ? "GREEN — GO!" : "RED — WAIT FOR GREEN");
+    }
+    if (broadcast && madeTop5 && this.network && this.network.mode !== "offline") {
+      this.network.send({ type: "gp_record", callsign: entry.callsign, carName: entry.carName, vehicleId: entry.vehicleId, timeSec: entry.timeSec });
+    }
+    return madeTop5;
   }
 
   warpToRaceTrack() {
@@ -5568,7 +5600,7 @@ KK.Game = class Game {
           const camRight = this._tmpCamRight.set(-camFwd.z, 0, camFwd.x);
           const dir = camFwd.multiplyScalar(moveF).add(camRight.multiplyScalar(moveS)).normalize();
           this.playerFoot.x += dir.x * spd * dt; this.playerFoot.z += dir.z * spd * dt;
-        // v18.1.3 Solid Person-to-Car OBB Collision (never phase into your own car!)
+        // v18.2 Solid Person-to-Car OBB Collision (never phase into your own car!)
         if (this.vehicle && this.vehicle.spec) {
           const spC = this.vehicle.spec;
           const dxC = this.playerFoot.x - this.vehicle.pos.x;
@@ -5646,7 +5678,7 @@ KK.Game = class Game {
         steer: (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) - (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0),
         boost: !!(this.keys.ShiftLeft || this.keys.ShiftRight)
       } : null;
-      // v18.1.3 HANDS-OFF SHIP AUTOPILOT CRUISE: Handled per-boat inside boats.update() even when unpiloted!
+      // v18.2 HANDS-OFF SHIP AUTOPILOT CRUISE: Handled per-boat inside boats.update() even when unpiloted!
       if (this.boats.activeBoat) {
         this.boatCruiseOn = !!this.boats.activeBoat.cruiseOn;
         if (this.boats.activeBoat.cruiseKmh) this.boatCruiseKmh = this.boats.activeBoat.cruiseKmh;
@@ -5715,38 +5747,109 @@ KK.Game = class Game {
     this.vehicleRig.root.quaternion.copy(this.vehicle.quat);
     const engHp = KK.getEngineOverallHealth(this.vehicle.vState);
     const smokeLvl = this.vehicle.vState.burnedOut ? 1.0 : Math.max(0, (this.vehicle.coolantTemp - 112) / 18, (38 - engHp) / 38);
-    // v18.1.3 Zolotoy International GP Circuit Lap Timer & Saved Personal Best (uses exact spline Start/Finish coords!)
+    // v18.2 Zolotoy GP Circuit: 60s Traffic Light Start Cycle (10s GREEN/min), 8 Anti-Cheat Checkpoints & Top-5 Leaderboard!
     if (!this.onFoot && !(this.boats && this.boats.activeBoat)) {
       const gx = this.vehicle.pos.x, gz = this.vehicle.pos.z;
       const gpZone = (KK.SMOOTH_TARMAC_ZONES || []).find((z) => z.isGpCircuit);
       const gateX = (gpZone && gpZone.startX !== undefined) ? gpZone.startX : -62099;
       const gateZ = (gpZone && gpZone.startZ !== undefined) ? gpZone.startZ : 63132;
-      this.gpNearTrack = !!(gpZone && Math.hypot(gx - gpZone.cx, gz - gpZone.cz) < 1650);
-      if (!this.gpNearTrack && this.gpLapStartMs > 0) this.gpLapStartMs = 0;
-      const dGate = Math.hypot(gx - gateX, gz - gateZ);
-      if (dGate < 18) {
-        if (!this.gpInGate) {
-          this.gpInGate = true;
-          const nowMs = performance.now();
-          if (this.gpLapStartMs > 0 && (nowMs - this.gpLapStartMs) > 25000) {
-            const lapSec = (nowMs - this.gpLapStartMs) / 1000;
-            this.gpLastLapSec = lapSec;
-            const vid = this.vehicle.vState.vehicleId;
-            const prevBest = this.gpBestLaps[vid];
-            const isPB = (!prevBest || lapSec < prevBest);
-            if (isPB) {
-              this.gpBestLaps[vid] = +lapSec.toFixed(2);
-              try { localStorage.setItem("kk_gp_best_laps_v1", JSON.stringify(this.gpBestLaps)); } catch (_) {}
+      this.gpNearTrack = !!(gpZone && Math.hypot(gx - gpZone.cx, gz - gpZone.cz) < 1750);
+      if (!this.gpNearTrack && this.gpLapStartMs > 0) {
+        this.gpLapStartMs = 0;
+        this.gpNextCheckpoint = 0;
+      }
+
+      if (this.gpNearTrack && gpZone) {
+        const secInMin = (Date.now() % 60000) / 1000;
+        const isGreen = (secInMin >= 50.0);
+        const secToGreen = Math.max(0, Math.ceil(50.0 - secInMin));
+        const greenRem = Math.max(0, Math.ceil(60.0 - secInMin));
+        const lightTxt = isGreen ? `GREEN — GO! (${greenRem}s)` : `RED — GREEN IN ${secToGreen}s`;
+        if (this.world && this.world.updateGpTrafficLights) this.world.updateGpTrafficLights(secInMin);
+        if (this.world && this.world.updateGpLeaderboard) this.world.updateGpLeaderboard(this.gpTop5, lightTxt);
+
+        const dGate = Math.hypot(gx - gateX, gz - gateZ);
+        if (dGate < 120) {
+          if (isGreen && !this.gpWasGreen) {
+            if (this.audio && this.audio.playThermalClick) this.audio.playThermalClick();
+            if (this.ui && this.gpLapStartMs === 0) this.ui.toast("🟢 GP LIGHTS GREEN (10s)! CROSS START LINE TO BEGIN TIMED LAP!");
+          } else if (!isGreen && secInMin >= 45.0) {
+            const cSec = Math.ceil(50.0 - secInMin);
+            if (cSec !== this.gpLastCountdownSec) {
+              this.gpLastCountdownSec = cSec;
+              if (this.audio && this.audio.playThermalClick) this.audio.playThermalClick();
             }
-            const mm = Math.floor(lapSec / 60), ss = (lapSec % 60).toFixed(2).padStart(5, "0");
-            this.ui.toast(`🏁 ZOLOTOY GP LAP: ${mm}:${ss}${isPB ? " — NEW PERSONAL BEST!" : ""}`, isPB);
-          } else {
-            this.ui.toast("🏁 ZOLOTOY GP TIMED LAP STARTED! Push flat out!");
           }
-          this.gpLapStartMs = nowMs;
         }
-      } else if (dGate > 32) {
-        this.gpInGate = false;
+        this.gpWasGreen = isGreen;
+
+        const cps = gpZone.checkpoints || [];
+        if (this.gpLapStartMs > 0 && cps.length > 0 && this.gpNextCheckpoint < cps.length) {
+          const cp = cps[this.gpNextCheckpoint];
+          if (Math.hypot(gx - cp.x, gz - cp.z) < 26) {
+            this.gpNextCheckpoint++;
+            if (this.audio && this.audio.playThermalClick) this.audio.playThermalClick();
+            const elap = ((performance.now() - this.gpLapStartMs) / 1000).toFixed(1);
+            if (this.ui) {
+              this.ui.toast(
+                this.gpNextCheckpoint >= cps.length
+                  ? `✅ FINAL CHECKPOINT (${cps.length}/${cps.length}) — ${elap}s! SPRINT TO FINISH LINE!`
+                  : `✅ GP CHECKPOINT ${this.gpNextCheckpoint}/${cps.length} — ${elap}s`
+              );
+            }
+          }
+        }
+        if (this.world && this.world.updateGpCheckpointColors) {
+          this.world.updateGpCheckpointColors(this.gpNextCheckpoint, this.gpLapStartMs > 0);
+        }
+
+        if (dGate < 18) {
+          if (!this.gpInGate) {
+            this.gpInGate = true;
+            const nowMs = performance.now();
+            const allCpsCleared = (cps.length === 0 || this.gpNextCheckpoint >= cps.length);
+            if (this.gpLapStartMs > 0 && allCpsCleared && (nowMs - this.gpLapStartMs) > 25000) {
+              const lapSec = (nowMs - this.gpLapStartMs) / 1000;
+              this.gpLastLapSec = lapSec;
+              const vid = this.vehicle.vState.vehicleId;
+              const carName = (this.vehicle.spec && this.vehicle.spec.name) ? this.vehicle.spec.name : vid;
+              const driverName = (this.network && this.network.callsign) ? this.network.callsign : "DRIVER";
+              const prevBest = this.gpBestLaps[vid];
+              const isPB = (!prevBest || lapSec < prevBest);
+              if (isPB) {
+                this.gpBestLaps[vid] = +lapSec.toFixed(2);
+                try { localStorage.setItem("kk_gp_best_laps_v1", JSON.stringify(this.gpBestLaps)); } catch (_) {}
+              }
+              const madeTop5 = this._recordGpLeaderboardEntry(driverName, carName, vid, lapSec, true);
+              const mm = Math.floor(lapSec / 60), ss = (lapSec % 60).toFixed(2).padStart(5, "0");
+              this.ui.toast(`🏁 OFFICIAL GP LAP: ${mm}:${ss}${madeTop5 ? " — TOP 5 LEADERBOARD!" : (isPB ? " — NEW PERSONAL BEST!" : "")}`, isPB || madeTop5);
+              if (isGreen) {
+                this.gpLapStartMs = nowMs;
+                this.gpNextCheckpoint = 0;
+              } else {
+                this.gpLapStartMs = 0;
+                this.gpNextCheckpoint = 0;
+              }
+            } else if (this.gpLapStartMs > 0 && !allCpsCleared) {
+              this.ui.toast(`⚠ LAP INVALID — Missed checkpoints (${this.gpNextCheckpoint}/${cps.length})! Complete all gates in order!`, true);
+              if (isGreen) {
+                this.gpLapStartMs = nowMs;
+                this.gpNextCheckpoint = 0;
+              } else {
+                this.gpLapStartMs = 0;
+                this.gpNextCheckpoint = 0;
+              }
+            } else if (isGreen) {
+              this.gpLapStartMs = nowMs;
+              this.gpNextCheckpoint = 0;
+              this.ui.toast(`🟢 TIMED GP LAP STARTED! Hit all ${cps.length} checkpoints in order!`);
+            } else {
+              this.ui.toast(`🔴 RED LIGHT! Wait ${secToGreen}s for GREEN before crossing start line to begin timer!`, true);
+            }
+          }
+        } else if (dGate > 32) {
+          this.gpInGate = false;
+        }
       }
       if (this.audio && this.audio.updateTireSlip) {
         const slipVal = Math.max(this.vehicle.driftIntensity || 0, (this.vehicle.braking && this.vehicle.speedKmh > 35) ? 0.55 : 0);
@@ -5756,7 +5859,7 @@ KK.Game = class Game {
       this.audio.updateTireSlip(0, 0, "tarmac");
     }
 
-    // v18.1.3 Auto-save persistent vehicle odometer every 10s when driving!
+    // v18.2 Auto-save persistent vehicle odometer every 10s when driving!
     this._odoSaveAccum = (this._odoSaveAccum || 0) + dt;
     if (this._odoSaveAccum >= 10.0) {
       this._odoSaveAccum = 0;
@@ -5764,7 +5867,7 @@ KK.Game = class Game {
     }
 
     this._updateTutorial(dt);
-    // v18.1.3 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
+    // v18.2 Armor Viewer tooltip, T-72 Cosmonaut turret launch, 3.5s blow-out flame jet & subtle turret whine!
     if (this.armorViewerActive) this._updateArmorViewerTooltip();
     if (this.lwrAlertTimer > 0) {
       this.lwrAlertTimer = Math.max(0, this.lwrAlertTimer - dt);
@@ -5802,7 +5905,7 @@ KK.Game = class Game {
         this._turretWhineCd = 0.095;
       }
     }
-    // v18.1.3 Animate On-Foot Player Actions [1-5] on localAvatar!
+    // v18.2 Animate On-Foot Player Actions [1-5] on localAvatar!
     if (this.onFoot && this.localAvatar && this.onFootEmoteTimer > 0) {
       this.onFootEmoteTimer = Math.max(0, this.onFootEmoteTimer - dt);
       const tE = performance.now() * 0.012;
@@ -5828,7 +5931,7 @@ KK.Game = class Game {
         if (ud.legR) { ud.legR.rotation.set(0, 0, 0); }
       }
     }
-    // v18.1.3 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
+    // v18.2 PURGE DISCONNECTED / STALE REMOTE PLAYERS (>9s) & RUN-OVER ON-FOOT FRIENDS!
     if (this.network && this.network.remotePlayers) {
       const nowMs = performance.now();
       for (const [pid, rp] of this.network.remotePlayers.entries()) {
@@ -6541,7 +6644,7 @@ KK.Game = class Game {
         ctx2.drawImage(this.canvas, 0, 0);
 
         // Stamp clean version watermark in bottom-right corner of every screenshot!
-        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v18.1.3"}`;
+        const verStr = `KRASNO-KAMENKA OBLAST • ${KK.VERSION || "v18.2"}`;
         const fontSize = Math.max(14, Math.round(outCv.height * 0.020));
         ctx2.font = `bold ${fontSize}px monospace`;
         const padX = Math.round(fontSize * 0.72);
@@ -6567,11 +6670,11 @@ KK.Game = class Game {
         const a = document.createElement("a");
         const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         a.href = dataUrl;
-        a.download = `krasno_kamenka_${KK.VERSION || "v18.1.3"}_${ts}.png`;
+        a.download = `krasno_kamenka_${KK.VERSION || "v18.2"}_${ts}.png`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v18.1.3"})!`);
+        if (!this.photoMode) this.ui.toast(`Screenshot saved (${KK.VERSION || "v18.2"})!`);
       } catch (err) {
         this.ui.toast("Screenshot failed: " + err.message, true);
       }

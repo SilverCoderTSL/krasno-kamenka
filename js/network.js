@@ -1050,6 +1050,9 @@ KK.LanNetwork = class LanNetwork {
       case "car_bump":
         if (msg.targetPeerId === this.peerId && this.cb.onCarBump) this.cb.onCarBump(msg);
         break;
+      case "gp_record":
+        if (this.cb.onGpRecord) this.cb.onGpRecord(msg);
+        break;
       case "fence_break":
         if (this.cb.onFenceBreak) this.cb.onFenceBreak(msg);
         break;

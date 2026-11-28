@@ -133,6 +133,8 @@ KK.World = class World {
     this._buildOceanPorts();
     this._buildIslandSetpieces();
     this._buildLighthouses();
+    this._buildSavannaRefineries();
+    this._buildTropikaPaddyfields();
     this._extractBuildingColliders();
     this.updateChunks(0, 0, true);
   }
@@ -2683,6 +2685,33 @@ KK.World = class World {
     }
   }
 
+  // v18.2 Tight oriented building/wall collider helper (splits long rotated walls into snug AABB tiles!)
+  _addOrientedBoxCollider(cx, cz, yMin, yMax, lenX, lenZ, rotY, label = "Structure") {
+    const c = Math.cos(rotY || 0), s = Math.sin(rotY || 0);
+    const longX = (lenX >= lenZ);
+    const longDim = longX ? lenX : lenZ;
+    const shortDim = longX ? lenZ : lenX;
+    const segLen = Math.max(4.5, Math.min(10.0, shortDim * 1.4 + 3.0));
+    const segs = Math.max(1, Math.min(24, Math.ceil(longDim / segLen)));
+    const step = longDim / segs;
+    const halfShort = shortDim * 0.5;
+    const halfStep = step * 0.5;
+    for (let i = 0; i < segs; i++) {
+      const along = -longDim * 0.5 + (i + 0.5) * step;
+      const lx = longX ? along : 0;
+      const lz = longX ? 0 : along;
+      const wx = cx + lx * c + lz * s;
+      const wz = cz - lx * s + lz * c;
+      const hx = Math.abs(halfStep * (longX ? c : s)) + Math.abs(halfShort * (longX ? s : c));
+      const hz = Math.abs(halfStep * (longX ? s : c)) + Math.abs(halfShort * (longX ? c : s));
+      this.buildingColliders.push({
+        minX: wx - hx, maxX: wx + hx,
+        minZ: wz - hz, maxZ: wz + hz,
+        yMin, yMax, label
+      });
+    }
+  }
+
   _extractBuildingColliders() {
     this.rootGroup.updateMatrixWorld(true);
     const box = new THREE.Box3();
@@ -2979,6 +3008,11 @@ KK.World = class World {
       const hm = KK.HAMMOND_MESA;
       hm._baseH = sampleRingAvg(hm.x, hm.z, hm.radius * 0.9) + (hm.mesaHeightAdd || 16);
     }
+    if (KK.SAVANNA_REFINERIES) {
+      for (const rf of KK.SAVANNA_REFINERIES) {
+        rf._baseH = Math.max((KK.SEA_LEVEL || -32) + 8.0, sampleRingAvg(rf.x, rf.z, 75));
+      }
+    }
   }
 
   _buildGpCircuitSegments() {
@@ -3111,7 +3145,19 @@ KK.World = class World {
     }
 
     // Glass-smooth Krasny-Ring Tarmac Proving Grounds flattening
-    if (KK.ZOLOTOY_CITY && KK.ZOLOTOY_CITY._baseH !== undefined) {
+    if (KK.SAVANNA_REFINERIES) {
+      for (let ri = 0; ri < KK.SAVANNA_REFINERIES.length; ri++) {
+        const rf = KK.SAVANNA_REFINERIES[ri];
+        if (rf._baseH === undefined) continue;
+        const dr = Math.hypot(gx - rf.x, gz - rf.z);
+        if (dr < rf.radius + 55) {
+          const br = dr < rf.radius ? 1.0 : Math.max(0, 1.0 - (dr - rf.radius) / 55);
+          const sr = br * br * (3 - 2 * br);
+          h = h * (1 - sr) + rf._baseH * sr;
+        }
+      }
+    }
+        if (KK.ZOLOTOY_CITY && KK.ZOLOTOY_CITY._baseH !== undefined) {
       const zc = KK.ZOLOTOY_CITY;
       const dxC = Math.abs(gx - zc.cx), dzC = Math.abs(gz - zc.cz);
       const maxD = Math.max(dxC, dzC);
@@ -4017,6 +4063,317 @@ KK.World = class World {
     }
   }
 
+  // ==========================================================================
+  // v18.2 GP TRAFFIC LIGHTS, TOP-5 LEADERBOARD CANVAS & CHECKPOINT HIGHLIGHTING
+  // ==========================================================================
+  updateGpTrafficLights(secInMin) {
+    if (!this.gpStartLightMats || this.gpStartLightMats.length < 5) return;
+    const isGreen = (secInMin >= 50.0);
+    const inSeq = (secInMin >= 45.0 && secInMin < 50.0);
+    const litCount = inSeq ? Math.min(5, Math.floor(secInMin - 45.0) + 1) : 5;
+    for (let i = 0; i < 5; i++) {
+      if (isGreen) this.gpStartLightMats[i].color.setHex(0x22ff55);
+      else if (inSeq) this.gpStartLightMats[i].color.setHex(i < litCount ? 0xff1e2a : 0x2b1214);
+      else this.gpStartLightMats[i].color.setHex(0xaa161c);
+    }
+  }
+
+  updateGpCheckpointColors(nextCpIdx, lapActive) {
+    if (!this.gpCheckpointMats) return;
+    for (let i = 0; i < this.gpCheckpointMats.length; i++) {
+      if (!lapActive) this.gpCheckpointMats[i].color.setHex(0x00c8e6);
+      else if (i < nextCpIdx) this.gpCheckpointMats[i].color.setHex(0x22ff55);
+      else if (i === nextCpIdx) this.gpCheckpointMats[i].color.setHex(0xffd166);
+      else this.gpCheckpointMats[i].color.setHex(0x0088aa);
+    }
+  }
+
+  updateGpLeaderboard(entries = [], lightStatus = "RED — WAIT FOR GREEN") {
+    if (!this.gpLeaderboard) return;
+    const key = lightStatus + "|" + (entries || []).map((e) => `${e.callsign}:${e.carName}:${e.timeSec}`).join(",");
+    if (this.gpLeaderboard.lastKey === key) return;
+    this.gpLeaderboard.lastKey = key;
+
+    const cv = this.gpLeaderboard.canvas;
+    const ctx = cv.getContext("2d");
+    const W = cv.width, H = cv.height;
+
+    ctx.fillStyle = "#0a0f17";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "#e63946";
+    ctx.lineWidth = 10;
+    ctx.strokeRect(6, 6, W - 12, H - 12);
+
+    ctx.fillStyle = "#161f2e";
+    ctx.fillRect(14, 14, W - 28, 76);
+    ctx.fillStyle = "#ffd166";
+    ctx.font = "900 34px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("🏁 ZOLOTOY GP — TOP 5 LAP TIMES", 32, 62);
+
+    const isGrn = lightStatus.indexOf("GREEN") >= 0;
+    ctx.fillStyle = isGrn ? "#16a34a" : "#b91c1c";
+    ctx.fillRect(W - 350, 24, 322, 54);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "900 24px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(lightStatus, W - 189, 59);
+
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "bold 20px monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("POS", 34, 128);
+    ctx.fillText("DRIVER", 118, 128);
+    ctx.fillText("VEHICLE", 420, 128);
+    ctx.textAlign = "right";
+    ctx.fillText("TIME", W - 36, 128);
+
+    ctx.strokeStyle = "#334155";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(28, 142); ctx.lineTo(W - 28, 142); ctx.stroke();
+
+    const rowCols = ["#ffd166", "#e2e8f0", "#fb923c", "#38bdf8", "#a7f3d0"];
+    for (let r = 0; r < 5; r++) {
+      const y = 198 + r * 62;
+      ctx.fillStyle = (r % 2 === 0) ? "rgba(30, 41, 59, 0.55)" : "rgba(15, 23, 42, 0.55)";
+      ctx.fillRect(24, y - 40, W - 48, 52);
+
+      const e = entries && entries[r];
+      ctx.font = "900 28px monospace";
+      ctx.textAlign = "left";
+      ctx.fillStyle = rowCols[r];
+      ctx.fillText(`#${r + 1}`, 36, y - 4);
+
+      if (e) {
+        const mm = Math.floor(e.timeSec / 60);
+        const ss = (e.timeSec % 60).toFixed(2).padStart(5, "0");
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(String(e.callsign || "DRIVER").slice(0, 14), 118, y - 4);
+        ctx.fillStyle = "#93c5fd";
+        ctx.font = "bold 24px monospace";
+        ctx.fillText(String(e.carName || e.vehicleId || "CAR").slice(0, 20), 420, y - 5);
+        ctx.fillStyle = rowCols[r];
+        ctx.font = "900 28px monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(`${mm}:${ss}`, W - 36, y - 4);
+      } else {
+        ctx.fillStyle = "#475569";
+        ctx.font = "bold 24px monospace";
+        ctx.fillText("--- VACANT SLOT ---", 118, y - 5);
+        ctx.textAlign = "right";
+        ctx.fillText("--:--.--", W - 36, y - 5);
+      }
+    }
+    this.gpLeaderboard.tex.needsUpdate = true;
+  }
+
+  // ==========================================================================
+  // v18.2 ZOLOTOY SAVANNA LARGE COLLIDABLE & ANIMATED OIL REFINERIES!
+  // ==========================================================================
+  _buildSavannaRefineries() {
+    this.refineryAnims = [];
+    if (!KK.SAVANNA_REFINERIES || !KK.SAVANNA_REFINERIES.length) return;
+
+    const matSteelLt = new THREE.MeshStandardMaterial({ color: 0xb5bec6, roughness: 0.42, metalness: 0.65 });
+    const matSteelDk = new THREE.MeshStandardMaterial({ color: 0x3b434c, roughness: 0.58, metalness: 0.62 });
+    const matTankWht = new THREE.MeshStandardMaterial({ color: 0xe6eaee, roughness: 0.55, metalness: 0.25 });
+    const matPipeYel = new THREE.MeshStandardMaterial({ color: 0xe9b436, roughness: 0.48, metalness: 0.42 });
+    const matPad     = new THREE.MeshStandardMaterial({ color: 0x45494e, roughness: 0.92 });
+    const matRedWarn = new THREE.MeshBasicMaterial({ color: 0xff2a3c });
+    const matFlare   = new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.92 });
+    const matFlareIn = new THREE.MeshBasicMaterial({ color: 0xffe478, transparent: true, opacity: 0.96 });
+    const matSmoke   = new THREE.MeshBasicMaterial({ color: 0x26282c, transparent: true, opacity: 0.42, depthWrite: false });
+
+    for (const rf of KK.SAVANNA_REFINERIES) {
+      const baseY = rf._baseH !== undefined ? rf._baseH : this.getBaseHeight(rf.x, rf.z);
+      const grp = new THREE.Group();
+      grp.position.set(rf.x, baseY, rf.z);
+      grp.rotation.y = rf.yaw || 0;
+      const cR = Math.cos(rf.yaw || 0), sR = Math.sin(rf.yaw || 0);
+      const addRefCollider = (lx, lz, sx, sz, hC, lbl) => {
+        const wx = rf.x + lx * cR + lz * sR;
+        const wz = rf.z - lx * sR + lz * cR;
+        this._addOrientedBoxCollider(wx, wz, baseY - 2, baseY + hC, sx, sz, rf.yaw || 0, lbl);
+      };
+
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(148, 0.4, 118), matPad);
+      pad.position.set(0, 0.12, 0); pad.receiveShadow = true; grp.add(pad);
+
+      for (let ti = 0; ti < 4; ti++) {
+        const tx = -42 + ti * 16, tz = -22 + (ti % 2) * 14;
+        const th = 34 + (ti % 2) * 14;
+        const tr = 3.2 + (ti === 1 ? 0.9 : 0);
+        const tower = new THREE.Mesh(new THREE.CylinderGeometry(tr * 0.85, tr, th, 14), ti % 2 === 0 ? matSteelLt : matSteelDk);
+        tower.position.set(tx, th * 0.5, tz); tower.castShadow = true; grp.add(tower);
+        for (let rY = 10; rY < th - 4; rY += 10) {
+          const ring = new THREE.Mesh(new THREE.CylinderGeometry(tr + 1.2, tr + 1.2, 0.45, 14), matSteelDk);
+          ring.position.set(tx, rY, tz); grp.add(ring);
+        }
+        const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.65, 8, 6), matRedWarn);
+        beacon.position.set(tx, th + 0.8, tz); grp.add(beacon);
+        this.refineryAnims.push({ type: "beacon", mesh: beacon, phase: ti * 1.4 });
+        addRefCollider(tx, tz, tr * 2.1, tr * 2.1, th, "Refinery Distillation Tower");
+      }
+
+      const pipeRack = new THREE.Mesh(new THREE.BoxGeometry(92, 1.4, 4.6), matPipeYel);
+      pipeRack.position.set(0, 9.2, 4); grp.add(pipeRack);
+      for (let px = -42; px <= 42; px += 21) {
+        const st = new THREE.Mesh(new THREE.BoxGeometry(1.1, 9.2, 4.8), matSteelDk);
+        st.position.set(px, 4.6, 4); grp.add(st);
+        addRefCollider(px, 4, 1.5, 5.0, 9.5, "Refinery Pipe Support");
+      }
+
+      for (let ci = 0; ci < 4; ci++) {
+        const cx = 24 + (ci % 2) * 24, cz = -28 + Math.floor(ci / 2) * 24;
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(8.8, 8.8, 12.5, 18), matTankWht);
+        tank.position.set(cx, 6.25, cz); tank.castShadow = true; grp.add(tank);
+        const stripe = new THREE.Mesh(new THREE.CylinderGeometry(8.95, 8.95, 1.4, 18), matPipeYel);
+        stripe.position.set(cx, 9.6, cz); grp.add(stripe);
+        addRefCollider(cx, cz, 17.6, 17.6, 13.0, "Crude Storage Tank");
+      }
+      for (let si = 0; si < 3; si++) {
+        const sx = 18 + si * 18, sz = 32;
+        const sph = new THREE.Mesh(new THREE.SphereGeometry(6.8, 14, 12), matTankWht);
+        sph.position.set(sx, 8.4, sz); sph.castShadow = true; grp.add(sph);
+        for (let leg = 0; leg < 4; leg++) {
+          const la = (leg / 4) * Math.PI * 2 + 0.4;
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 7.2, 6), matSteelDk);
+          post.position.set(sx + Math.cos(la) * 5.2, 3.6, sz + Math.sin(la) * 5.2); grp.add(post);
+        }
+        addRefCollider(sx, sz, 13.4, 13.4, 15.2, "LPG Pressure Sphere");
+      }
+
+      const ctrlH = new THREE.Mesh(new THREE.BoxGeometry(24, 9.5, 16), matSteelDk);
+      ctrlH.position.set(-44, 4.75, 28); ctrlH.castShadow = true; grp.add(ctrlH);
+      addRefCollider(-44, 28, 24.4, 16.4, 10.0, "Refinery Control Building");
+
+      const flX = -58, flZ = -38;
+      const flStack = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 1.45, 52, 10), matSteelDk);
+      flStack.position.set(flX, 26, flZ); grp.add(flStack);
+      const flareOut = new THREE.Mesh(new THREE.ConeGeometry(3.4, 11.5, 8), matFlare);
+      flareOut.position.set(flX, 57.2, flZ); grp.add(flareOut);
+      const flareIn = new THREE.Mesh(new THREE.ConeGeometry(1.7, 6.8, 8), matFlareIn);
+      flareIn.position.set(flX, 55.6, flZ); grp.add(flareIn);
+      const smPuffs = [];
+      for (let sp = 0; sp < 4; sp++) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(2.6 + sp * 1.1, 8, 6), matSmoke);
+        puff.position.set(flX, 62 + sp * 6, flZ); grp.add(puff);
+        smPuffs.push(puff);
+      }
+      this.refineryAnims.push({ type: "flare", flareOut, flareIn, smPuffs, baseX: flX, baseZ: flZ, phase: Math.random() * 6.28 });
+      addRefCollider(flX, flZ, 3.4, 3.4, 52.0, "Refinery Flare Stack");
+
+      for (let pi = 0; pi < 3; pi++) {
+        const px = -26 + pi * 20, pz = 46;
+        const pjGrp = new THREE.Group();
+        pjGrp.position.set(px, 0, pz);
+        const samson = new THREE.Mesh(new THREE.BoxGeometry(1.4, 6.4, 2.2), matSteelDk);
+        samson.position.set(0, 3.2, 0); pjGrp.add(samson);
+        const beamPivot = new THREE.Group();
+        beamPivot.position.set(0, 6.4, 0);
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.0, 9.6), matPipeYel);
+        beamPivot.add(beam);
+        const horseHead = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.8, 1.9), matSteelDk);
+        horseHead.position.set(0, -0.4, 4.9); beamPivot.add(horseHead);
+        const counterWt = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 2.2), matSteelDk);
+        counterWt.position.set(0, -0.2, -4.6); beamPivot.add(counterWt);
+        pjGrp.add(beamPivot);
+        grp.add(pjGrp);
+        this.refineryAnims.push({ type: "pumpjack", beamPivot, phase: pi * 2.1, speed: 1.55 + pi * 0.15 });
+        addRefCollider(px, pz, 3.6, 10.2, 7.5, "Oil Pumpjack");
+      }
+
+      this.rootGroup.add(grp);
+    }
+  }
+
+  // ==========================================================================
+  // v18.2 OSTROV TROPIKA TERRACED INDONESIAN RICE PADDYFIELDS (SAWAH)!
+  // ==========================================================================
+  _buildTropikaPaddyfields() {
+    if (!KK.TROPIKA_PADDYFIELDS || !KK.TROPIKA_PADDYFIELDS.length) return;
+
+    const matBund   = new THREE.MeshStandardMaterial({ color: 0x5c4730, roughness: 0.95 });
+    const matWaterP = new THREE.MeshStandardMaterial({ color: 0x2f7d6e, roughness: 0.16, metalness: 0.35, transparent: true, opacity: 0.78 });
+    const matRiceGr = new THREE.MeshStandardMaterial({ color: 0x69b533, roughness: 0.86 });
+    const matRiceGd = new THREE.MeshStandardMaterial({ color: 0xa6c43a, roughness: 0.88 });
+    const matBamboo = new THREE.MeshStandardMaterial({ color: 0x9b7a44, roughness: 0.88 });
+    const matThatch = new THREE.MeshStandardMaterial({ color: 0x7b5c34, roughness: 0.96 });
+
+    const riceGeo = new THREE.ConeGeometry(0.65, 1.45, 5);
+    const _dm = new THREE.Object3D();
+
+    for (const pf of KK.TROPIKA_PADDYFIELDS) {
+      const grp = new THREE.Group();
+      const baseY = this.getBaseHeight(pf.x, pf.z);
+      const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+      if (baseY < seaL + 2.5) continue;
+
+      grp.position.set(pf.x, 0, pf.z);
+      grp.rotation.y = pf.yaw || 0;
+      const cY = Math.cos(pf.yaw || 0), sY = Math.sin(pf.yaw || 0);
+      const tiers = pf.tiers || 4;
+      const tierD = (pf.depth || 120) / tiers;
+      const tierW = pf.width || 150;
+
+      const riceMatricesGr = [];
+      const riceMatricesGd = [];
+
+      for (let t = 0; t < tiers; t++) {
+        const lz = -pf.depth * 0.5 + (t + 0.5) * tierD;
+        const wx = pf.x + lz * sY;
+        const wz = pf.z + lz * cY;
+        const ty = Math.max(seaL + 2.5, this.getBaseHeight(wx, wz));
+
+        const bundBase = new THREE.Mesh(new THREE.BoxGeometry(tierW + 2.4, 2.2, tierD + 1.8), matBund);
+        bundBase.position.set(0, ty - 0.85, lz); grp.add(bundBase);
+
+        const waterPl = new THREE.Mesh(new THREE.PlaneGeometry(tierW - 2.6, tierD - 2.6), matWaterP);
+        waterPl.rotation.x = -Math.PI / 2;
+        waterPl.position.set(0, ty + 0.30, lz); grp.add(waterPl);
+
+        const frontBerm = new THREE.Mesh(new THREE.BoxGeometry(tierW + 1.8, 0.52, 1.5), matBund);
+        frontBerm.position.set(0, ty + 0.38, lz + tierD * 0.5 - 0.6); grp.add(frontBerm);
+
+        const isGold = (t % 2 === 1);
+        for (let rx = -tierW * 0.44; rx <= tierW * 0.44; rx += 5.4) {
+          for (let rz = -tierD * 0.38; rz <= tierD * 0.38; rz += 5.0) {
+            _dm.position.set(rx + ((t * 1.7) % 1.4), ty + 0.88, lz + rz);
+            _dm.rotation.set(0, (rx + rz) * 0.5, 0);
+            _dm.scale.set(1.25, 0.95 + ((Math.abs(rx * rz) % 7) * 0.06), 1.25);
+            _dm.updateMatrix();
+            if (isGold) riceMatricesGd.push(_dm.matrix.clone());
+            else riceMatricesGr.push(_dm.matrix.clone());
+          }
+        }
+      }
+
+      if (riceMatricesGr.length > 0) {
+        const imG = new THREE.InstancedMesh(riceGeo, matRiceGr, riceMatricesGr.length);
+        for (let i = 0; i < riceMatricesGr.length; i++) imG.setMatrixAt(i, riceMatricesGr[i]);
+        imG.instanceMatrix.needsUpdate = true; grp.add(imG);
+      }
+      if (riceMatricesGd.length > 0) {
+        const imD = new THREE.InstancedMesh(riceGeo, matRiceGd, riceMatricesGd.length);
+        for (let i = 0; i < riceMatricesGd.length; i++) imD.setMatrixAt(i, riceMatricesGd[i]);
+        imD.instanceMatrix.needsUpdate = true; grp.add(imD);
+      }
+
+      const hx = tierW * 0.5 + 7.5, hz = 0;
+      const hY = Math.max(seaL + 2.5, this.getBaseHeight(pf.x + hx * cY, pf.z - hx * sY));
+      for (const [px, pz] of [[-2.0, -2.0], [2.0, -2.0], [-2.0, 2.0], [2.0, 2.0]]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 3.8, 6), matBamboo);
+        post.position.set(hx + px, hY + 1.9, hz + pz); grp.add(post);
+      }
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.25, 4.6), matBamboo);
+      floor.position.set(hx, hY + 1.0, hz); grp.add(floor);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.6, 4), matThatch);
+      roof.rotation.y = Math.PI * 0.25; roof.position.set(hx, hY + 4.8, hz); grp.add(roof);
+
+      this.rootGroup.add(grp);
+    }
+  }
+
   updateSettlements(dt, isNight) {
     if (KK.SettlementBuilder) {
       KK.SettlementBuilder.updateAnimations(dt, isNight, this.settlementAnims, this.townNightLights);
@@ -4033,6 +4390,27 @@ KK.World = class World {
         const fl = this.gpFloodlights[i];
         if (fl.lampMat) fl.lampMat.emissiveIntensity = isNight ? 1.85 : 0.25;
         if (fl.glowCone) fl.glowCone.visible = !!isNight;
+      }
+    }
+    if (this.refineryAnims && this.refineryAnims.length > 0) {
+      const tNow = performance.now() * 0.001;
+      for (let i = 0; i < this.refineryAnims.length; i++) {
+        const ra = this.refineryAnims[i];
+        if (ra.type === "pumpjack") {
+          ra.beamPivot.rotation.x = Math.sin(tNow * ra.speed + ra.phase) * 0.28;
+        } else if (ra.type === "flare") {
+          const flk = 0.84 + Math.sin(tNow * 17.5 + ra.phase) * 0.14 + Math.cos(tNow * 29.0) * 0.08;
+          ra.flareOut.scale.set(flk, 0.88 + flk * 0.26, flk);
+          ra.flareIn.scale.set(flk * 0.95, 0.85 + flk * 0.30, flk * 0.95);
+          for (let sp = 0; sp < ra.smPuffs.length; sp++) {
+            const prog = ((tNow * 0.32 + ra.phase + sp * 0.25) % 1.0);
+            ra.smPuffs[sp].position.set(ra.baseX + prog * 9.5, 60.5 + prog * 28.0, ra.baseZ + prog * 4.5);
+            const scP = 0.65 + prog * 1.45;
+            ra.smPuffs[sp].scale.setScalar(scP);
+          }
+        } else if (ra.type === "beacon") {
+          ra.mesh.visible = (Math.floor(tNow * 1.6 + ra.phase) % 2 === 0);
+        }
       }
     }
   }
@@ -4340,16 +4718,19 @@ KK.World = class World {
         const topCyanBar = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.25, span * 2 + 2.0), matCyanL);
         topCyanBar.position.set(0, 12.0, 0); sfGrp.add(topCyanBar);
 
-        // 5 Glowing Red GP Start Light Pods suspended cleanly above the starting grid!
+        // v18.2 5 Dynamic GP Traffic Light Pods (60s cycle: RED -> 5s F1 sequence -> 10s GREEN!)
+        this.gpStartLightMats = [];
         for (let li = 0; li < 5; li++) {
           const lzPod = -6.4 + li * 3.2;
-          const pod = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.75, 1.05), matDarkGP);
+          const pod = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.85, 1.12), matDarkGP);
           pod.position.set(0, 8.2, lzPod); sfGrp.add(pod);
+          const podMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
+          this.gpStartLightMats.push(podMat);
           for (const ly of [7.75, 8.55]) {
-            const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), matRedLit);
-            bulb.position.set(-0.46, ly, lzPod); sfGrp.add(bulb);
-            const bulbBack = new THREE.Mesh(new THREE.SphereGeometry(0.24, 6, 6), matRedLit);
-            bulbBack.position.set(0.46, ly, lzPod); sfGrp.add(bulbBack);
+            const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), podMat);
+            bulb.position.set(-0.48, ly, lzPod); sfGrp.add(bulb);
+            const bulbBack = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), podMat);
+            bulbBack.position.set(0.48, ly, lzPod); sfGrp.add(bulbBack);
           }
         }
         // Checkered Start/Finish Line Strip painted flush across exact track width
@@ -4458,6 +4839,112 @@ KK.World = class World {
           };
         }
 
+        // v18.2 SOLID COLLIDERS FOR ALL GP RACETRACK BUILDINGS, GRANDSTANDS, PIT WALL, TOWER & GANTRY PILLARS!
+        {
+          const cwT = Math.cos(tz.yaw || 0), swT = Math.sin(tz.yaw || 0);
+          const baseGY = tz._baseH || 10;
+          const toWorldGP = (lx, lz) => [tz.cx + lx * cwT - lz * swT, tz.cz + lx * swT + lz * cwT];
+          const addGpBox = (lx, lz, lenX, lenZ, hBox, localRotY, lbl) => {
+            const [wx, wz] = toWorldGP(lx, lz);
+            this._addOrientedBoxCollider(wx, wz, baseGY - 1.5, baseGY + hBox, lenX, lenZ, localRotY - (tz.yaw || 0), lbl);
+          };
+
+          for (const szP of [-span, span]) {
+            addGpBox(sfX + sfNx * szP, sfZ + sfNz * szP, 3.0, 2.2, 12.0, sfRotY, "GP Start Gantry Pillar");
+          }
+          const gsList = [
+            [sfX - sfTx * 75 - sfNx * gsOut, sfZ - sfTz * 75 - sfNz * gsOut, sfRotY, 125, 6],
+            [sfX + sfTx * 95 - sfNx * gsOut, sfZ + sfTz * 95 - sfNz * gsOut, sfRotY, 115, 6],
+            [420, -562, -0.14, 92, 5]
+          ];
+          for (const [gxL, gzL, rY, lenG, tiers] of gsList) {
+            const cR = Math.cos(rY), sR = Math.sin(rY);
+            const depthG = tiers * 2.2 + 3.2;
+            const offZ = -(depthG * 0.5 + 1.0);
+            addGpBox(gxL + offZ * sR, gzL + offZ * cR, lenG, depthG, tiers * 1.6 + 6.0, rY, "GP Grandstand");
+          }
+          const pBaseX = sfX + sfTx * 30 + sfNx * pitIn;
+          const pBaseZ = sfZ + sfTz * 30 + sfNz * pitIn;
+          const cP = Math.cos(sfRotY), sP = Math.sin(sfRotY);
+          const pitWorldOff = (plx, plz) => [pBaseX + plx * cP + plz * sP, pBaseZ - plx * sP + plz * cP];
+          const [pwX, pwZ] = pitWorldOff(0, -11.5);
+          addGpBox(pwX, pwZ, 156, 1.3, 2.4, sfRotY, "GP Pit Wall");
+          const [pmX, pmZ] = pitWorldOff(0, 4.0);
+          addGpBox(pmX, pmZ, 144, 16.5, 9.0, sfRotY, "GP Pit Garage");
+          const [rcX, rcZ] = pitWorldOff(-82, 4.0);
+          addGpBox(rcX, rcZ, 16, 14, 24.0, sfRotY, "GP Race-Control Tower");
+
+          // 3D Trackside Top-5 Leaderboard Billboard in the open 50m gap beside Start/Finish straight!
+          const lbX = sfX + sfTx * 12 - sfNx * (gsOut + 2.5);
+          const lbZ = sfZ + sfTz * 12 - sfNz * (gsOut + 2.5);
+          const lbGrp = new THREE.Group();
+          lbGrp.position.set(lbX, 0, lbZ);
+          lbGrp.rotation.y = sfRotY;
+          for (const px of [-7.8, 7.8]) {
+            const lPil = new THREE.Mesh(new THREE.BoxGeometry(0.95, 13.5, 0.95), matSteel);
+            lPil.position.set(px, 6.75, 0); lbGrp.add(lPil);
+          }
+          const lbFrame = new THREE.Mesh(new THREE.BoxGeometry(19.2, 10.4, 0.95), matDarkGP);
+          lbFrame.position.set(0, 10.8, 0); lbGrp.add(lbFrame);
+          const lbHeaderTrim = new THREE.Mesh(new THREE.BoxGeometry(19.6, 0.45, 1.15), matRedGP);
+          lbHeaderTrim.position.set(0, 16.1, 0); lbGrp.add(lbHeaderTrim);
+
+          const lbCanvas = document.createElement("canvas");
+          lbCanvas.width = 1024; lbCanvas.height = 512;
+          const lbTex = new THREE.CanvasTexture(lbCanvas);
+          const lbFaceMat = new THREE.MeshBasicMaterial({ map: lbTex });
+          const lbFront = new THREE.Mesh(new THREE.PlaneGeometry(18.4, 9.4), lbFaceMat);
+          lbFront.position.set(0, 10.8, 0.50); lbGrp.add(lbFront);
+          const lbBack = new THREE.Mesh(new THREE.PlaneGeometry(18.4, 9.4), lbFaceMat);
+          lbBack.position.set(0, 10.8, -0.50); lbBack.rotation.y = Math.PI; lbGrp.add(lbBack);
+          tGrp.add(lbGrp);
+          addGpBox(lbX, lbZ, 18.0, 1.6, 16.0, sfRotY, "GP Leaderboard Tower");
+          this.gpLeaderboard = { canvas: lbCanvas, tex: lbTex, lastKey: "" };
+          this.updateGpLeaderboard([], "RED — WAIT FOR GREEN");
+        }
+
+        // 8 Sequential Anti-Cheat Checkpoints around the 5.6 km GP Spline
+        if (gp && gp.samples && gp.samples.length >= 24) {
+          const S = gp.samples;
+          const N = S.length;
+          const cwC = Math.cos(tz.yaw || 0), swC = Math.sin(tz.yaw || 0);
+          tz.checkpoints = [];
+          this.gpCheckpointMats = [];
+          const cpCount = 8;
+          for (let ci = 0; ci < cpCount; ci++) {
+            const sIdx = Math.floor(((ci + 1) / (cpCount + 1)) * N) % N;
+            const pCur = S[sIdx], pNext = S[(sIdx + 1) % N];
+            const dtx = pNext[0] - pCur[0], dtz = pNext[1] - pCur[1];
+            const tL = Math.hypot(dtx, dtz) || 1;
+            const txL = dtx / tL, tzL = dtz / tL;
+            const rotY = Math.atan2(-tzL, txL);
+            const wx = tz.cx + pCur[0] * cwC - pCur[1] * swC;
+            const wz = tz.cz + pCur[0] * swC + pCur[1] * cwC;
+            const wDirX = txL * cwC - tzL * swC;
+            const wDirZ = txL * swC + tzL * cwC;
+            tz.checkpoints.push({ idx: ci, x: wx, z: wz, dirX: wDirX, dirZ: wDirZ });
+
+            const cpGrp = new THREE.Group();
+            cpGrp.position.set(pCur[0], 0, pCur[1]);
+            cpGrp.rotation.y = rotY;
+            const cpSpan = halfT + 4.4;
+            const cpMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+            this.gpCheckpointMats.push(cpMat);
+            for (const szC of [-cpSpan, cpSpan]) {
+              const post = new THREE.Mesh(new THREE.BoxGeometry(0.65, 6.2, 0.65), matSteel);
+              post.position.set(0, 3.1, szC); cpGrp.add(post);
+              const lightBar = new THREE.Mesh(new THREE.BoxGeometry(0.78, 1.4, 0.78), cpMat);
+              lightBar.position.set(0, 5.8, szC); cpGrp.add(lightBar);
+              const wxP = tz.cx + (pCur[0] - tzL * szC) * cwC - (pCur[1] + txL * szC) * swC;
+              const wzP = tz.cz + (pCur[0] - tzL * szC) * swC + (pCur[1] + txL * szC) * cwC;
+              this.buildingColliders.push({ minX: wxP - 0.6, maxX: wxP + 0.6, minZ: wzP - 0.6, maxZ: wzP + 0.6, yMin: (tz._baseH || 10) - 1, yMax: (tz._baseH || 10) + 7, label: "GP Checkpoint Pylon" });
+            }
+            const overhead = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, cpSpan * 2 + 0.6), cpMat);
+            overhead.position.set(0, 6.6, 0); cpGrp.add(overhead);
+            tGrp.add(cpGrp);
+          }
+        }
+
         // 4. INSTANCED RED/WHITE CORNER TIRE-STACK BARRIERS + TRACKSIDE TREES + SPONSOR BANNERS + BRAKING BOARDS!
         if (gp && gp.samples && gp.samples.length > 10) {
           const S = gp.samples;
@@ -4492,6 +4979,17 @@ KK.World = class World {
                 _td.updateMatrix();
                 if (((i * 3 + sub) & 1) === 0) redTireMats.push(_td.matrix.clone());
                 else whtTireMats.push(_td.matrix.clone());
+                if (sub === 0) {
+                  const cwTB = Math.cos(tz.yaw || 0), swTB = Math.sin(tz.yaw || 0);
+                  const wtbX = tz.cx + bx * cwTB - bz * swTB;
+                  const wtbZ = tz.cz + bx * swTB + bz * cwTB;
+                  this.buildingColliders.push({
+                    minX: wtbX - 1.5, maxX: wtbX + 1.5,
+                    minZ: wtbZ - 1.5, maxZ: wtbZ + 1.5,
+                    yMin: (tz._baseH || 10) - 1.0, yMax: (tz._baseH || 10) + 2.4,
+                    label: "GP Tire Barrier"
+                  });
+                }
               }
             }
 
@@ -5089,9 +5587,28 @@ KK.World = class World {
       this.waterMeshes.push(ribbon);
     }
 
-    // 2. Isolated Oasis/Swamp Water Fords
+    // 2. Isolated Oasis/Swamp Water Fords & Zolotoy Savanna Lakes!
     for (const rv of KK.RIVERS) {
       const wy = this.getBaseHeight(rv.x + rv.rx * 0.9, rv.z) - 0.35;
+      if (rv.isSavannaLake) {
+        const lGrp = new THREE.Group();
+        for (let k = 0; k < 22; k++) {
+          const ang = (k / 22) * Math.PI * 2;
+          const sx = rv.x + Math.cos(ang) * (rv.rx * 1.06);
+          const sz = rv.z + Math.sin(ang) * (rv.rz * 1.06);
+          const sy = this.getBaseHeight(sx, sz);
+          if (k % 2 === 0) {
+            const trk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, 4.8, 6), this.matAcaciaBark);
+            trk.position.set(sx, sy + 2.4, sz); lGrp.add(trk);
+            const cnp = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 2.2, 1.4, 8), this.matAcaciaLeaf);
+            cnp.position.set(sx, sy + 5.2, sz); lGrp.add(cnp);
+          } else {
+            const reed = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.4, 5), this.matAcaciaLeaf);
+            reed.position.set(sx, sy + 1.1, sz); lGrp.add(reed);
+          }
+        }
+        this.rootGroup.add(lGrp);
+      }
       const geo = new THREE.PlaneGeometry(rv.rx * 2.1, rv.rz * 2.1);
       geo.rotateX(-Math.PI / 2);
       const m = new THREE.Mesh(geo, this.matWater);

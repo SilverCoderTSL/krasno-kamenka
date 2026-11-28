@@ -190,8 +190,9 @@ KK.OceanCryptidManager = class OceanCryptidManager {
       const geo = new THREE.ExtrudeGeometry(makeHullShape(beamScale, lenScale), {
         depth: height, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 24
       });
-      // Rotate so Shape (X, Y) lies flat on horizontal (X, Z) and extrusion depth goes UP (+Y)
-      geo.rotateX(-Math.PI / 2);
+      // v18.2 Rotate +90° around X & lift by height so sharp clipper bow (y=+134) stays cleanly at +Z & normals face OUT!
+      geo.rotateX(Math.PI / 2);
+      geo.translate(0, height, 0);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.y = yBottom;
       mesh.castShadow = true;
@@ -214,14 +215,24 @@ KK.OceanCryptidManager = class OceanCryptidManager {
     bulbBow.position.set(0, -1.6, 131.5);
     shipRoot.add(bulbBow);
 
-    // Golden Imperial Chrysanthemum Crest on the Bow Stem
-    const seal = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.45, 1.45, 0.42, 16),
-      new THREE.MeshStandardMaterial({ color: 0xc29b38, metalness: 0.78, roughness: 0.32 })
-    );
-    seal.rotation.x = Math.PI / 2;
-    seal.position.set(0, 8.8, 135.8);
-    shipRoot.add(seal);
+    // v18.2 Flush Sculpted 16-Petal Golden Imperial Chrysanthemum Crest bolted directly onto Clipper Bow Stem!
+    const matGoldCrest = new THREE.MeshStandardMaterial({ color: 0xd4a938, metalness: 0.82, roughness: 0.28 });
+    const crestGrp = new THREE.Group();
+    crestGrp.position.set(0, 8.95, 136.05); // Flush on Tier-3 bow stem (zBow=134*1.015+0.22=136.23) — ZERO floating gap!
+    const sealBase = new THREE.Mesh(new THREE.CylinderGeometry(1.42, 1.48, 0.36, 16), matGoldCrest);
+    sealBase.rotation.x = Math.PI / 2; crestGrp.add(sealBase);
+    const sealCore = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), matGoldCrest);
+    sealCore.position.z = 0.16; crestGrp.add(sealCore);
+    for (let pi = 0; pi < 16; pi++) {
+      const pa = (pi / 16) * Math.PI * 2;
+      const pet = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.82, 0.18), matGoldCrest);
+      pet.position.set(Math.cos(pa) * 0.92, Math.sin(pa) * 0.92, 0.14);
+      pet.rotation.z = pa - Math.PI / 2;
+      crestGrp.add(pet);
+    }
+    shipRoot.add(crestGrp);
+    const jackstaff = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, 9.5, 6), matHullDrk);
+    jackstaff.position.set(0, 14.6, 129.5); shipRoot.add(jackstaff);
 
     // Armored Belt Strakes & Battle-Scarred Rust Streaks along hull sides
     for (const sx of [-1, 1]) {
@@ -301,20 +312,30 @@ KK.OceanCryptidManager = class OceanCryptidManager {
       gunPitch.position.set(0, 2.5, 7.2);
       piv.add(gunPitch);
 
+      const matCanvasBag = new THREE.MeshStandardMaterial({ color: 0x9aa2a6, roughness: 0.92, metalness: 0.05 });
       const flashes = [];
+      const muzzleTips = [];
       for (const bx of [-3.4, 0, 3.4]) {
+        const bag = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.85, 2.2), matCanvasBag);
+        bag.position.set(bx, 0, 0.8); gunPitch.add(bag);
+        const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.76, 0.84, 7.2, 10), matHullDrk);
+        sleeve.rotation.x = Math.PI / 2; sleeve.position.set(bx, 0, 4.4); gunPitch.add(sleeve);
         const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.68, 21.5, 10), matBarrel);
         bar.rotation.x = Math.PI / 2;
-        bar.position.set(bx, 0, 10.6); bar.castShadow = true; gunPitch.add(bar);
+        bar.position.set(bx, 0, 11.2); bar.castShadow = true; gunPitch.add(bar);
+        const mTip = new THREE.Object3D();
+        mTip.position.set(bx, 0, 22.3);
+        gunPitch.add(mTip);
+        muzzleTips.push(mTip);
         const fl = new THREE.Mesh(
           new THREE.ConeGeometry(4.0, 17.5, 8),
           new THREE.MeshBasicMaterial({ color: 0xffa826, transparent: true, opacity: 0.94, blending: THREE.AdditiveBlending, depthWrite: false })
         );
-        fl.rotation.x = Math.PI / 2; fl.position.set(bx, 0, 27.5); fl.visible = false;
+        fl.rotation.x = Math.PI / 2; fl.position.set(bx, 0, 30.2); fl.visible = false;
         gunPitch.add(fl);
         flashes.push(fl);
       }
-      mainTurrets.push({ pivot: piv, gunPitch, flashes, baseYaw, curYaw: baseYaw, curPitch: 0.08, tz, ty });
+      mainTurrets.push({ pivot: piv, gunPitch, flashes, muzzleTips, baseYaw, curYaw: baseYaw, curPitch: 0.08, tz, ty });
     };
     build460Turret(11.6,  66, 0);        // Turret A (Forward)
     build460Turret(15.2,  42, 0);        // Turret B (Superfiring Forward)
@@ -330,11 +351,43 @@ KK.OceanCryptidManager = class OceanCryptidManager {
         sb.position.set(bx, sy, sz + (sry === 0 ? 7.5 : -7.5)); shipRoot.add(sb);
       }
     }
-    for (const sx of [-16.2, 16.2]) {
-      for (const az of [14, -4, -22]) {
-        const aa = new THREE.Mesh(new THREE.BoxGeometry(4.4, 2.8, 4.8), matHullDrk);
-        aa.position.set(sx, 12.8, az); shipRoot.add(aa);
+    for (const sx of [-16.0, 16.0]) {
+      for (const az of [18, 0, -18]) {
+        const aaGrp = new THREE.Group();
+        aaGrp.position.set(sx, 12.8, az);
+        aaGrp.rotation.y = sx > 0 ? Math.PI * 0.42 : -Math.PI * 0.42;
+        const aaHouse = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, 4.6), matHullDrk);
+        aaGrp.add(aaHouse);
+        for (const abx of [-0.65, 0.65]) {
+          const ab = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.19, 6.2, 6), matBarrel);
+          ab.rotation.x = Math.PI / 2 - 0.36; ab.position.set(abx, 1.2, 3.8); aaGrp.add(ab);
+        }
+        shipRoot.add(aaGrp);
       }
+      for (const tz25 of [28, 10, -8, -26, -38]) {
+        const tub = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.0, 1.6, 10), matHullGry);
+        tub.position.set(sx * 0.86, 14.5, tz25); shipRoot.add(tub);
+        const aaGun = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.14, 3.2, 5), matBarrel);
+        aaGun.rotation.x = Math.PI / 2 - 0.55; aaGun.position.set(sx * 0.86, 15.8, tz25); shipRoot.add(aaGun);
+      }
+      const boat = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.4, 10.5), matTeak);
+      boat.position.set(sx * 0.72, 10.9, -52); shipRoot.add(boat);
+      const fp = new THREE.Group();
+      fp.position.set(sx * 9.8, 12.6, -98);
+      fp.rotation.y = sx * 0.32;
+      const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.72, 9.5, 8), matHullGry);
+      fuse.rotation.x = Math.PI / 2; fp.add(fuse);
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(12.2, 0.28, 2.4), matHullGry);
+      wing.position.set(0, 0.1, 1.2); fp.add(wing);
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.22, 1.1), matHullDrk);
+      tail.position.set(0, 0.2, -4.1); fp.add(tail);
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.8, 1.4), matHullDrk);
+      fin.position.set(0, 0.9, -4.1); fp.add(fin);
+      for (const fx of [-1.8, 1.8]) {
+        const flt = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 6.2, 6), matHullDrk);
+        flt.rotation.x = Math.PI / 2; flt.position.set(fx, -1.1, 0.6); fp.add(flt);
+      }
+      shipRoot.add(fp);
     }
 
     // D) ICONIC 44-METER PAGODA MAST SUPERSTRUCTURE + RAKED FUNNEL + SWEEPING SEARCHLIGHT!
@@ -361,6 +414,18 @@ KK.OceanCryptidManager = class OceanCryptidManager {
     topRange.position.set(0, 45.4, 7.2); shipRoot.add(topRange);
     const radar = new THREE.Mesh(new THREE.BoxGeometry(7.4, 3.8, 0.5), matRust);
     radar.position.set(0, 48.2, 7.2); shipRoot.add(radar);
+    for (const [wy, wz, ww] of [[24.2, 7.2, 22.0], [30.2, 7.4, 18.5], [35.4, 7.4, 14.5]]) {
+      const wingDeck = new THREE.Mesh(new THREE.BoxGeometry(ww, 0.65, 4.2), matHullDrk);
+      wingDeck.position.set(0, wy, wz); shipRoot.add(wingDeck);
+    }
+    const yard1 = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 22.0, 6), matHullDrk);
+    yard1.rotation.z = Math.PI / 2; yard1.position.set(0, 40.5, 3.5); shipRoot.add(yard1);
+    const yard2 = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.20, 15.0, 6), matHullDrk);
+    yard2.rotation.z = Math.PI / 2; yard2.position.set(0, 35.2, -32.0); shipRoot.add(yard2);
+    for (const px of [-4.6, 4.6]) {
+      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 17.5, 6), matHullDrk);
+      sp.position.set(px, 24.0, -14.2); sp.rotation.x = -0.34; shipRoot.add(sp);
+    }
 
     // Eerie Sweeping Bridge Searchlight Beam!
     const searchlightPivot = new THREE.Group();
@@ -700,33 +765,39 @@ KK.OceanCryptidManager = class OceanCryptidManager {
     if (audio && audio.playYamatoSalvo) audio.playYamatoSalvo();
     this._emitDreadAudio(audio, 0.95, "yamato");
 
+    // v18.2 Fire all nine 460mm shells DIRECTLY forward from each barrel's real 3D muzzle tip!
+    ym.mesh.updateMatrixWorld(true);
+    const tmpTip = new THREE.Vector3();
     for (const t of ym.mainTurrets) {
       for (const fl of t.flashes) fl.visible = true;
-      const c = Math.cos(ym.yaw), s = Math.sin(ym.yaw);
-      const sx = ym.gx + t.tz * s * 1.55;
-      const sz = ym.gz + t.tz * c * 1.55;
-      const sy = seaL + t.ty * 1.55 + 4.0;
-      const spreadX = (Math.random() - 0.5) * 38;
-      const spreadZ = (Math.random() - 0.5) * 38;
-      const tx = ym.targetX + spreadX;
-      const tz = ym.targetZ + spreadZ;
-      const dist = Math.hypot(tx - sx, tz - sz);
-      const flightT = Math.max(1.3, Math.min(3.0, dist / 210));
-      const g = 28.0;
-      const vx = (tx - sx) / flightT;
-      const vz = (tz - sz) / flightT;
-      const vy = (seaL - sy + 0.5 * g * flightT * flightT) / flightT;
+      const tips = (t.muzzleTips && t.muzzleTips.length > 0) ? t.muzzleTips : [t.gunPitch];
+      for (let bi = 0; bi < tips.length; bi++) {
+        tips[bi].getWorldPosition(tmpTip);
+        const sx = tmpTip.x + this.world.originX;
+        const sy = tmpTip.y;
+        const sz = tmpTip.z + this.world.originZ;
+        const spreadX = (Math.random() - 0.5) * 44;
+        const spreadZ = (Math.random() - 0.5) * 44;
+        const tx = ym.targetX + spreadX;
+        const tz = ym.targetZ + spreadZ;
+        const dist = Math.max(25, Math.hypot(tx - sx, tz - sz));
+        const flightT = Math.max(1.3, Math.min(3.2, dist / 215));
+        const g = 28.0;
+        const vx = (tx - sx) / flightT;
+        const vz = (tz - sz) / flightT;
+        const vy = (seaL - sy + 0.5 * g * flightT * flightT) / flightT;
 
-      const shellMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(1.45, 8, 6),
-        new THREE.MeshBasicMaterial({ color: 0xffb703 })
-      );
-      this.world.toLocal(sx, sy, sz, shellMesh.position);
-      this.scene.add(shellMesh);
-      this.shells.push({ gx: sx, gy: sy, gz: sz, vx, vy, vz, g, mesh: shellMesh, life: flightT + 0.45 });
+        const shellMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(1.35, 8, 6),
+          new THREE.MeshBasicMaterial({ color: 0xffb703 })
+        );
+        this.world.toLocal(sx, sy, sz, shellMesh.position);
+        this.scene.add(shellMesh);
+        this.shells.push({ gx: sx, gy: sy, gz: sz, vx, vy, vz, g, mesh: shellMesh, life: flightT + 0.45 });
 
-      if (particles) {
-        particles.emitCrashBurst(sx, sy + 2, sz, 2.5, "rock", "clear");
+        if (particles && bi === 1) {
+          particles.emitCrashBurst(sx, sy + 1.0, sz, 2.8, "rock", "clear");
+        }
       }
     }
   }

@@ -394,7 +394,16 @@ KK.MapController = class MapController {
           pinX: gpG.x, pinZ: gpG.z
         });
       }
-      for (const bz of (KK.BAD_ROAD_ZONES || [])) {
+      for (const rf of (KK.SAVANNA_REFINERIES || [])) {
+        list.push({ type: "zone", priority: 89, x: rf.x, z: rf.z, name: rf.name, sub: "Animated & Collidable Oil Refinery • Pumpjacks & Flare Stack", color: "#fb923c", icon: "🛢" });
+      }
+      for (const rv of (KK.RIVERS || [])) {
+        if (rv.isSavannaLake) list.push({ type: "zone", priority: 86, x: rv.x, z: rv.z, name: rv.name, sub: "Scenic Zolotoy Savanna Oasis Lake", color: "#38bdf8", icon: "💧" });
+      }
+      for (const pf of (KK.TROPIKA_PADDYFIELDS || [])) {
+        list.push({ type: "zone", priority: 85, x: pf.x, z: pf.z, name: pf.name, sub: "Ostrov Tropika Terraced Rice Paddyfields (Sawah)", color: "#84cc16", icon: "🌾" });
+      }
+            for (const bz of (KK.BAD_ROAD_ZONES || [])) {
         list.push({ type: "badroad", priority: 82, x: bz.x, z: bz.z, name: bz.name.split("(")[0].trim(), sub: bz.desc, color: "#ff5c77", icon: "⚠", r: bz.radius });
       }
     }

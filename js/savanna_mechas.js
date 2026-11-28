@@ -803,23 +803,18 @@ KK.SavannaMechaManager = class SavannaMechaManager {
   }
 
   _buildAllMechas() {
-    // 1. Deactivated Monumental Statue #1 ("EINHEIT-01"): Northern Savanna Coastline Overlook
+    // 1. Deactivated Monumental Statue #1 ("EINHEIT-01"): DRAMATIC ONE-KNEE POWER-DOWN KNEEL!
     const m1 = this._buildSingleMecha(false);
     m1.id = "einheit_01";
+    m1.dormantStyle = "kneel";
     m1.gx = -63200; m1.gz = 51600; m1.yaw = 0.52;
-    m1.pelvisGrp.rotation.z = 0.08; m1.torsoGrp.rotation.x = 0.14; m1.headGrp.rotation.x = 0.24;
-    m1.arms[0].shoulder.rotation.x = 0.18; m1.arms[0].elbow.rotation.x = -0.35;
-    m1.arms[1].shoulder.rotation.x = -0.08; m1.arms[1].elbow.rotation.x = -0.22;
-    m1.legs[0].hip.rotation.x = -0.10; m1.legs[0].knee.rotation.x = 0.18;
     this.mechas.push(m1);
 
-    // 2. Deactivated Monumental Statue #2 ("EINHEIT-02"): Western Savanna Ridge
+    // 2. Deactivated Monumental Statue #2 ("EINHEIT-02"): POWERED-DOWN SLUMPED SHUTDOWN CROUCH!
     const m2 = this._buildSingleMecha(false);
     m2.id = "einheit_02";
+    m2.dormantStyle = "slump";
     m2.gx = -77200; m2.gz = 64800; m2.yaw = -1.15;
-    m2.pelvisGrp.rotation.z = -0.06; m2.torsoGrp.rotation.x = 0.10; m2.headGrp.rotation.y = 0.28;
-    m2.arms[0].shoulder.rotation.x = -0.15; m2.arms[0].elbow.rotation.x = -0.40;
-    m2.arms[1].shoulder.rotation.x = 0.20; m2.arms[1].elbow.rotation.x = -0.25;
     this.mechas.push(m2);
 
     // 3. ACTIVE COASTAL PATROL COLOSSUS ("EINHEIT-03"): Roams Zolotoy Savanna's entire coastline!
@@ -834,7 +829,126 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     ];
     m3.torsoYaw = 0;
     m3.podPitch = 0;
+    m3._smoothRootY = null;
     this.mechas.push(m3);
+  }
+
+  // Sample exact terrain height + surface slope pitch/roll in mecha local heading frame!
+  _sampleGroundAndSlope(gx, gz, yaw, seaL) {
+    const hC = Math.max(seaL + 0.3, this.world.getTerrainInfo(gx, gz, false).height);
+    const step = 4.5;
+    const sinY = Math.sin(yaw), cosY = Math.cos(yaw);
+    const hFwd   = Math.max(seaL + 0.3, this.world.getTerrainInfo(gx + sinY * step, gz + cosY * step, false).height);
+    const hBack  = Math.max(seaL + 0.3, this.world.getTerrainInfo(gx - sinY * step, gz - cosY * step, false).height);
+    const hRight = Math.max(seaL + 0.3, this.world.getTerrainInfo(gx + cosY * step, gz - sinY * step, false).height);
+    const hLeft  = Math.max(seaL + 0.3, this.world.getTerrainInfo(gx - cosY * step, gz + sinY * step, false).height);
+    const slopePitch = Math.max(-0.42, Math.min(0.42, -Math.atan2(hFwd - hBack, step * 2)));
+    const slopeRoll  = Math.max(-0.38, Math.min(0.38,  Math.atan2(hRight - hLeft, step * 2)));
+    return { h: hC, pitch: slopePitch, roll: slopeRoll };
+  }
+
+  // Analytical 2-Bone Leg IK (L1 = 2.56 thigh, L2 = 2.44 shin, sole = 0.48 below ankle!)
+  // Plants ankle at exact (targetZ, targetY) relative to hipPivot so feet NEVER float or clip!
+  _solveLegIK(leg, targetZ, targetY, slopePitch, slopeRoll, groundWeight) {
+    const L1 = 2.56, L2 = 2.44;
+    let d = Math.hypot(targetZ, targetY);
+    const maxReach = (L1 + L2) - 0.04;
+    const minReach = 1.10;
+    d = Math.max(minReach, Math.min(maxReach, d));
+
+    const cosKnee = Math.max(-1, Math.min(1, (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2)));
+    const kneeBend = Math.PI - Math.acos(cosKnee);
+    const alpha = Math.atan2(targetZ, -targetY);
+    const cosHipOff = Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)));
+    const hipOff = Math.acos(cosHipOff);
+
+    const hipRotX = -(alpha + hipOff);
+    const kneeRotX = kneeBend;
+
+    leg.hip.rotation.x = hipRotX;
+    leg.knee.rotation.x = kneeRotX;
+    const levelPitch = -(hipRotX + kneeRotX);
+    const swingToePitch = 0.14;
+    leg.ankle.rotation.x = levelPitch + slopePitch * groundWeight + swingToePitch * (1 - groundWeight);
+    leg.ankle.rotation.z = slopeRoll * groundWeight;
+  }
+
+  // Apply dramatic, grounded, museum-grade Dormant Statue poses (grounded cleanly onto real terrain!)
+  _applyDormantPose(m, seaL) {
+    const sc = 5.2;
+    const sinY = Math.sin(m.yaw), cosY = Math.cos(m.yaw);
+    if (m.dormantStyle === "kneel") {
+      // EINHEIT-01: Deactivated One-Knee Kneel!
+      const lFootX = m.gx + (-1.44 * cosY + 2.10 * sinY) * sc;
+      const lFootZ = m.gz + ( 1.44 * sinY + 2.10 * cosY) * sc;
+      const rKneeX = m.gx + ( 1.44 * cosY + 0.35 * sinY) * sc;
+      const rKneeZ = m.gz + (-1.44 * sinY + 0.35 * cosY) * sc;
+      const gL = this._sampleGroundAndSlope(lFootX, lFootZ, m.yaw, seaL);
+      const gR = this._sampleGroundAndSlope(rKneeX, rKneeZ, m.yaw, seaL);
+      const rootY = Math.min(gL.h, gR.h);
+
+      this.world.toLocal(m.gx, rootY, m.gz, m.root.position);
+      m.root.rotation.y = m.yaw;
+
+      const rKneeLocalY = (gR.h - rootY) / sc + 0.62;
+      const lAnkleLocalY = (gL.h - rootY) / sc + 0.48;
+      const pelvY = Math.max(2.95, rKneeLocalY + 2.52);
+      m.pelvisGrp.position.y = pelvY;
+      m.pelvisGrp.rotation.z = 0.06;
+      m.pelvisGrp.rotation.x = 0.10;
+
+      this._solveLegIK(m.legs[0], 2.05, lAnkleLocalY - (pelvY - 0.40), gL.pitch, gL.roll, 1.0);
+
+      m.legs[1].hip.rotation.x = 0.34;
+      m.legs[1].knee.rotation.x = 1.56;
+      m.legs[1].ankle.rotation.x = -0.35;
+      m.legs[1].ankle.rotation.z = 0;
+
+      m.torsoGrp.rotation.x = 0.34;
+      m.torsoGrp.rotation.y = -0.14;
+      m.torsoGrp.rotation.z = 0.05;
+      m.headGrp.rotation.x = 0.46;
+      m.headGrp.rotation.y = 0.18;
+      m.arms[0].shoulder.rotation.x = -0.48; m.arms[0].shoulder.rotation.z = 0.12;
+      m.arms[0].elbow.rotation.x = -0.82;
+      m.arms[1].shoulder.rotation.x = 0.22;  m.arms[1].shoulder.rotation.z = -0.14;
+      m.arms[1].elbow.rotation.x = -0.16;
+      for (const pp of m.podPivots) pp.rotation.x = 0.20;
+    } else {
+      // EINHEIT-02: Powered-Down Slumped Shutdown Stance (both feet dynamically IK-planted on ridge slope!)
+      const lFootX = m.gx + (-1.44 * cosY + 0.45 * sinY) * sc;
+      const lFootZ = m.gz + ( 1.44 * sinY + 0.45 * cosY) * sc;
+      const rFootX = m.gx + ( 1.44 * cosY - 0.65 * sinY) * sc;
+      const rFootZ = m.gz + (-1.44 * sinY - 0.65 * cosY) * sc;
+      const gL = this._sampleGroundAndSlope(lFootX, lFootZ, m.yaw, seaL);
+      const gR = this._sampleGroundAndSlope(rFootX, rFootZ, m.yaw, seaL);
+      const rootY = Math.min(gL.h, gR.h);
+
+      this.world.toLocal(m.gx, rootY, m.gz, m.root.position);
+      m.root.rotation.y = m.yaw;
+
+      const lAnkleY = (gL.h - rootY) / sc + 0.48;
+      const rAnkleY = (gR.h - rootY) / sc + 0.48;
+      const pelvY = Math.max(lAnkleY, rAnkleY) + 4.32;
+      m.pelvisGrp.position.y = pelvY;
+      m.pelvisGrp.rotation.z = -0.05;
+      m.pelvisGrp.rotation.x = 0.08;
+
+      this._solveLegIK(m.legs[0],  0.45, lAnkleY - (pelvY - 0.40), gL.pitch, gL.roll, 1.0);
+      this._solveLegIK(m.legs[1], -0.65, rAnkleY - (pelvY - 0.40), gR.pitch, gR.roll, 1.0);
+
+      m.torsoGrp.rotation.x = 0.42;
+      m.torsoGrp.rotation.y = 0.16;
+      m.torsoGrp.rotation.z = -0.07;
+      m.headGrp.rotation.x = 0.56;
+      m.headGrp.rotation.y = -0.24;
+      m.headGrp.rotation.z = 0.14;
+      m.arms[0].shoulder.rotation.x = -0.34; m.arms[0].shoulder.rotation.z = 0.08;
+      m.arms[0].elbow.rotation.x = -0.18;
+      m.arms[1].shoulder.rotation.x = -0.26; m.arms[1].shoulder.rotation.z = -0.10;
+      m.arms[1].elbow.rotation.x = -0.22;
+      for (const pp of m.podPivots) pp.rotation.x = 0.24;
+    }
   }
 
   _fireRocketVolley(mecha, targetX, targetY, targetZ, audio, particles) {
@@ -880,12 +994,12 @@ KK.SavannaMechaManager = class SavannaMechaManager {
     this._headScanT += dt;
 
     const seaL = KK.SEA_LEVEL !== undefined ? KK.SEA_LEVEL : -32.0;
+    const sc = 5.2;
     let activeProx = 0, strideEffort = 0, isEngaging = false, dormantProx = 0;
 
     for (let i = 0; i < this.mechas.length; i++) {
       const m = this.mechas[i];
       if (m.isPatrol) {
-        // Deterministic wall-clock synced coastal patrol (100% synced in Multiplayer!)
         const wps = m.patrolWaypoints;
         const speedMs = 13.5;
         let totalLen = 0;
@@ -913,40 +1027,64 @@ KK.SavannaMechaManager = class SavannaMechaManager {
         while (dyaw < -Math.PI) dyaw += Math.PI * 2;
         m.yaw += dyaw * Math.min(1, dt * 2.2);
 
-        // DETAILED MULTI-JOINT HEAVY MECHANICAL WALK ANIMATION!
+        const dP = Math.hypot(m.gx - playerGx, m.gz - playerGz);
+        m.root.visible = dP < 8500;
+        if (dP < 560) activeProx = Math.max(activeProx, Math.pow(1.0 - dP / 560, 1.3));
+
+        // DYNAMIC TERRAIN-DETECTING 2-BONE IK WALK CYCLE!
         this._stepPhase += dt * 1.15;
         const ph = this._stepPhase;
         const sL = Math.sin(ph);
         const sR = Math.sin(ph + Math.PI);
         const liftL = Math.max(0, Math.cos(ph));
         const liftR = Math.max(0, Math.cos(ph + Math.PI));
-        strideEffort = Math.abs(Math.cos(ph)); // Peaks during active leg lift & hydraulic knee swing!
+        strideEffort = Math.abs(Math.cos(ph));
 
-        m.legs[0].hip.rotation.x   = -sL * 0.42 - liftL * 0.14;
-        m.legs[0].knee.rotation.x  =  liftL * 0.68 + 0.08;
-        m.legs[0].ankle.rotation.x = -(m.legs[0].hip.rotation.x + m.legs[0].knee.rotation.x) * 0.82;
+        const strideAmp = 1.95;
+        const zL = sL * strideAmp;
+        const zR = sR * strideAmp;
+        const sinY = Math.sin(m.yaw), cosY = Math.cos(m.yaw);
 
-        m.legs[1].hip.rotation.x   = -sR * 0.42 - liftR * 0.14;
-        m.legs[1].knee.rotation.x  =  liftR * 0.68 + 0.08;
-        m.legs[1].ankle.rotation.x = -(m.legs[1].hip.rotation.x + m.legs[1].knee.rotation.x) * 0.82;
+        const lFootWx = m.gx + (-1.44 * cosY + zL * sinY) * sc;
+        const lFootWz = m.gz + ( 1.44 * sinY + zL * cosY) * sc;
+        const rFootWx = m.gx + ( 1.44 * cosY + zR * sinY) * sc;
+        const rFootWz = m.gz + (-1.44 * sinY + zR * cosY) * sc;
 
-        m.pelvisGrp.position.y = 5.65 + Math.abs(Math.sin(ph)) * 0.36 - 0.14;
-        m.pelvisGrp.rotation.z = sL * 0.075;
+        const gL = this._sampleGroundAndSlope(lFootWx, lFootWz, m.yaw, seaL);
+        const gR = this._sampleGroundAndSlope(rFootWx, rFootWz, m.yaw, seaL);
+        const targetRootY = Math.min(gL.h, gR.h);
+        if (m._smoothRootY === null || Math.abs(targetRootY - m._smoothRootY) > 18) m._smoothRootY = targetRootY;
+        else m._smoothRootY += (targetRootY - m._smoothRootY) * Math.min(1, dt * 10);
+
+        if (m.root.visible) {
+          this.world.toLocal(m.gx, m._smoothRootY, m.gz, m.root.position);
+          m.root.rotation.y = m.yaw;
+        }
+
+        const gWeightL = Math.max(0, 1.0 - liftL * 2.2);
+        const gWeightR = Math.max(0, 1.0 - liftR * 2.2);
+        const ankleLocalYL = (gL.h - m._smoothRootY) / sc + 0.48 + Math.pow(liftL, 0.85) * 1.45;
+        const ankleLocalYR = (gR.h - m._smoothRootY) / sc + 0.48 + Math.pow(liftR, 0.85) * 1.45;
+
+        const stanceAnkleY = (liftL < liftR) ? ((gL.h - m._smoothRootY) / sc + 0.48) : ((gR.h - m._smoothRootY) / sc + 0.48);
+        const minFootAnkleY = Math.min((gL.h - m._smoothRootY) / sc, (gR.h - m._smoothRootY) / sc) + 0.48;
+        const pelvY = Math.min(minFootAnkleY + 4.92, stanceAnkleY + 4.78 + Math.abs(Math.sin(ph)) * 0.22);
+        m.pelvisGrp.position.y = pelvY;
+        m.pelvisGrp.rotation.z = sL * 0.068;
+        m.pelvisGrp.rotation.x = 0.03;
+
+        this._solveLegIK(m.legs[0], zL, ankleLocalYL - (pelvY - 0.40), gL.pitch, gL.roll, gWeightL);
+        this._solveLegIK(m.legs[1], zR, ankleLocalYR - (pelvY - 0.40), gR.pitch, gR.roll, gWeightR);
+
         m.torsoGrp.rotation.x  = 0.06 + Math.abs(Math.cos(ph)) * 0.045;
         m.torsoGrp.rotation.z  = -sL * 0.045;
-
         m.arms[0].shoulder.rotation.x =  sL * 0.32;
         m.arms[0].elbow.rotation.x    = -0.34 - Math.max(0, -sL) * 0.28;
         m.arms[1].shoulder.rotation.x =  sR * 0.32;
         m.arms[1].elbow.rotation.x    = -0.34 - Math.max(0, -sR) * 0.28;
 
-        // Blinking red aviation strobe on tallest antenna!
         if (m.strobeMesh) m.strobeMesh.visible = (Math.floor(this._headScanT * 1.8) % 2 === 0);
 
-        const dP = Math.hypot(m.gx - playerGx, m.gz - playerGz);
-        if (dP < 560) activeProx = Math.max(activeProx, Math.pow(1.0 - dP / 560, 1.3));
-
-        // Heavy Ground-Shaking Footfall Impact, Dust Plume & Booming Hydraulic Stomp Audio!
         const halfIdx = Math.floor((ph + Math.PI * 0.5) / Math.PI);
         if (halfIdx !== this._lastStepHalf) {
           this._lastStepHalf = halfIdx;
@@ -957,15 +1095,14 @@ KK.SavannaMechaManager = class SavannaMechaManager {
             else if (audio && audio.playImpact) audio.playImpact(0.45 + prox * 0.55);
           }
           if (particles && dP < 1800) {
-            const side = (halfIdx % 2 === 0) ? -1 : 1;
-            const tiF = this.world.getTerrainInfo(m.gx, m.gz, false);
-            const fx = m.gx + Math.cos(m.yaw) * side * 7.5;
-            const fz = m.gz - Math.sin(m.yaw) * side * 7.5;
-            particles.emitCrashBurst(fx, Math.max(seaL + 0.6, tiF.height + 0.5), fz, 2.4, "rock", "clear");
+            const isLeftPlant = (halfIdx % 2 === 0);
+            const fx = isLeftPlant ? lFootWx : rFootWx;
+            const fz = isLeftPlant ? lFootWz : rFootWz;
+            const fy = isLeftPlant ? gL.h : gR.h;
+            particles.emitCrashBurst(fx, fy + 0.5, fz, 2.5, "rock", "clear");
           }
         }
 
-        // COASTAL DEFENSE: Scan ocean, swivel torso & head, elevate rocket pods, & repel Megalodon/Kraken!
         let threat = null;
         if (oceanCryptids) {
           const mg = oceanCryptids.megalodon;
@@ -1013,26 +1150,18 @@ KK.SavannaMechaManager = class SavannaMechaManager {
         for (const pf of m.podFlashes) pf.visible = m.flashTimer > 0;
       } else {
         const dDorm = Math.hypot(m.gx - playerGx, m.gz - playerGz);
+        m.root.visible = dDorm < 8500;
         if (dDorm < 220) dormantProx = Math.max(dormantProx, 1.0 - dDorm / 220);
-      }
-
-      // Colossal skyline visibility up to 8.5 km away!
-      const dVis = Math.hypot(m.gx - playerGx, m.gz - playerGz);
-      m.root.visible = dVis < 8500;
-      if (m.root.visible) {
-        const ti = this.world.getTerrainInfo(m.gx, m.gz, false);
-        const groundY = Math.max(seaL + 0.5, ti.height);
-        this.world.toLocal(m.gx, groundY, m.gz, m.root.position);
-        m.root.rotation.y = m.yaw;
+        if (m.root.visible) {
+          this._applyDormantPose(m, seaL);
+        }
       }
     }
 
-    // Continuous proximity mechanical whirring, reactor hum & dormant monument creaks!
     if (audio && audio.updateMechaAmbience) {
       audio.updateMechaAmbience(dt, activeProx, strideEffort, isEngaging, dormantProx);
     }
 
-    // Update flying Mecha coastal-defense rockets!
     for (let r = this.rockets.length - 1; r >= 0; r--) {
       const rk = this.rockets[r];
       rk.life -= dt;
